@@ -1,0 +1,35 @@
+# Dependencies and build output
+/node_modules/
+/dist/
+/.next/
+/.vinext/
+/out/
+/coverage/
+
+# Cloudflare local state and secrets
+/.wrangler/
+.dev.vars
+.dev.vars.*
+!.dev.vars.example
+.env
+.env.*
+!.env.example
+
+# Editor, OS and logs
+.DS_Store
+.idea/
+.vscode/
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+*.pem
+*.key
+
+# Local exports and working files
+/outputs/
+/work/
+/tmp/
+
+# Personal watch-list data (use the tracked example seed instead)
+/data/initial-watch-list.json

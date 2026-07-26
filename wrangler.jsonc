@@ -1,0 +1,18 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "hiraku-watch-list",
+  "main": "worker/auth-wrapper.ts",
+  "compatibility_date": "2026-07-26",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "directory": "dist/client"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "hiraku-watch-list",
+      "database_id": "a88eabc6-5b74-48e8-b347-07720d2297d1",
+      "migrations_dir": "drizzle"
+    }
+  ]
+}

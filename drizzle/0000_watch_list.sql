@@ -1,0 +1,8 @@
+CREATE TABLE IF NOT EXISTS items (id TEXT PRIMARY KEY, content_type TEXT NOT NULL, creator_name TEXT NOT NULL DEFAULT '', series_title TEXT NOT NULL DEFAULT '', title TEXT NOT NULL, description TEXT NOT NULL DEFAULT '', priority INTEGER, status TEXT NOT NULL DEFAULT 'backlog', added_on TEXT, watched_on TEXT, comment TEXT NOT NULL DEFAULT '', source_system TEXT NOT NULL DEFAULT 'manual', external_id TEXT, raw_source TEXT, version INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, deleted_at TEXT, CHECK(content_type IN ('text','audio','movie','other')), CHECK(status IN ('backlog','in_progress','completed','dropped')), CHECK(priority IS NULL OR priority BETWEEN 1 AND 5));
+CREATE TABLE IF NOT EXISTS item_links (id TEXT PRIMARY KEY, item_id TEXT NOT NULL, label TEXT NOT NULL DEFAULT '', url TEXT NOT NULL, link_type TEXT NOT NULL DEFAULT 'reference', position INTEGER NOT NULL DEFAULT 0, canonical_url TEXT NOT NULL DEFAULT '', FOREIGN KEY(item_id) REFERENCES items(id) ON DELETE CASCADE);
+CREATE TABLE IF NOT EXISTS import_runs (id TEXT PRIMARY KEY, source_name TEXT NOT NULL, total_count INTEGER NOT NULL DEFAULT 0, created_count INTEGER NOT NULL DEFAULT 0, updated_count INTEGER NOT NULL DEFAULT 0, error_count INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+CREATE INDEX IF NOT EXISTS items_status_idx ON items(status);
+CREATE INDEX IF NOT EXISTS items_type_idx ON items(content_type);
+CREATE INDEX IF NOT EXISTS items_added_on_idx ON items(added_on);
+CREATE INDEX IF NOT EXISTS item_links_item_idx ON item_links(item_id);
+CREATE UNIQUE INDEX IF NOT EXISTS items_source_external_idx ON items(source_system, external_id);
