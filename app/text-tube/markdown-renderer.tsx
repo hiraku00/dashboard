@@ -1,6 +1,102 @@
 "use client";
-import { ReactNode } from "react";
+
+import ReactMarkdown from "react-markdown";
+import type { Components } from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { MermaidDiagram } from "./mermaid-diagram";
 
-function inline(text:string):ReactNode[]{const parts=text.split(/(`[^`]+`|\[[^\]]+\]\([^\)]+\))/g);return parts.map((part,i)=>{if(part.startsWith("`")&&part.endsWith("`"))return <code key={i}>{part.slice(1,-1)}</code>;const link=part.match(/^\[([^\]]+)\]\(([^\)]+)\)$/);if(link)return <a key={i} href={link[2]} target={link[2].startsWith("#")?undefined:"_blank"} rel="noreferrer">{link[1]}</a>;return part})}
-export function MarkdownRenderer({content}:{content:string}){const lines=content.replace(/\r/g,"").split("\n");const blocks:ReactNode[]=[];let i=0;while(i<lines.length){const line=lines[i];if(line.startsWith("```")){const language=line.slice(3).trim();const body:string[]=[];i++;while(i<lines.length&&!lines[i].startsWith("```")){body.push(lines[i]);i++}if(language.toLowerCase()==="mermaid")blocks.push(<MermaidDiagram chart={body.join("\n")} key={i}/>);else blocks.push(<pre key={i}><code>{body.join("\n")}</code></pre>);i++;continue}if(/^#{1,3} /.test(line)){const level=line.match(/^#+/)![0].length;const children=inline(line.slice(level+1));if(level===1)blocks.push(<h1 key={i}>{children}</h1>);else if(level===2)blocks.push(<h2 key={i}>{children}</h2>);else blocks.push(<h3 key={i}>{children}</h3>);i++;continue}if(/^[-*] /.test(line)){const items=[];while(i<lines.length&&/^[-*] /.test(lines[i])){items.push(<li key={i}>{inline(lines[i].slice(2))}</li>);i++}blocks.push(<ul key={i}>{items}</ul>);continue}if(/^\d+\. /.test(line)){const items=[];while(i<lines.length&&/^\d+\. /.test(lines[i])){items.push(<li key={i}>{inline(lines[i].replace(/^\d+\. /,""))}</li>);i++}blocks.push(<ol key={i}>{items}</ol>);continue}if(line.startsWith("> ")){blocks.push(<blockquote key={i}>{inline(line.slice(2))}</blockquote>);i++;continue}if(line.trim()===""){i++;continue}const paragraph=[line];i++;while(i<lines.length&&lines[i].trim()&&!/^```|^#{1,3} |^[-*] |^\d+\. |^> /.test(lines[i]))paragraph.push(lines[i++]);blocks.push(<p key={i}>{inline(paragraph.join(" "))}</p>)}return <div className="markdown-body">{blocks}</div>}
+function plainText(value: unknown): string {
+  if (Array.isArray(value)) return value.map(plainText).join("");
+  if (typeof value === "string" || typeof value === "number") return String(value);
+  if (value && typeof value === "object" && "props" in value) {
+    return plainText((value as { props?: { children?: unknown } }).props?.children);
+  }
+  return "";
+}
+
+/** Keep the same slug rules for headings and [目次](#...) links. */
+export function markdownSlug(value: string): string {
+  try {
+    value = decodeURIComponent(value);
+  } catch {
+    // Keep the original text when a stored link contains malformed encoding.
+  }
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s-]/gu, "")
+    .replace(/\s+/g, "-")
+    .replace(/^-+|-+$/g, "") || "section";
+}
+
+/**
+ * Some imported TextTube records contain a GFM table collapsed into one line:
+ * `| a | b | | --- | --- | | c | d |`. Restore row boundaries before parsing.
+ */
+export function normalizeMarkdown(content: string): string {
+  return content.replace(/\|\s+\|/g, "|\n|");
+}
+
+export function MarkdownRenderer({ content }: { content: string }) {
+  const headingCounts = new Map<string, number>();
+  const heading = (level: 1 | 2 | 3) => ({ children }: { children?: React.ReactNode }) => {
+    const label = plainText(children);
+    const base = markdownSlug(label);
+    const count = headingCounts.get(base) ?? 0;
+    headingCounts.set(base, count + 1);
+    const id = count === 0 ? base : `${base}-${count + 1}`;
+    const props = { id, tabIndex: -1, className: `markdown-heading markdown-h${level}` };
+    if (level === 1) return <h1 {...props}>{children}</h1>;
+    if (level === 2) return <h2 {...props}>{children}</h2>;
+    return <h3 {...props}>{children}</h3>;
+  };
+
+  const components: Components = {
+    h1: heading(1),
+    h2: heading(2),
+    h3: heading(3),
+    a: ({ href, children }) => {
+      const isInternal = href?.startsWith("#") ?? false;
+      const finalHref = isInternal && href ? `#${markdownSlug(href.slice(1))}` : href;
+      return (
+        <a
+          href={finalHref}
+          target={isInternal ? undefined : "_blank"}
+          rel={isInternal ? undefined : "noopener noreferrer"}
+          className={isInternal ? "markdown-anchor markdown-anchor-internal" : "markdown-anchor"}
+        >
+          {children}
+        </a>
+      );
+    },
+    p: ({ children }) => <p>{children}</p>,
+    ul: ({ children }) => <ul>{children}</ul>,
+    ol: ({ children }) => <ol>{children}</ol>,
+    li: ({ children }) => <li>{children}</li>,
+    blockquote: ({ children }) => <blockquote>{children}</blockquote>,
+    table: ({ children }) => (
+      <div className="markdown-table-scroll">
+        <table>{children}</table>
+      </div>
+    ),
+    thead: ({ children }) => <thead>{children}</thead>,
+    th: ({ children }) => <th>{children}</th>,
+    td: ({ children }) => <td>{children}</td>,
+    hr: () => <hr />,
+    code: ({ className, children }) => {
+      const language = className?.match(/language-([\w-]+)/)?.[1];
+      const code = String(children).replace(/\n$/, "");
+      if (language === "mermaid") return <MermaidDiagram chart={code} />;
+      if (!className) return <code>{children}</code>;
+      return <code className={className}>{children}</code>;
+    },
+  };
+
+  return (
+    <div className="markdown-body">
+      <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
+        {normalizeMarkdown(content)}
+      </ReactMarkdown>
+    </div>
+  );
+}
