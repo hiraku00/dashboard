@@ -1,6 +1,7 @@
 import { env } from "cloudflare:workers";
 import { ensureSchema } from "@/db";
 import { clean, putPortalObject } from "@/app/lib/portal";
+import { normalizeSyncedPositions } from "@/app/lib/manage-asset-core";
 
 function containsCredential(value: unknown): boolean {
   if (Array.isArray(value)) return value.some(containsCredential);
@@ -54,8 +55,11 @@ export async function POST(request: Request) {
     env.DB.prepare("INSERT INTO asset_snapshots (id,run_id,source_id,captured_at,as_of_date,total_usd,total_jpy,fx_usdjpy,raw_object_key,raw_sha256,raw_size,raw_storage_status) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)").bind(snapshotId,run.id,sourceId,capturedAt,asOfDate,totalUsd,totalJpy,fx,stored?.key ?? null,stored?.sha256 ?? null,stored?.size ?? rawBody.byteLength,storageStatus),
     env.DB.prepare("UPDATE asset_sources SET last_success_at=? WHERE id=?").bind(capturedAt,sourceId),
   ]);
-  const positions = Array.isArray(body.positions) ? body.positions : [];
-  const statements = positions.slice(0, 2000).map((position) => { const row = position && typeof position === "object" ? position as Record<string, unknown> : {}; return env.DB.prepare("INSERT INTO asset_positions (id,snapshot_id,symbol,quantity,price_usd,value_usd,value_jpy,location_type,protocol,position_type,is_debt) VALUES (?,?,?,?,?,?,?,?,?,?,?)").bind(crypto.randomUUID(),snapshotId,clean(row.symbol ?? row.asset,100)||"UNKNOWN",Number(row.quantity ?? row.amount ?? 0)||0,Number(row.priceUsd ?? row.price_usd ?? 0)||null,Number(row.valueUsd ?? row.usdValue ?? row.usd_value ?? 0)||null,Number(row.valueJpy ?? row.jpyValue ?? row.jpy_value ?? 0)||null,clean(row.locationType ?? row.location_type,100),clean(row.protocol,200),clean(row.positionType ?? row.position_type,60)||"asset",Boolean(row.isDebt ?? row.is_debt) ? 1 : 0); });
+  const suppliedPositions = (Array.isArray(body.positions) ? body.positions : []).filter((position): position is Record<string, unknown> => Boolean(position && typeof position === "object"));
+  // A wallet's stETH is nested under protocols[].panels[].assets[] in the local
+  // DeBank snapshot. Never rely only on the flattened positions payload here.
+  const positions = normalizeSyncedPositions(body.source, body.snapshot, suppliedPositions);
+  const statements = positions.slice(0, 2000).map((position) => env.DB.prepare("INSERT INTO asset_positions (id,snapshot_id,symbol,quantity,price_usd,value_usd,value_jpy,location_type,protocol,position_type,is_debt) VALUES (?,?,?,?,?,?,?,?,?,?,?)").bind(crypto.randomUUID(),snapshotId,clean(position.symbol,100)||"UNKNOWN",position.quantity ?? 0,position.quantity && position.valueUsd ? position.valueUsd / position.quantity : null,position.valueUsd,fx ? position.valueUsd * fx : null,position.locationType,clean(position.protocol,200),position.positionType,position.positionType === "debt" ? 1 : 0));
   for (let start = 0; start < statements.length; start += 50) await env.DB.batch(statements.slice(start,start+50));
   return Response.json({ ok: true, runId: run.id, snapshotId, sourceId, rawStorageStatus: storageStatus });
 }
