@@ -434,4 +434,5 @@ input:hover, select:hover { border-color: rgba(60,60,67,.42); }
 .topbar { display:block !important; }
 .topbar .brand, .topbar .theme-toggle, .topbar .sr { display:none !important; }
 .topbar .bar-inner { min-height:52px; justify-content:flex-end; }
+html, body { min-height:0 !important; overflow:hidden !important; }
 .shell { max-width:1480px; padding-top:24px; }
