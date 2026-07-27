@@ -88,5 +88,6 @@
 <script src="./portfolio-core.js"></script>
 <script src="./display-config.js"></script>
 <script src="./app-ui.js"></script>
+<script>new ResizeObserver(function(){ parent.postMessage({type:"manage-asset-resize"}, location.origin); }).observe(document.body);</script>
 </body>
 </html>
