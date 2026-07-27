@@ -431,5 +431,7 @@ input:hover, select:hover { border-color: rgba(60,60,67,.42); }
   :root { --line: currentColor; --line-strong: currentColor; }
   .card, .topbar, button, input, select { border-color: currentColor; }
 }
-.topbar { display:none !important; }
+.topbar { display:block !important; }
+.topbar .brand, .topbar .theme-toggle, .topbar .sr { display:none !important; }
+.topbar .bar-inner { min-height:52px; justify-content:flex-end; }
 .shell { max-width:1480px; padding-top:24px; }
