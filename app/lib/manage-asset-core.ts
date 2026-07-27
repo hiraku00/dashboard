@@ -171,14 +171,24 @@ export function currencyHistory(wallets: AssetRow[], exchanges: AssetRow[], symb
 }
 
 export function stethRewardHistory(rewards: AssetRow[], wallets: AssetRow[], exchanges: AssetRow[], rates: AssetRow[]) {
-  const rewardsOnly = rewards.filter((row) => String(row.type ?? row.reward_type ?? "").toLowerCase() === "reward").map((row) => ({ date: String(row.date ?? row.reward_date ?? "").slice(0, 10), change: number(row.change), usd: number(row.change_USD ?? row.change_usd), apr: number(row.apr), balance: number(row.balance), source: "csv" })).filter((row) => row.date).sort((a, b) => a.date.localeCompare(b.date));
+  const rateByDate = new Map(rates.map((row) => [String(row.date ?? "").slice(0, 10), number(row.rate)]));
+  const rewardsOnly = rewards.filter((row) => String(row.type ?? row.reward_type ?? "").toLowerCase() === "reward").map((row) => {
+    const date = String(row.date ?? row.reward_date ?? "").slice(0, 10);
+    const change = number(row.change);
+    const usd = number(row.change_USD ?? row.change_usd);
+    const balance = number(row.balance);
+    const fx = rateByDate.get(date) ?? null;
+    const price = change ? usd / change : null;
+    return { date, change, usd, apr: number(row.apr), balance, price, fx, yen: fx ? usd * fx : null, balanceUsd: price == null ? null : balance * price, source: "csv" };
+  }).filter((row) => row.date).sort((a, b) => a.date.localeCompare(b.date));
   const snapshots = currencyHistory(wallets, exchanges, "stETH", rates);
   const lastRewardDate = rewardsOnly.at(-1)?.date;
   const result = [...rewardsOnly];
   let previous = result.at(-1)?.balance ?? snapshots[0]?.balance ?? 0;
   for (const row of snapshots.filter((item) => !lastRewardDate || item.date > lastRewardDate)) {
     const change = row.balance - previous;
-    result.push({ date: row.date, change, usd: row.price == null ? 0 : change * row.price, apr: previous ? change / previous * 365 * 100 : 0, balance: row.balance, source: "snapshot" });
+    const usd = row.price == null ? 0 : change * row.price;
+    result.push({ date: row.date, change, usd, apr: previous ? change / previous * 365 * 100 : 0, balance: row.balance, price: row.price, fx: row.fx, yen: row.fx ? usd * row.fx : null, balanceUsd: row.balanceUsd, source: "snapshot" });
     previous = row.balance;
   }
   return result;
