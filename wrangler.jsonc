@@ -14,5 +14,14 @@
       "database_id": "a88eabc6-5b74-48e8-b347-07720d2297d1",
       "migrations_dir": "drizzle"
     }
-  ]
+  ],
+  "r2_buckets": [
+    {
+      "binding": "FILES",
+      "bucket_name": "hiraku-portal-files"
+    }
+  ],
+  "triggers": {
+    "crons": ["17 2 * * *"]
+  }
 }

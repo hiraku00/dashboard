@@ -1,5 +1,5 @@
-import { WatchListApp } from "./watch-list-app";
+import { PortalHome } from "./portal-home";
 
 export default function Home() {
-  return <WatchListApp />;
+  return <PortalHome />;
 }

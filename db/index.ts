@@ -46,6 +46,62 @@ export async function ensureSchema({ seed = true }: { seed?: boolean } = {}) {
     env.DB.prepare("CREATE INDEX IF NOT EXISTS items_added_on_idx ON items(added_on)"),
     env.DB.prepare("CREATE INDEX IF NOT EXISTS item_links_item_idx ON item_links(item_id)"),
     env.DB.prepare("CREATE UNIQUE INDEX IF NOT EXISTS items_source_external_idx ON items(source_system, external_id)"),
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS text_tube_videos (
+      id TEXT PRIMARY KEY, title TEXT NOT NULL, channel_name TEXT NOT NULL DEFAULT '',
+      thumbnail_url TEXT NOT NULL DEFAULT '', original_url TEXT NOT NULL DEFAULT '',
+      summary TEXT NOT NULL DEFAULT '', detailed_script_object_key TEXT,
+      detailed_script_sha256 TEXT, detailed_script_size INTEGER, published_at TEXT,
+      view_count INTEGER NOT NULL DEFAULT 0, channel_thumbnail_url TEXT NOT NULL DEFAULT '',
+      duration TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+      deleted_at TEXT
+    )`),
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS text_tube_video_revisions (
+      id TEXT PRIMARY KEY, video_id TEXT NOT NULL, revision_number INTEGER NOT NULL,
+      document_object_key TEXT NOT NULL, document_sha256 TEXT NOT NULL,
+      document_size INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL,
+      FOREIGN KEY(video_id) REFERENCES text_tube_videos(id) ON DELETE CASCADE
+    )`),
+    env.DB.prepare("CREATE INDEX IF NOT EXISTS text_tube_videos_created_idx ON text_tube_videos(created_at DESC)"),
+    env.DB.prepare("CREATE INDEX IF NOT EXISTS text_tube_videos_channel_idx ON text_tube_videos(channel_name)"),
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS asset_sources (
+      id TEXT PRIMARY KEY, source_type TEXT NOT NULL, provider TEXT NOT NULL,
+      display_name TEXT NOT NULL, public_address TEXT NOT NULL DEFAULT '',
+      enabled INTEGER NOT NULL DEFAULT 1, last_success_at TEXT, created_at TEXT NOT NULL
+    )`),
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS asset_sync_runs (
+      id TEXT PRIMARY KEY, client_run_id TEXT NOT NULL UNIQUE, client_version TEXT NOT NULL DEFAULT '',
+      started_at TEXT NOT NULL, completed_at TEXT, status TEXT NOT NULL,
+      source_count INTEGER NOT NULL DEFAULT 0, success_count INTEGER NOT NULL DEFAULT 0,
+      error_count INTEGER NOT NULL DEFAULT 0, received_at TEXT NOT NULL
+    )`),
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS asset_snapshots (
+      id TEXT PRIMARY KEY, run_id TEXT NOT NULL, source_id TEXT NOT NULL,
+      captured_at TEXT NOT NULL, as_of_date TEXT NOT NULL, total_usd REAL NOT NULL DEFAULT 0,
+      total_jpy REAL NOT NULL DEFAULT 0, fx_usdjpy REAL, raw_object_key TEXT,
+      raw_sha256 TEXT, raw_size INTEGER, raw_storage_status TEXT NOT NULL DEFAULT 'stored',
+      FOREIGN KEY(run_id) REFERENCES asset_sync_runs(id), FOREIGN KEY(source_id) REFERENCES asset_sources(id)
+    )`),
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS asset_positions (
+      id TEXT PRIMARY KEY, snapshot_id TEXT NOT NULL, symbol TEXT NOT NULL,
+      quantity REAL NOT NULL DEFAULT 0, price_usd REAL, value_usd REAL,
+      value_jpy REAL, location_type TEXT NOT NULL DEFAULT '', protocol TEXT NOT NULL DEFAULT '',
+      position_type TEXT NOT NULL DEFAULT 'asset', is_debt INTEGER NOT NULL DEFAULT 0,
+      FOREIGN KEY(snapshot_id) REFERENCES asset_snapshots(id) ON DELETE CASCADE
+    )`),
+    env.DB.prepare("CREATE INDEX IF NOT EXISTS asset_snapshots_source_date_idx ON asset_snapshots(source_id, as_of_date DESC)"),
+    env.DB.prepare("CREATE INDEX IF NOT EXISTS asset_positions_snapshot_idx ON asset_positions(snapshot_id)"),
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS storage_objects (
+      object_key TEXT PRIMARY KEY, category TEXT NOT NULL, size_bytes INTEGER NOT NULL,
+      sha256 TEXT NOT NULL, content_type TEXT NOT NULL, created_at TEXT NOT NULL,
+      expires_at TEXT, deleted_at TEXT
+    )`),
+    env.DB.prepare("CREATE INDEX IF NOT EXISTS storage_objects_category_idx ON storage_objects(category, created_at DESC)"),
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS storage_usage_daily (
+      usage_date TEXT PRIMARY KEY, object_count INTEGER NOT NULL DEFAULT 0,
+      payload_bytes INTEGER NOT NULL DEFAULT 0, class_a_estimate INTEGER NOT NULL DEFAULT 0,
+      class_b_estimate INTEGER NOT NULL DEFAULT 0, source TEXT NOT NULL DEFAULT 'ledger',
+      updated_at TEXT NOT NULL
+    )`),
   ]);
   const countResult = seed ? await env.DB.prepare("SELECT COUNT(*) AS count FROM items").all<{ count: number }>() : null;
   if (seed && Number(countResult?.results?.[0]?.count ?? 0) === 0) {
