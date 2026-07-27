@@ -5,6 +5,7 @@
 /.vinext/
 /out/
 /coverage/
+*.tsbuildinfo
 
 # Cloudflare local state and secrets
 /.wrangler/

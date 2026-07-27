@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { PortalHeader } from "./portal-nav";
 
 type ContentType = "text" | "audio" | "movie" | "other";
 type Status = "backlog" | "in_progress" | "completed" | "dropped";
@@ -102,13 +103,8 @@ export function WatchListApp() {
   }
 
   return <main className="app-shell">
-    <header className="app-header">
-      <div><p className="app-kicker">PERSONAL LIBRARY</p><h1>Watch List</h1></div>
-      <div className="header-actions">
-        <a className="logout-link" href="https://frosty-rice-fb39.cloudflareaccess.com/cdn-cgi/access/logout" aria-label="Cloudflare Access からログアウト">ログアウト</a>
-        <button className="add-button" onClick={openNew}><span aria-hidden="true">＋</span> 追加 <kbd>⌘ N</kbd></button>
-      </div>
-    </header>
+    <PortalHeader kicker="PERSONAL LIBRARY" title="Watch List" active="/watch-list" />
+    <div className="page-toolbar"><p>読みたい、聴きたい、観たいものを一つに。</p><button className="add-button" onClick={openNew}><span aria-hidden="true">＋</span> 追加 <kbd>⌘ N</kbd></button></div>
 
     <section className="summary-grid" aria-label="鑑賞の状況">
       <article className="summary-card"><span>すべて</span><strong>{stats.total}</strong><small>件</small></article>
