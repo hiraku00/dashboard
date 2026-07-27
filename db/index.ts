@@ -90,6 +90,22 @@ export async function ensureSchema({ seed = true }: { seed?: boolean } = {}) {
     )`),
     env.DB.prepare("CREATE INDEX IF NOT EXISTS asset_snapshots_source_date_idx ON asset_snapshots(source_id, as_of_date DESC)"),
     env.DB.prepare("CREATE INDEX IF NOT EXISTS asset_positions_snapshot_idx ON asset_positions(snapshot_id)"),
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS asset_history_records (
+      id TEXT PRIMARY KEY, record_type TEXT NOT NULL, source_id TEXT NOT NULL DEFAULT '',
+      as_of_date TEXT NOT NULL, captured_at TEXT NOT NULL, total_usd REAL NOT NULL DEFAULT 0,
+      total_jpy REAL NOT NULL DEFAULT 0, fx_usdjpy REAL, payload_json TEXT NOT NULL,
+      UNIQUE(record_type, source_id, as_of_date, captured_at)
+    )`),
+    env.DB.prepare("CREATE INDEX IF NOT EXISTS asset_history_records_date_idx ON asset_history_records(record_type, as_of_date DESC)"),
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS asset_lido_rewards (
+      id TEXT PRIMARY KEY, reward_date TEXT NOT NULL, reward_type TEXT NOT NULL DEFAULT 'reward',
+      change REAL, change_usd REAL, apr REAL, balance REAL, payload_json TEXT NOT NULL,
+      UNIQUE(reward_date, reward_type, change, balance)
+    )`),
+    env.DB.prepare("CREATE INDEX IF NOT EXISTS asset_lido_rewards_date_idx ON asset_lido_rewards(reward_date DESC)"),
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS asset_fx_rates (
+      rate_date TEXT PRIMARY KEY, rate REAL NOT NULL, payload_json TEXT NOT NULL
+    )`),
     env.DB.prepare(`CREATE TABLE IF NOT EXISTS storage_objects (
       object_key TEXT PRIMARY KEY, category TEXT NOT NULL, size_bytes INTEGER NOT NULL,
       sha256 TEXT NOT NULL, content_type TEXT NOT NULL, created_at TEXT NOT NULL,

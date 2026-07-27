@@ -10,6 +10,12 @@ function containsCredential(value: unknown): boolean {
 
 type Body = { action?: string; clientRunId?: unknown; clientVersion?: unknown; sourceCount?: unknown; source?: Record<string, unknown>; snapshot?: Record<string, unknown>; positions?: unknown[]; raw?: Record<string, unknown> };
 
+export async function GET() {
+  await ensureSchema({ seed: false });
+  const latest = (await env.DB.prepare("SELECT * FROM asset_sync_runs ORDER BY received_at DESC LIMIT 1").all<Record<string, unknown>>()).results?.[0] ?? null;
+  return Response.json({ ok: true, latest });
+}
+
 export async function POST(request: Request) {
   // Cloudflare Access validates the Service Token at the edge. Its client-secret
   // headers are intentionally not forwarded to the Worker, so do not repeat the

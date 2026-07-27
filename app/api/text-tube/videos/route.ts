@@ -14,7 +14,7 @@ export async function GET(request: Request) {
   const q = clean(params.get("q"), 200);
   const where = q ? "WHERE deleted_at IS NULL AND (title LIKE ? OR channel_name LIKE ?)" : "WHERE deleted_at IS NULL";
   const args = q ? [`%${q}%`, `%${q}%`] : [];
-  const rows = (await env.DB.prepare(`SELECT id,title,channel_name,thumbnail_url,original_url,summary,published_at,view_count,channel_thumbnail_url,duration,created_at,updated_at FROM text_tube_videos ${where} ORDER BY created_at DESC LIMIT 100`).bind(...args).all<Record<string, unknown>>()).results ?? [];
+  const rows = (await env.DB.prepare(`SELECT id,title,channel_name,thumbnail_url,original_url,summary,published_at,view_count,channel_thumbnail_url,duration,detailed_script_object_key,created_at,updated_at FROM text_tube_videos ${where} ORDER BY created_at DESC LIMIT 100`).bind(...args).all<Record<string, unknown>>()).results ?? [];
   return Response.json({ videos: rows });
 }
 
