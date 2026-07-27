@@ -2,15 +2,6 @@ import { env } from "cloudflare:workers";
 import { ensureSchema } from "@/db";
 import { clean, putPortalObject } from "@/app/lib/portal";
 
-function syncAuthorized(request: Request) {
-  // The production route is protected by a Cloudflare Access Service Auth policy.
-  // The explicit header check prevents ordinary browser sessions from using it.
-  const presented = request.headers.get("cf-access-client-secret");
-  const expected = (env as unknown as Record<string, string | undefined>).ASSET_SYNC_TOKEN;
-  if (expected) return Boolean(presented && presented === expected && request.headers.get("cf-access-client-id"));
-  return Boolean(request.headers.get("cf-access-client-id") && presented);
-}
-
 function containsCredential(value: unknown): boolean {
   if (Array.isArray(value)) return value.some(containsCredential);
   if (!value || typeof value !== "object") return false;
@@ -20,7 +11,9 @@ function containsCredential(value: unknown): boolean {
 type Body = { action?: string; clientRunId?: unknown; clientVersion?: unknown; sourceCount?: unknown; source?: Record<string, unknown>; snapshot?: Record<string, unknown>; positions?: unknown[]; raw?: Record<string, unknown> };
 
 export async function POST(request: Request) {
-  if (!syncAuthorized(request)) return Response.json({ error: "同期認証が必要です。" }, { status: 401 });
+  // Cloudflare Access validates the Service Token at the edge. Its client-secret
+  // headers are intentionally not forwarded to the Worker, so do not repeat the
+  // header check here. This route must remain covered by the Access application.
   await ensureSchema({ seed: false });
   const body = await request.json().catch(() => null) as Body | null;
   if (!body || typeof body.action !== "string" || typeof body.clientRunId !== "string") return Response.json({ error: "actionとclientRunIdが必要です。" }, { status: 400 });
