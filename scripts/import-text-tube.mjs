@@ -11,7 +11,15 @@ const input = JSON.parse(await fs.readFile(inputPath, "utf8"));
 const videos = Array.isArray(input) ? input : input.videos;
 if (!Array.isArray(videos)) throw new Error("videos配列を含むJSONを指定してください。");
 
-const headers = { "content-type": "application/json" };
+const clientId = process.env.PORTAL_SYNC_CLIENT_ID;
+const clientSecret = process.env.PORTAL_SYNC_TOKEN;
+if (!clientId || !clientSecret) throw new Error("PORTAL_SYNC_CLIENT_IDとPORTAL_SYNC_TOKENが必要です。");
+const headers = {
+  "content-type": "application/json",
+  "CF-Access-Client-Id": clientId,
+  "CF-Access-Client-Secret": clientSecret,
+  "User-Agent": "text-tube-portal-migration/1.0",
+};
 let created = 0;
 let failed = 0;
 for (const source of videos) {
@@ -38,7 +46,7 @@ for (const source of videos) {
   const { id } = await response.json();
   const document = source.detailedScript ?? source.detailed_script;
   if (document) {
-    const documentResponse = await fetch(`${baseUrl.replace(/\/$/, "")}/api/text-tube/videos/${id}/document`, { method: "POST", headers: { "content-type": "text/markdown; charset=utf-8" }, body: document });
+    const documentResponse = await fetch(`${baseUrl.replace(/\/$/, "")}/api/text-tube/videos/${id}/document`, { method: "POST", headers: { ...headers, "content-type": "text/markdown; charset=utf-8" }, body: document });
     if (!documentResponse.ok) {
       failed += 1;
       console.error(`本文保存失敗: ${source.title}`, await documentResponse.text());
