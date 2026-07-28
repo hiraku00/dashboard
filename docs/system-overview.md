@@ -45,4 +45,4 @@ collectorが外部サービスへ直接アクセスするため、外部APIキ�
 
 ## 命名
 
-GitHubリポジトリ名 `watch-list` は歴史的な名称です。公開名称は `dashboard` が実態に近い候補です。一方、Worker/D1/R2の既存名は運用中の識別子なので、リポジトリ名変更だけで自動的に変更しません。
+GitHubリポジトリは `hiraku00/dashboard` です。Worker/D1/R2の既存名は運用中の識別子なので、GitHubリポジトリ名の変更では変更されません。

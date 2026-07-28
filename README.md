@@ -109,7 +109,7 @@ Cloudflare Access、D1、R2、collector/launchdの設定手順は[デプロイ�
 
 ## リポジトリ名について
 
-現在のGitHubリポジトリ名 `watch-list` は初期機能名を引き継いだものです。公開リポジトリとしては、機能を限定しない `dashboard` が現在の構成に最も素直な名称です。
+GitHubリポジトリは [`hiraku00/dashboard`](https://github.com/hiraku00/dashboard) です。初期機能名の `watch-list` から、現在のDashboard構成に合わせて変更しました。
 
 ただし、リポジトリ名変更はGitHubのURL・remote・ドキュメント・CI参照を更新する作業であり、Cloudflare Worker/D1/R2のリソース名変更とは別です。まずは既存のCloudflareリソース名を維持したままドキュメントを整備し、改名を行う場合は別の変更として実施します。
 
