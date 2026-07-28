@@ -6,14 +6,11 @@ const isCodexSeatbeltSandbox = process.env.CODEX_SANDBOX === "seatbelt";
 
 const localBindingConfig = {
   main: "./worker/index.ts",
-  compatibility_flags: ["nodejs_compat"],
-  d1_databases: [
-    {
-      binding: "DB",
-      database_name: "hiraku-watch-list",
-      database_id: "a88eabc6-5b74-48e8-b347-07720d2297d1",
-    },
-  ],
+  // compatibility_flags is declared in wrangler.jsonc; avoid emitting it twice.
+  compatibility_flags: [],
+  // D1 is declared in wrangler.jsonc. Keeping a second declaration here
+  // makes vinext emit duplicate bindings during deployment.
+  d1_databases: [],
 };
 
 export default defineConfig(async () => {

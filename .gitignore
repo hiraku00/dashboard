@@ -34,3 +34,11 @@ pnpm-debug.log*
 
 # Personal watch-list data (use the tracked example seed instead)
 /data/initial-watch-list.json
+
+# Local Manage Asset collector state and personal account configuration.
+# The collector reads wallet/exchange credentials from macOS Keychain; these
+# files are intentionally kept on the Mac and never committed.
+/collector/data/*
+!/collector/data/.gitkeep
+/collector/**/__pycache__/
+/collector/**/*.py[cod]

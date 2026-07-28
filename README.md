@@ -23,9 +23,9 @@
 
 Manage Assetの画面は、既存の `/Users/hiraku/Practice/manage-asset/static/` を正典として移植しています。元画面の文言、表示桁数、グラフ、ホバー、ページング、保管場所の詳細展開を維持し、外側にポータル共通ヘッダーを追加しています。
 
-外部APIの取得はローカルMacで実行し、APIキーはmacOS Keychainに保持します。Cloudflareへは取得済みスナップショットのみを同期します。D1には正規化データ、R2には必要な原本を保存します。
+外部APIの取得は `collector/` 配下のローカルMac用処理で実行し、APIキーはmacOS Keychainに保持します。Cloudflareへは取得済みスナップショットのみを同期します。D1には正規化データ、R2には必要な原本を保存します。
 
-`/api/state`、`/api/history`、`/api/lido-rewards`、`/api/usd-jpy-rates`、`/api/providers` は、既存Manage Asset UIとの互換APIです。
+Cloudflare側の `/api/manage-asset/state`、`/api/manage-asset/history`、`/api/lido-rewards`、`/api/usd-jpy-rates`、`/api/providers` は、既存Manage Asset UIとの互換APIです。ローカルcollector単体の確認用APIは `collector/README.md` を参照してください。
 
 詳細は[アーキテクチャ](docs/architecture.md)、公開と認証は[運用手順](docs/deployment-and-access.md)を参照してください。
 

@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.watch-list.manage-asset-collector</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/local/bin/python3</string>
+    <string>/Users/hiraku/Practice/watch-list/collector/scripts/daily_update.py</string>
+  </array>
+  <key>StartInterval</key>
+  <integer>60</integer>
+  <key>RunAtLoad</key>
+  <false/>
+  <key>WorkingDirectory</key>
+  <string>/Users/hiraku/Practice/watch-list/collector</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PORTAL_URL</key>
+    <string>https://hiraku-watch-list.hiraku-watch-list.workers.dev</string>
+    <key>PORTAL_SYNC_CLIENT_ID</key>
+    <string>f47d396cd28306989ca5737cce5a006c.access</string>
+  </dict>
+  <key>StandardOutPath</key>
+  <string>/Users/hiraku/Practice/watch-list/collector/data/launchd.stdout.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/hiraku/Practice/watch-list/collector/data/launchd.stderr.log</string>
+</dict>
+</plist>
