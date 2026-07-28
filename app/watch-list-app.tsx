@@ -9,11 +9,11 @@ type Link = { id?: string; label: string; url: string; linkType?: string };
 type Item = { id: string; contentType: ContentType; creatorName: string; seriesTitle: string; title: string; description: string; priority: number | null; status: Status; addedOn: string | null; watchedOn: string | null; comment: string; version: number; links: Link[] };
 type Draft = Omit<Item, "id" | "version">;
 
-const emptyDraft = (): Draft => ({ contentType: "movie", creatorName: "", seriesTitle: "", title: "", description: "", priority: null, status: "backlog", addedOn: new Date().toISOString().slice(0, 10), watchedOn: null, comment: "", links: [] });
+const emptyDraft = (): Draft => ({ contentType: "movie", creatorName: "", seriesTitle: "", title: "", description: "", priority: null, status: "backlog", addedOn: new Date().toISOString().slice(0, 10), watchedOn: null, comment: "", links: [{ label: "", url: "", linkType: "reference" }] });
 const typeLabel: Record<ContentType, string> = { movie: "映像", audio: "音声", text: "テキスト", other: "その他" };
 const statusLabel: Record<Status, string> = { backlog: "未着手", in_progress: "鑑賞中", completed: "完了", dropped: "見送り" };
 const dateLabel = (value: string | null) => value ? value.replaceAll("-", ".") : "未設定";
-const pageSize = 10;
+const pageSize = 8;
 
 export function WatchListApp() {
   const [items, setItems] = useState<Item[]>([]);
@@ -104,7 +104,7 @@ export function WatchListApp() {
 
   return <main className="app-shell">
     <PortalHeader kicker="PERSONAL LIBRARY" title="Watch List" active="/watch-list" />
-    <div className="page-toolbar"><p>読みたい、聴きたい、観たいものを一つに。</p><button className="add-button" onClick={openNew}><span aria-hidden="true">＋</span> 追加 <kbd>⌘ N</kbd></button></div>
+    <div className="page-toolbar watch-list-toolbar"><button className="add-button" onClick={openNew}><span aria-hidden="true">＋</span> 追加 <kbd>⌘ N</kbd></button></div>
 
     <section className="summary-grid" aria-label="鑑賞の状況">
       <article className="summary-card"><span>すべて</span><strong>{stats.total}</strong><small>件</small></article>
@@ -125,12 +125,12 @@ export function WatchListApp() {
       <div className="item-list">
         {!loading && items.length === 0 && <div className="empty-state"><strong>該当するコンテンツはありません。</strong><p>条件を変えるか、新しく追加してください。</p><button onClick={openNew}>コンテンツを追加</button></div>}
         {!loading && items.length > 0 && <div className="table-scroll"><table className="content-table">
-          <thead><tr><th scope="col"><span className="sr-only">種別</span></th><th scope="col">タイトル</th><th scope="col">人物・媒体</th><th scope="col">追加日</th><th scope="col">状態</th><th scope="col">リンク</th><th scope="col">削除</th></tr></thead>
+          <thead><tr><th scope="col"><span className="sr-only">種別</span></th><th scope="col">人物・媒体</th><th scope="col">タイトル</th><th scope="col">追加日</th><th scope="col">状態</th><th scope="col">リンク</th><th scope="col">削除</th></tr></thead>
           <tbody>{items.map((item) => {
             return <tr className={item.status === "completed" ? "is-completed" : ""} key={item.id}>
               <td className="type-cell"><span className={`type-mark type-${item.contentType}`} title={typeLabel[item.contentType]} aria-label={typeLabel[item.contentType]}>{typeLabel[item.contentType].slice(0, 1)}</span></td>
-              <td className="title-cell"><button type="button" className="title-button" onClick={() => openEdit(item)} title={`${item.title} を編集`}>{item.title}</button><p className="description" title={item.description}>{item.description || " "}</p></td>
               <td className="creator-cell"><strong>{item.creatorName || "—"}</strong>{item.seriesTitle && <span>{item.seriesTitle}</span>}</td>
+              <td className="title-cell"><button type="button" className="title-button" onClick={() => openEdit(item)} title={`${item.title} を編集`}>{item.title}</button><p className="description" title={item.description}>{item.description || " "}</p></td>
               <td className="date-cell"><time dateTime={item.addedOn ?? undefined}>{dateLabel(item.addedOn)}</time>{item.watchedOn && <span>完了 {dateLabel(item.watchedOn)}</span>}</td>
               <td className="status-cell"><select value={item.status} onChange={(event) => updateStatus(item, event.target.value as Status)} aria-label={`${item.title} の状態`}>{(Object.keys(statusLabel) as Status[]).map((key) => <option key={key} value={key}>{statusLabel[key]}</option>)}</select>{item.priority && <span className="priority">優先 {item.priority}</span>}</td>
               <td className="links-cell">{item.links.length > 0 ? <div className="item-links" aria-label={`${item.title} のリンク`}>{item.links.map((link, index) => <a key={`${link.id ?? link.url}-${index}`} href={link.url} target="_blank" rel="noreferrer">{link.label || `リンク ${index + 1}`} <span aria-hidden="true">↗</span></a>)}</div> : <span className="empty-cell">—</span>}</td>
@@ -142,11 +142,11 @@ export function WatchListApp() {
       </div>
     </section>
 
-    {activeEditor && <div className="modal-backdrop" role="presentation"><section className="editor" role="dialog" aria-modal="true" aria-labelledby="editor-title"><div className="editor-heading"><div><p className="app-kicker">{editing ? "EDIT CONTENT" : "NEW CONTENT"}</p><h2 id="editor-title">{editing ? "コンテンツを編集" : "コンテンツを追加"}</h2></div><button className="close-button" onClick={closeEditor} aria-label="閉じる">×</button></div><form onSubmit={save}>
+    {activeEditor && <div className="modal-backdrop" role="presentation" onClick={closeEditor}><section className="editor" role="dialog" aria-modal="true" aria-labelledby="editor-title" onClick={(event) => event.stopPropagation()}><div className="editor-heading"><div><p className="app-kicker">{editing ? "EDIT CONTENT" : "NEW CONTENT"}</p><h2 id="editor-title">{editing ? "コンテンツを編集" : "コンテンツを追加"}</h2></div><button className="close-button" onClick={closeEditor} aria-label="閉じる">×</button></div><form className="editor-form" onSubmit={save}>
       <div className="form-grid compact first-grid"><label>種別<select value={draft.contentType} onChange={(event) => patchDraft({ contentType: event.target.value as ContentType })}>{(Object.keys(typeLabel) as ContentType[]).map((key) => <option key={key} value={key}>{typeLabel[key]}</option>)}</select></label><label>状態<select value={draft.status} onChange={(event) => patchDraft({ status: event.target.value as Status })}>{(Object.keys(statusLabel) as Status[]).map((key) => <option key={key} value={key}>{statusLabel[key]}</option>)}</select></label></div>
       <div className="form-grid"><label>人物・媒体<input value={draft.creatorName} onChange={(event) => patchDraft({ creatorName: event.target.value })} placeholder="例：NHK、ちきりん" /></label><label>番組・連載名<input value={draft.seriesTitle} onChange={(event) => patchDraft({ seriesTitle: event.target.value })} placeholder="例：WBS" /></label></div>
       <label className="title-field"><span>タイトル <b>必須</b></span><input required value={draft.title} onChange={(event) => patchDraft({ title: event.target.value })} placeholder="鑑賞したいコンテンツの名前" /></label>
-      <label>内容・メモ<textarea value={draft.description} onChange={(event) => patchDraft({ description: event.target.value })} placeholder="内容、気になった理由など" rows={3} /></label>
+      <label>内容・メモ<textarea value={draft.description} onChange={(event) => patchDraft({ description: event.target.value })} placeholder="内容、気になった理由など" rows={2} /></label>
       <div className="form-grid compact"><label>優先度<select value={draft.priority ?? ""} onChange={(event) => patchDraft({ priority: event.target.value ? Number(event.target.value) : null })}><option value="">未設定</option>{[1, 2, 3, 4, 5].map((value) => <option key={value} value={value}>{value}</option>)}</select></label><label>追加日<input type="date" value={draft.addedOn ?? ""} onChange={(event) => patchDraft({ addedOn: event.target.value || null })} /></label><label>鑑賞日<input type="date" value={draft.watchedOn ?? ""} onChange={(event) => patchDraft({ watchedOn: event.target.value || null })} /></label></div>
       <label>感想・コメント<textarea value={draft.comment} onChange={(event) => patchDraft({ comment: event.target.value })} rows={2} /></label>
       <div className="links-editor"><div><span>リンク</span><button type="button" onClick={() => patchDraft({ links: [...draft.links, { label: "", url: "", linkType: "reference" }] })}>＋ リンクを追加</button></div>{draft.links.map((link, index) => <div className="link-row" key={`${link.id ?? "new"}-${index}`}><input aria-label="リンク名" value={link.label} onChange={(event) => patchDraft({ links: draft.links.map((value, i) => i === index ? { ...value, label: event.target.value } : value) })} placeholder="表示名" /><input aria-label="URL" type="url" value={link.url} onChange={(event) => patchDraft({ links: draft.links.map((value, i) => i === index ? { ...value, url: event.target.value } : value) })} placeholder="https://" /><button type="button" onClick={() => patchDraft({ links: draft.links.filter((_, i) => i !== index) })} aria-label="リンクを削除">×</button></div>)}</div>
