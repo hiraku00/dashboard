@@ -254,6 +254,7 @@ tr:last-child td { border-bottom: 0; }
 #currencyTable th:nth-child(5) { width: 12%; } #currencyTable th:nth-child(6) { width: 14%; } #currencyTable th:nth-child(7) { width: 12%; } #currencyTable th:nth-child(8) { width: 15%; }
 #currencyTable th:nth-child(5), #currencyTable td:nth-child(5), #currencyTable th:nth-child(7), #currencyTable td:nth-child(7) { padding-right: 12px; }
 #currencyTable th:nth-child(6), #currencyTable td:nth-child(6), #currencyTable th:nth-child(8), #currencyTable td:nth-child(8) { padding-left: 12px; text-align: right; }
+#currencyTable td:first-child { white-space: nowrap !important; }
 #currencyTable .change-positive { color: var(--blue); }
 #currencyTable .change-negative { color: var(--bad); }
 #currencyTable .change-neutral { color: var(--muted); }
@@ -331,6 +332,23 @@ input:hover, select:hover { border-color: rgba(60,60,67,.42); }
   .update-card { margin-top: 18px; }
   .settings-form { grid-template-columns: 1fr; }
   .location-detail { margin: 0 8px 12px; padding: 16px 12px; }
+  /* The currency table has eight desktop columns. At portal/iframe widths,
+     keeping its 1040px minimum width leaves only the Date column visible.
+     Reflow each record into a readable two-column card instead. */
+  #currencyTable .table-scroll { overflow: visible; }
+  #currencyTable table, #currencyTable tbody { display: block; width: 100%; min-width: 0; }
+  #currencyTable thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; }
+  #currencyTable tr { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 14px 20px; margin: 0 0 12px; padding: 16px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface-raised); }
+  #currencyTable td, #currencyTable td:nth-child(n) { display: grid; width: auto; min-width: 0; padding: 0; border: 0; text-align: left; white-space: normal; }
+  #currencyTable td::before { margin-bottom: 3px; color: var(--faint); font-size: .68rem; font-weight: 700; letter-spacing: .03em; }
+  #currencyTable td:nth-child(1)::before { content: "Date"; }
+  #currencyTable td:nth-child(2)::before { content: "Rate"; }
+  #currencyTable td:nth-child(3)::before { content: "Rate (USD/JPY)"; }
+  #currencyTable td:nth-child(4)::before { content: "APR"; }
+  #currencyTable td:nth-child(5)::before { content: "Reward / Change"; }
+  #currencyTable td:nth-child(6)::before { content: "Reward (USD/JPY)"; }
+  #currencyTable td:nth-child(7)::before { content: "Balance"; }
+  #currencyTable td:nth-child(8)::before { content: "Balance (USD/JPY)"; }
 }
 @media (max-width: 560px) {
   .brand-mark { width: 34px; height: 34px; }
@@ -361,6 +379,25 @@ input:hover, select:hover { border-color: rgba(60,60,67,.42); }
   #assets .progress { margin-top: 5px; }
   .pagination { gap: 4px; }
   .pagination button, .pagination-ellipsis { width: 38px; height: 38px; min-height: 38px; }
+}
+
+/* Portal embeds can report a wider CSS viewport than the visible frame.
+   Apply the currency-table reflow before the desktop 1040px table can clip. */
+@media (min-width: 561px) and (max-width: 1200px) {
+  #currencyTable .table-scroll { overflow: visible; }
+  #currencyTable table, #currencyTable tbody { display: block; width: 100%; min-width: 0; }
+  #currencyTable thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; }
+  #currencyTable tr { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 14px 20px; margin: 0 0 12px; padding: 16px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface-raised); }
+  #currencyTable td, #currencyTable td:nth-child(n) { display: grid; width: auto; min-width: 0; padding: 0; border: 0; text-align: left; white-space: normal; }
+  #currencyTable td::before { margin-bottom: 3px; color: var(--faint); font-size: .68rem; font-weight: 700; letter-spacing: .03em; }
+  #currencyTable td:nth-child(1)::before { content: "Date"; }
+  #currencyTable td:nth-child(2)::before { content: "Rate"; }
+  #currencyTable td:nth-child(3)::before { content: "Rate (USD/JPY)"; }
+  #currencyTable td:nth-child(4)::before { content: "APR"; }
+  #currencyTable td:nth-child(5)::before { content: "Reward / Change"; }
+  #currencyTable td:nth-child(6)::before { content: "Reward (USD/JPY)"; }
+  #currencyTable td:nth-child(7)::before { content: "Balance"; }
+  #currencyTable td:nth-child(8)::before { content: "Balance (USD/JPY)"; }
 }
 
 :root[data-theme="light"] { color-scheme: light; }

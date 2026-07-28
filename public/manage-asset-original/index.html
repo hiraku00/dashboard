@@ -7,7 +7,7 @@
   <meta name="theme-color" content="#0f1013" media="(prefers-color-scheme: dark)">
   <title>暗号資産ポートフォリオ</title>
   <script>try{const theme=localStorage.getItem('portfolio-theme');if(theme==='light'||theme==='dark')document.documentElement.dataset.theme=theme}catch(error){}</script>
-  <link rel="stylesheet" href="./styles.css">
+  <link rel="stylesheet" href="./styles.css?v=20260728e">
 </head>
 <body>
 <header class="topbar">
@@ -85,9 +85,9 @@
   </section>
 </main>
 
-<script src="./portfolio-core.js"></script>
-<script src="./display-config.js"></script>
-<script src="./app-ui.js"></script>
+<script src="./portfolio-core.js?v=20260728d"></script>
+<script src="./display-config.js?v=20260728d"></script>
+<script src="./app-ui.js?v=20260728f"></script>
 <script>new ResizeObserver(function(){ parent.postMessage({type:"manage-asset-resize"}, location.origin); }).observe(document.body);</script>
 </body>
 </html>
