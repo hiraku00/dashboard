@@ -14,18 +14,22 @@ export async function GET() {
   const normalized = (await env.DB.prepare(`SELECT s.*, a.source_type, a.display_name, a.public_address
     FROM asset_snapshots s JOIN asset_sources a ON a.id=s.source_id
     ORDER BY s.as_of_date ASC, s.captured_at ASC`).all<Record<string, unknown>>()).results ?? [];
-  const normalizedPositions = (await env.DB.prepare(`SELECT p.*, s.source_id, s.as_of_date, s.captured_at, a.source_type, a.display_name
+  const normalizedPositions = (await env.DB.prepare(`SELECT p.*, s.id AS snapshot_id, s.source_id, s.as_of_date, s.captured_at, a.source_type, a.display_name
     FROM asset_positions p JOIN asset_snapshots s ON s.id=p.snapshot_id JOIN asset_sources a ON a.id=s.source_id
     ORDER BY s.as_of_date ASC, s.captured_at ASC`).all<Record<string, unknown>>()).results ?? [];
   const positionsBySnapshot = new Map<string, Record<string, unknown>[]>();
   for (const position of normalizedPositions) {
-    const key = `${position.source_id}|${position.as_of_date}|${position.captured_at}`;
+    // Position rows belong to one concrete asset_snapshots row. Do not group
+    // by source/date/captured_at here: retries can create multiple snapshots
+    // with the same values, and merging them multiplies every currency.
+    const key = String(position.snapshot_id ?? "");
+    if (!key) continue;
     const rows = positionsBySnapshot.get(key) ?? [];
     rows.push(position);
     positionsBySnapshot.set(key, rows);
   }
   for (const row of normalized) {
-    const key = `${row.source_id}|${row.as_of_date}|${row.captured_at}`;
+    const key = String(row.id ?? "");
     const positions = positionsBySnapshot.get(key) ?? [];
     if (String(row.source_type).toLowerCase() === "wallet") {
       snapshots.push({
