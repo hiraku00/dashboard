@@ -248,6 +248,7 @@ def main() -> int:
             total_failed,
         )
         portal_url = os.environ.get("PORTAL_URL", "").strip()
+        portal_sync_failed = False
         if portal_url:
             try:
                 result = subprocess.run(
@@ -258,12 +259,13 @@ def main() -> int:
                     timeout=60,
                 )
                 if result.returncode:
+                    portal_sync_failed = True
                     LOG.warning("Portal sync failed: %s", result.stderr.strip() or result.stdout.strip())
                 else:
                     LOG.info("Portal sync completed: %s", result.stdout.strip())
             except (OSError, subprocess.SubprocessError) as exc:
                 LOG.warning("Portal sync could not start: %s", exc)
-        return 1 if total_failed else 0
+        return 1 if total_failed or portal_sync_failed else 0
     finally:
         fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
         lock.close()

@@ -10,7 +10,9 @@ import json
 import os
 import subprocess
 import sys
+import time
 import urllib.request
+import urllib.error
 import ssl
 from datetime import datetime, timezone
 from pathlib import Path
@@ -56,8 +58,17 @@ def post(base_url: str, token: str, body: dict) -> dict:
         method="POST",
     )
     context = ssl.create_default_context(cafile=certifi.where())
-    with urllib.request.urlopen(request, timeout=30, context=context) as response:
-        return json.loads(response.read().decode("utf-8"))
+    last_error = None
+    for attempt in range(4):
+        try:
+            with urllib.request.urlopen(request, timeout=30, context=context) as response:
+                return json.loads(response.read().decode("utf-8"))
+        except (urllib.error.URLError, TimeoutError) as exc:
+            last_error = exc
+            if attempt == 3:
+                raise
+            time.sleep(2 ** attempt)
+    raise last_error or RuntimeError("Portal sync failed")
 
 
 def as_source(source_id: str, source: dict, source_type: str, provider: str, name: str, address: str = "") -> dict:

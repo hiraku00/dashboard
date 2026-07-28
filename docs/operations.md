@@ -33,6 +33,8 @@ python3 collector/scripts/sync_to_portal.py
 6. 対象日・source・currencyのキーが一致しているか
 7. WorkerのversionとD1 migrationが最新か
 
+Portal同期はDNS解決や接続タイムアウトなどの一時的なネットワーク障害に対して、最大4回（指数バックオフ）再試行します。それでも失敗した場合は `daily_update.py` が終了コード1を返すため、launchdの実行結果を失敗として扱えます。再試行後も反映されない場合は、まず `asset_sync_runs` の失敗内容を確認し、必要に応じて最新スナップショットを `sync_to_portal.py` で手動同期します。
+
 当日データがD1に入っていて画面だけ古い場合は、キャッシュではなくAPIレスポンスの日付と選択中の期間・通貨を確認します。
 
 ## 異常な日次増加量
