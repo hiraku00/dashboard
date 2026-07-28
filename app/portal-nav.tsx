@@ -13,10 +13,10 @@ export function PortalNav({ active }: { active?: string }) {
   </nav>;
 }
 
-export function PortalHeader({ kicker = "HIRAKU PORTAL", title, active }: { kicker?: string; title: string; active?: string }) {
+export function PortalHeader({ title, active }: { title: string; active?: string }) {
   return <div className="portal-chrome">
     <header className="portal-header">
-      <div><p className="app-kicker">{kicker}</p><h1>{title}</h1></div>
+      <h1>{title}</h1>
       <a className="logout-link" href="/cdn-cgi/access/logout">ログアウト</a>
     </header>
     <PortalNav active={active} />

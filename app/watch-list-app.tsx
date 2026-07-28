@@ -13,7 +13,7 @@ const emptyDraft = (): Draft => ({ contentType: "movie", creatorName: "", series
 const typeLabel: Record<ContentType, string> = { movie: "映像", audio: "音声", text: "テキスト", other: "その他" };
 const statusLabel: Record<Status, string> = { backlog: "未着手", in_progress: "鑑賞中", completed: "完了", dropped: "見送り" };
 const dateLabel = (value: string | null) => value ? value.replaceAll("-", ".") : "未設定";
-const pageSize = 8;
+const pageSize = 10;
 
 export function WatchListApp() {
   const [items, setItems] = useState<Item[]>([]);
@@ -103,7 +103,7 @@ export function WatchListApp() {
   }
 
   return <main className="app-shell">
-    <PortalHeader kicker="PERSONAL LIBRARY" title="Watch List" active="/watch-list" />
+    <PortalHeader title="Watch List" active="/watch-list" />
     <div className="page-toolbar watch-list-toolbar"><button className="add-button" onClick={openNew}><span aria-hidden="true">＋</span> 追加 <kbd>⌘ N</kbd></button></div>
 
     <section className="summary-grid" aria-label="鑑賞の状況">
