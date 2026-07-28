@@ -51,7 +51,7 @@ Keychainサービス:
 collector側の設定:
 
 ```text
-PORTAL_URL=https://hiraku-watch-list.hiraku-watch-list.workers.dev
+PORTAL_URL=https://dashboard.hiraku00.workers.dev
 PORTAL_SYNC_CLIENT_ID=<Keychainから実行時に設定>
 ```
 

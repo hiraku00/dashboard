@@ -66,7 +66,12 @@ def as_source(source_id: str, source: dict, source_type: str, provider: str, nam
 
 def wallet_entry(row: dict) -> dict:
     source_id = str(row.get("wallet_id") or row.get("source_id") or row.get("id"))
-    snapshot = {**row, "capturedAt": row.get("captured_at"), "asOfDate": row.get("as_of_date"), "totalUsd": row.get("total_usd", 0), "totalJpy": row.get("total_jpy", 0), "fxUsdjpy": row.get("fx_usdjpy")}
+    total_usd = row.get("total_usd", 0)
+    fx_usdjpy = row.get("fx_usdjpy")
+    total_jpy = row.get("total_jpy")
+    if total_jpy in (None, "") and total_usd not in (None, "") and fx_usdjpy not in (None, ""):
+        total_jpy = float(total_usd) * float(fx_usdjpy)
+    snapshot = {**row, "capturedAt": row.get("captured_at"), "asOfDate": row.get("as_of_date"), "totalUsd": total_usd, "totalJpy": total_jpy or 0, "fxUsdjpy": fx_usdjpy}
     positions = list(row.get("tokens") or [])
     return {"source": as_source(source_id, row, "wallet", "debank", str(row.get("wallet_name") or row.get("name") or source_id), str(row.get("address") or "")), "snapshot": snapshot, "positions": positions}
 
@@ -74,7 +79,12 @@ def wallet_entry(row: dict) -> dict:
 def exchange_entry(row: dict) -> dict:
     source_id = str(row.get("source_id") or row.get("account_name") or row.get("id"))
     totals = row.get("totals") or {}
-    snapshot = {**row, "capturedAt": row.get("captured_at"), "asOfDate": row.get("as_of_date"), "totalUsd": totals.get("net_asset_usd", row.get("total_usd", 0)), "totalJpy": totals.get("net_asset_jpy", row.get("total_jpy", 0)), "fxUsdjpy": row.get("fx_usdjpy")}
+    total_usd = totals.get("net_asset_usd", row.get("total_usd", 0))
+    fx_usdjpy = row.get("fx_usdjpy")
+    total_jpy = totals.get("net_asset_jpy", row.get("total_jpy"))
+    if total_jpy in (None, "") and total_usd not in (None, "") and fx_usdjpy not in (None, ""):
+        total_jpy = float(total_usd) * float(fx_usdjpy)
+    snapshot = {**row, "capturedAt": row.get("captured_at"), "asOfDate": row.get("as_of_date"), "totalUsd": total_usd, "totalJpy": total_jpy or 0, "fxUsdjpy": fx_usdjpy}
     return {"source": as_source(source_id, row, "exchange", str(row.get("provider") or "unknown"), str(row.get("account_name") or row.get("display_name") or source_id)), "snapshot": snapshot, "positions": row.get("positions") or []}
 
 

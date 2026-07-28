@@ -18,7 +18,7 @@
   <key>EnvironmentVariables</key>
   <dict>
     <key>PORTAL_URL</key>
-    <string>https://hiraku-watch-list.hiraku-watch-list.workers.dev</string>
+    <string>https://dashboard.hiraku00.workers.dev</string>
     <key>PORTAL_SYNC_CLIENT_ID</key>
     <string>f47d396cd28306989ca5737cce5a006c.access</string>
   </dict>

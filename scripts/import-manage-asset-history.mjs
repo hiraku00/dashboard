@@ -1,6 +1,6 @@
 import fs from "node:fs/promises";
 
-const portal = process.env.PORTAL_URL ?? "https://hiraku-watch-list.hiraku-watch-list.workers.dev";
+const portal = process.env.PORTAL_URL ?? "https://dashboard.hiraku00.workers.dev";
 const clientId = process.env.PORTAL_SYNC_CLIENT_ID;
 const secret = process.env.PORTAL_SYNC_TOKEN;
 if (!clientId || !secret) throw new Error("PORTAL_SYNC_CLIENT_ID と PORTAL_SYNC_TOKEN が必要です。");
