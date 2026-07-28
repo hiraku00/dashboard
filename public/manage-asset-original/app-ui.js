@@ -25,7 +25,9 @@
   let providerLabels={};
   let pendingSource=null;
 
-  function darkModeActive(){const selected=document.documentElement.dataset.theme;if(selected)return selected==='dark';return matchMedia('(prefers-color-scheme: dark)').matches}
+  // The embedded app follows the portal's light gray surface. Do not inherit
+  // the host OS dark-mode preference or a stale localStorage value.
+  function darkModeActive(){return false}
   function updateThemeControl(){const toggle=$('themeToggle');if(!toggle)return;const dark=darkModeActive();toggle.dataset.mode=dark?'dark':'light';toggle.setAttribute('aria-label',dark?'ライトモードに切り替える':'ダークモードに切り替える');toggle.title=dark?'ライトモードに切り替える':'ダークモードに切り替える'}
   function toggleTheme(){const theme=darkModeActive()?'light':'dark';document.documentElement.dataset.theme=theme;try{localStorage.setItem('portfolio-theme',theme)}catch(error){}updateThemeControl()}
 

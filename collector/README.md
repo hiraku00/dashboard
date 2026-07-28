@@ -25,7 +25,7 @@ python3 -m playwright install chromium
 ## 手動検証
 
 ```bash
-PORTAL_URL=https://hiraku-watch-list.hiraku-watch-list.workers.dev \
+PORTAL_URL=https://dashboard.hiraku00.workers.dev \
 PORTAL_SYNC_CLIENT_ID='…' \
 python3 collector/scripts/daily_update.py
 ```

@@ -22,3 +22,14 @@ test("labels non-stETH balance deltas as changes rather than rewards", async () 
   assert.match(compatibility, /select\.value\.toLowerCase\(\) === 'steth'/);
   assert.match(compatibility, /nodeValue === 'Reward'/);
 });
+
+test("derives portal JPY totals when synced snapshot totals are absent", async () => {
+  const route = await readFile(new URL("../app/api/portal/summary/route.ts", import.meta.url), "utf8");
+  assert.match(route, /asset_positions/);
+  assert.match(route, /storedJpy \|\| positionTotals\?\.jpy/);
+});
+
+test("uses Cloudflare Access native logout", async () => {
+  const nav = await readFile(new URL("../app/portal-nav.tsx", import.meta.url), "utf8");
+  assert.match(nav, /href="\/cdn-cgi\/access\/logout"/);
+});

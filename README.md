@@ -13,7 +13,7 @@ Watch List、TextTube、Manage Assetを一つのCloudflare上で管理する、�
 
 ## 本番環境
 
-- Worker: <https://hiraku-watch-list.hiraku-watch-list.workers.dev>
+- Worker: <https://dashboard.hiraku00.workers.dev>
 - 主な画面: `/`, `/watch-list`, `/text-tube`, `/manage-asset`, `/settings/storage`
 - 本番データ: Cloudflare D1 `hiraku-watch-list` / R2 `hiraku-portal-files`
 
