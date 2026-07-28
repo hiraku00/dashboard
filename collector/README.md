@@ -2,6 +2,8 @@
 
 このディレクトリは、旧 `/Users/hiraku/Practice/manage-asset` から移植したMac専用の取得処理です。
 
+Personal Portal全体の構成は、リポジトリ直下の [README](../README.md)、データ取得と表示の責務は [Manage Asset運用](../docs/manage-asset.md) を参照してください。
+
 - `app.py`: JSONL保存、Keychain参照、スナップショット正規化
 - `debank_auto.py`: DeBankウォレット取得
 - `exchange.py`: 取引所コネクタ
@@ -40,3 +42,13 @@ launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.watch-list.manage-as
 ```
 
 新collectorの手動実行・Cloudflare同期・launchd実行を確認した後、旧 `com.manage-asset.daily-update` を停止します。旧プロジェクトの削除は、数回の定期実行を確認してから行います。
+
+## 同期後の確認
+
+1. collectorの終了コードが0であることを確認する。
+2. source別の取得成功・失敗件数を確認する。
+3. `/manage-asset/sync` で当日の日付と最終同期時刻を確認する。
+4. `/manage-asset` の総資産、stETH、資産配分を確認する。
+5. `/manage-asset/currencies` と `/manage-asset/locations` の合計がホームと整合することを確認する。
+
+Service AuthやKeychainが失敗した場合は、APIキーの値をログに出力せず、サービス名、戻り値、実行時刻だけを調査材料にします。旧collectorと新collectorを同じsourceに対して同時実行しないでください。
