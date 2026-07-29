@@ -87,7 +87,14 @@ npm run build
 
 ## デプロイ
 
-本番デプロイは意図的な変更として実施し、先にテストと差分確認を行います。
+mainへのmerge後、GitHub Actionsが自動でテスト、build、本番Workerのデプロイを実行します。デプロイ状態はGitHubのActions画面とproduction Environmentで確認します。
+
+必要なSecretsはGitHubのproduction Environmentに登録します。
+
+- `CLOUDFLARE_API_TOKEN`
+- `CLOUDFLARE_ACCOUNT_ID`
+
+手動で再現・復旧する場合は、先にテストと差分確認を行います。
 
 ```bash
 npx wrangler d1 migrations apply hiraku-watch-list --remote
