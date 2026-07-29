@@ -20,11 +20,31 @@ migration適用後は、主要APIと既存画面を確認します。既存デ�
 
 ## Worker deploy
 
+本番WorkerはGitHub Actionsから自動デプロイします。`main`へのpush、つまりPRのmergeが成功すると、次の順序で実行されます。
+
+1. Node.js 22.13.0をセットアップ
+2. `npm ci`でlockfileどおりに依存関係をインストール
+3. `npm test`でbuildとテストを実行
+4. テスト成功時だけ `wrangler deploy --config wrangler.jsonc` を実行
+
+workflowは `.github/workflows/deploy-production.yml` で管理します。デプロイの同時実行は1件に制限し、先行デプロイが完了してから次のデプロイを開始します。
+
+GitHubのproduction Environmentには、次のSecretsを登録します。値はリポジトリへ保存しません。
+
+- `CLOUDFLARE_API_TOKEN`: 本番Workerのデプロイに必要な権限だけを付与したCloudflare API Token
+- `CLOUDFLARE_ACCOUNT_ID`: `wrangler.jsonc` のWorkerが属するCloudflareアカウントID
+
+API TokenはWorkersのデプロイ権限に絞り、不要なD1/R2管理権限やAccount全体の編集権限を付与しません。
+
+既存の手動コマンドは障害対応・Actionsの再現確認用に残します。
+
 ```bash
 npm test
 npm run build
 npx wrangler deploy --config wrangler.jsonc
 ```
+
+D1 migrationはWorkerデプロイに含めません。migrationが必要な変更では、バックアップ、migration確認、適用、画面確認を別の手順として実行します。
 
 デプロイ後に次を確認します。
 
