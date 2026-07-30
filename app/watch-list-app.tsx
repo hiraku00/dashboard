@@ -93,7 +93,7 @@ export function WatchListApp() {
   }
 
   async function updateStatus(item: Item, nextStatus: Status) {
-    const watchedOn = nextStatus === "completed" ? item.watchedOn ?? new Date().toISOString().slice(0, 10) : item.watchedOn;
+    const watchedOn = nextStatus === "completed" ? item.watchedOn ?? new Date().toISOString().slice(0, 10) : null;
     const response = await fetch(`/api/items/${item.id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...item, status: nextStatus, watchedOn, version: item.version }) });
     if (!response.ok) { const data = await response.json(); setNotice(data.error ?? "更新に失敗しました。"); return; }
     setNotice(`状態を「${statusLabel[nextStatus]}」に変更しました。`); await refresh();
@@ -136,7 +136,7 @@ export function WatchListApp() {
               <td className="type-cell"><span className={`type-mark type-${item.contentType}`} title={typeLabel[item.contentType]} aria-label={typeLabel[item.contentType]}>{typeLabel[item.contentType].slice(0, 1)}</span></td>
               <td className="creator-cell"><strong>{item.creatorName || "—"}</strong>{item.seriesTitle && <span>{item.seriesTitle}</span>}</td>
               <td className="title-cell"><button type="button" className="title-button" onClick={() => openEdit(item)} title={`${item.title} を編集`}>{item.title}</button><p className="description" title={item.description}>{item.description || " "}</p></td>
-              <td className="date-cell"><time dateTime={item.addedOn ?? undefined}>{dateLabel(item.addedOn)}</time>{item.watchedOn && <span>完了 {dateLabel(item.watchedOn)}</span>}</td>
+              <td className="date-cell"><time dateTime={item.addedOn ?? undefined}>{dateLabel(item.addedOn)}</time>{item.status === "completed" && item.watchedOn && <span>完了 {dateLabel(item.watchedOn)}</span>}</td>
               <td className="status-cell"><select value={item.status} onChange={(event) => updateStatus(item, event.target.value as Status)} aria-label={`${item.title} の状態`}>{(Object.keys(statusLabel) as Status[]).map((key) => <option key={key} value={key}>{statusLabel[key]}</option>)}</select>{item.priority && <span className="priority">優先 {item.priority}</span>}</td>
               <td className="links-cell">{item.links.length > 0 ? <div className="item-links" aria-label={`${item.title} のリンク`}>{item.links.map((link, index) => <a key={`${link.id ?? link.url}-${index}`} href={link.url} target="_blank" rel="noreferrer">{link.label || `リンク ${index + 1}`} <span aria-hidden="true">↗</span></a>)}</div> : <span className="empty-cell">—</span>}</td>
               <td className="action-cell"><button className="icon-button danger" onClick={() => remove(item)}>削除</button></td>

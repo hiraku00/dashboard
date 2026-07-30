@@ -52,7 +52,7 @@ export function normalizeItem(input: unknown): { value?: ItemInput; error?: stri
   const status = (cleanText(source.status) || "backlog") as Status;
   const title = cleanText(source.title, 1000);
   const addedOn = cleanText(source.addedOn, 10);
-  const watchedOn = cleanText(source.watchedOn, 10);
+  const watchedOn = status === "completed" ? cleanText(source.watchedOn, 10) : "";
   const priority = source.priority === null || source.priority === undefined || source.priority === "" ? null : Number(source.priority);
 
   if (!contentTypes.has(contentType)) return { error: "種別は text / audio / movie / other のいずれかです。" };
