@@ -79,15 +79,19 @@ npm run dev
 別のターミナルで検証します。
 
 ```bash
+npm run lint
+npm run typecheck
 npm test
 npm run build
 ```
+
+本番到達性を確認する場合は`npm run smoke:production`を実行します。Access認証前のリダイレクトも正常応答として扱います。
 
 ローカルのWorkerは、設定に応じてD1/R2のローカルまたはリモート接続を使います。APIキーやService Tokenをソースコード、`.env`、Wrangler設定へ書き込まないでください。
 
 ## デプロイ
 
-mainへのmerge後、GitHub Actionsが自動でテスト、build、本番Workerのデプロイを実行します。デプロイ状態はGitHubのActions画面とproduction Environmentで確認します。
+Pull RequestではGitHub Actionsがlint、TypeScriptコンパイラチェック、build・回帰テストを実行します。mainへのmerge後は同じ検証に加えて、本番Workerのデプロイと主要ルートのスモークテストを実行します。デプロイ状態はGitHubのActions画面とproduction Environmentで確認します。
 
 必要なSecretsはGitHubのproduction Environmentに登録します。
 

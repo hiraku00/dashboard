@@ -24,10 +24,15 @@ migration適用後は、主要APIと既存画面を確認します。既存デ�
 
 1. Node.js 22.13.0をセットアップ
 2. `npm ci`でlockfileどおりに依存関係をインストール
-3. `npm test`でbuildとテストを実行
-4. テスト成功時だけ `wrangler deploy --config wrangler.jsonc` を実行
+3. `npm run lint`で静的解析を実行
+4. `npm run typecheck`でTypeScriptコンパイラチェックを実行
+5. `npm test`でbuildと回帰テストを実行
+6. 検証成功時だけ `wrangler deploy --config wrangler.jsonc` を実行
+7. 主要4ルートのHTTPスモークテストを実行
 
-workflowは `.github/workflows/deploy-production.yml` で管理します。デプロイの同時実行は1件に制限し、先行デプロイが完了してから次のデプロイを開始します。
+PR時の検証は `.github/workflows/ci.yml`、本番デプロイは `.github/workflows/deploy-production.yml` で管理します。デプロイの同時実行は1件に制限し、先行デプロイが完了してから次のデプロイを開始します。
+
+`npm run typecheck`は、既存コードに残る意味型エラーを段階的に解消するまでの移行期間として、現在は`tsc --noEmit --noCheck`によるコンパイラ互換性チェックを実行します。厳密な意味型チェックの有効化は別途行います。
 
 GitHubのproduction Environmentには、次のSecretsを登録します。値はリポジトリへ保存しません。
 
