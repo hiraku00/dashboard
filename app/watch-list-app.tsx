@@ -58,12 +58,16 @@ export function WatchListApp() {
   useEffect(() => { const timer = setTimeout(refresh, query ? 180 : 0); return () => clearTimeout(timer); }, [query, refresh]);
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "n") { event.preventDefault(); openNew(); }
       if (event.key === "Escape" && (editing || isNew)) closeEditor();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [editing, isNew]);
+  useEffect(() => {
+    if (!notice) return;
+    const timer = window.setTimeout(() => setNotice(""), 3200);
+    return () => window.clearTimeout(timer);
+  }, [notice]);
 
   const creators = useMemo(() => [...new Set(items.map((item) => item.creatorName).filter(Boolean))].sort((a, b) => a.localeCompare(b, "ja")), [items]);
   const progress = stats.total ? Math.round((stats.completed / stats.total) * 100) : 0;
@@ -104,14 +108,16 @@ export function WatchListApp() {
 
   return <main className="app-shell">
     <PortalHeader title="Watch List" active="/watch-list" />
-    <div className="page-toolbar watch-list-toolbar"><button className="add-button" onClick={openNew}><span aria-hidden="true">＋</span> 追加 <kbd>⌘ N</kbd></button></div>
-
-    <section className="summary-grid" aria-label="鑑賞の状況">
-      <article className="summary-card"><span>すべて</span><strong>{stats.total}</strong><small>件</small></article>
-      <article className="summary-card"><span>完了</span><strong>{stats.completed}</strong><small>{progress}%</small></article>
-      <article className="summary-card"><span>映像</span><strong>{stats.movie}</strong><small>件</small></article>
-      <article className="summary-card"><span>読む・聴く</span><strong>{stats.text + stats.audio}</strong><small>件</small></article>
-    </section>
+    {notice && <p className="notice toast-notice" role="status">{notice}</p>}
+    <div className="page-toolbar watch-list-toolbar">
+      <section className="summary-grid" aria-label="鑑賞の状況">
+        <article className="summary-card"><span>すべて</span><strong>{stats.total}</strong><small>件</small></article>
+        <article className="summary-card"><span>完了</span><strong>{stats.completed}</strong><small>{progress}%</small></article>
+        <article className="summary-card"><span>映像</span><strong>{stats.movie}</strong><small>件</small></article>
+        <article className="summary-card"><span>読む・聴く</span><strong>{stats.text + stats.audio}</strong><small>件</small></article>
+      </section>
+      <button className="add-button" onClick={openNew}><span aria-hidden="true">＋</span> 追加</button>
+    </div>
 
     <section className="library-panel" aria-labelledby="library-title">
       <div className="library-heading"><h2 id="library-title">ライブラリ</h2><span className="result-count">{loading ? "読み込み中" : `${totalResults} 件中 ${Math.min((page - 1) * pageSize + 1, totalResults || 0)}–${Math.min(page * pageSize, totalResults)}`}</span></div>
@@ -121,7 +127,6 @@ export function WatchListApp() {
         <label><span className="sr-only">状態</span><select value={status} onChange={(event) => { setStatus(event.target.value as typeof status); setPage(1); }}><option value="all">すべての状態</option>{(Object.keys(statusLabel) as Status[]).map((key) => <option key={key} value={key}>{statusLabel[key]}</option>)}</select></label>
         <label><span className="sr-only">人物・媒体</span><select value={creator} onChange={(event) => { setCreator(event.target.value); setPage(1); }}><option value="all">すべての人物・媒体</option>{creators.map((value) => <option key={value}>{value}</option>)}</select></label>
       </div>
-      {notice && <p className="notice" role="status">{notice}</p>}
       <div className="item-list">
         {!loading && items.length === 0 && <div className="empty-state"><strong>該当するコンテンツはありません。</strong><p>条件を変えるか、新しく追加してください。</p><button onClick={openNew}>コンテンツを追加</button></div>}
         {!loading && items.length > 0 && <div className="table-scroll"><table className="content-table">
