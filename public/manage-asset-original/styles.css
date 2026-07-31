@@ -172,6 +172,7 @@ h3 { margin: 0; font-size: 1rem; letter-spacing: -.01em; }
 .comparison-amount, .comparison-percent { text-align: left; }
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 20px; }
 #overview > .grid2 > .chart { height: 410px; min-height: 0; overflow: hidden; }
+#overview > .grid2 > .chart:last-child { height: auto; min-height: 410px; overflow: visible; }
 #overview > .grid2 > .chart > .section-head { margin-bottom: 8px; }
 .chart { min-height: 390px; }
 .empty { padding: 72px 10px; text-align: center; color: var(--muted); }

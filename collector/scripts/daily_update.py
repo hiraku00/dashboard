@@ -62,6 +62,18 @@ def scheduled_times(schedule: dict) -> set[str]:
     return times
 
 
+def due_slot(schedule: dict, now: datetime) -> str | None:
+    """Return the latest configured slot reached today.
+
+    launchd may start this script a little after the configured minute. Using
+    the latest reached slot instead of an exact HH:MM match prevents a missed
+    retry when the one-minute launchd wake-up is delayed.
+    """
+    current = now.strftime("%H:%M")
+    reached = sorted(slot for slot in scheduled_times(schedule) if slot <= current)
+    return reached[-1] if reached else None
+
+
 def acquire_lock():
     LOCK_FILE.parent.mkdir(exist_ok=True)
     lock = LOCK_FILE.open("w", encoding="utf-8")
@@ -196,7 +208,23 @@ def load_retry_state(as_of_date: str) -> tuple[set[str] | None, set[str] | None]
     return set(state.get("failed_wallet_ids", [])), set(state.get("failed_source_ids", []))
 
 
-def save_retry_state(as_of_date: str, failed_wallet_ids: list[str], failed_source_ids: list[str], errors: dict[str, str]) -> None:
+def save_retry_state(
+    as_of_date: str,
+    failed_wallet_ids: list[str],
+    failed_source_ids: list[str],
+    errors: dict[str, str],
+    *,
+    last_run_slot: str | None = None,
+    portal_sync_pending: bool | None = None,
+) -> None:
+    previous = {}
+    if STATE_FILE.exists():
+        try:
+            loaded = json.loads(STATE_FILE.read_text(encoding="utf-8"))
+            if isinstance(loaded, dict):
+                previous = loaded
+        except (OSError, ValueError):
+            previous = {}
     STATE_FILE.write_text(
         json.dumps(
             {
@@ -205,6 +233,8 @@ def save_retry_state(as_of_date: str, failed_wallet_ids: list[str], failed_sourc
                 "failed_wallet_ids": failed_wallet_ids,
                 "failed_source_ids": failed_source_ids,
                 "errors": errors,
+                "last_run_slot": last_run_slot if last_run_slot is not None else previous.get("last_run_slot"),
+                "portal_sync_pending": portal_sync_pending if portal_sync_pending is not None else bool(previous.get("portal_sync_pending")),
                 "updated_at": app.now_iso(),
             },
             ensure_ascii=False,
@@ -219,7 +249,18 @@ def main() -> int:
     schedule = load_schedule()
     now = datetime.now()
     force_run = os.environ.get("MANAGE_ASSET_FORCE_RUN") == "1"
-    if not force_run and (not schedule.get("enabled", True) or now.strftime("%H:%M") not in scheduled_times(schedule)):
+    slot = due_slot(schedule, now)
+    as_of_date = date.today().isoformat()
+    slot_key = f"{as_of_date}T{slot}" if slot else None
+    existing_state = {}
+    if STATE_FILE.exists():
+        try:
+            loaded = json.loads(STATE_FILE.read_text(encoding="utf-8"))
+            if isinstance(loaded, dict) and loaded.get("as_of_date") == as_of_date:
+                existing_state = loaded
+        except (OSError, ValueError):
+            existing_state = {}
+    if not force_run and (not schedule.get("enabled", True) or not slot or existing_state.get("last_run_slot") == slot_key):
         LOG.info("Outside the scheduled run window; skipping")
         return 0
 
@@ -229,7 +270,6 @@ def main() -> int:
         return 0
     try:
         run_id = "run_" + uuid.uuid4().hex[:12]
-        as_of_date = date.today().isoformat()
         retry_wallet_ids, retry_source_ids = load_retry_state(as_of_date)
         attempt_label = "initial" if retry_wallet_ids is None else "retry"
         wallet_success, wallet_failed, failed_wallet_ids, wallet_errors = update_wallets(
@@ -238,7 +278,14 @@ def main() -> int:
         exchange_success, exchange_failed, failed_source_ids, exchange_errors = update_exchanges(
             run_id, retry_source_ids
         )
-        save_retry_state(as_of_date, failed_wallet_ids, failed_source_ids, {**wallet_errors, **exchange_errors})
+        save_retry_state(
+            as_of_date,
+            failed_wallet_ids,
+            failed_source_ids,
+            {**wallet_errors, **exchange_errors},
+            last_run_slot=slot_key,
+            portal_sync_pending=True,
+        )
         total_failed = wallet_failed + exchange_failed
         LOG.info(
             "Daily update finished (%s): wallets=%d/%d, exchanges=%d/%d, retry_targets=%d",
@@ -263,6 +310,14 @@ def main() -> int:
                     LOG.warning("Portal sync failed: %s", result.stderr.strip() or result.stdout.strip())
                 else:
                     LOG.info("Portal sync completed: %s", result.stdout.strip())
+                    save_retry_state(
+                        as_of_date,
+                        failed_wallet_ids,
+                        failed_source_ids,
+                        {**wallet_errors, **exchange_errors},
+                        last_run_slot=slot_key,
+                        portal_sync_pending=False,
+                    )
             except (OSError, subprocess.SubprocessError) as exc:
                 LOG.warning("Portal sync could not start: %s", exc)
         return 1 if total_failed or portal_sync_failed else 0
