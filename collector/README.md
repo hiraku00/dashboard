@@ -11,6 +11,8 @@ Personal Portal全体の構成は、リポジトリ直下の [README](../README.
 - `scripts/sync_to_portal.py`: ローカルJSONLをCloudflare D1/R2へ送信
 - `config/app-config.json`: 実行時間
 
+USD/JPYの評価レートは、Yahoo Financeの`USDJPY=X`公開チャートを利用します。`query2.finance.yahoo.com`を優先し、取得できない場合は`query1.finance.yahoo.com`へフォールバックします。個人利用向けの無料データであり、公式の安定APIや売買用のリアルタイムレートではありません。
+
 APIキー・API Secret・Passphraseはプロジェクト内に保存しません。既存のKeychainサービス（`manage-asset/<source_id>`）を使用します。Portal同期用Service Tokenも `manage-asset:portal-sync` から取得します。
 
 ## 初回セットアップ

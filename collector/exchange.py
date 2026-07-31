@@ -100,13 +100,25 @@ def public_price(symbol: str) -> Decimal | None:
 
 
 def usd_jpy_rate() -> Decimal | None:
-    """Return USD/JPY for snapshot valuation, independent of crypto pairs."""
-    try:
-        data = request_json("https://api.frankfurter.app/latest?from=USD&to=JPY")
-        rate = decimal(data.get("rates", {}).get("JPY"))
-        return rate if rate > 0 else None
-    except ExchangeError:
-        return None
+    """Return Yahoo Finance's latest USD/JPY quote for snapshot valuation.
+
+    ``USDJPY=X`` is a free, commonly used personal-use data source. Yahoo's
+    chart endpoint is not an official stable API, so keep the fallback host
+    and return None on provider failures rather than blocking an import.
+    """
+    for host in ("query2.finance.yahoo.com", "query1.finance.yahoo.com"):
+        try:
+            data = request_json(
+                f"https://{host}/v8/finance/chart/USDJPY=X?{urlencode({'interval': '1m', 'range': '1d'})}",
+                headers={"Accept": "application/json"},
+            )
+            result = (data.get("chart", {}).get("result") or [None])[0]
+            rate = decimal((result or {}).get("meta", {}).get("regularMarketPrice"))
+            if rate > 0:
+                return rate
+        except ExchangeError:
+            continue
+    return None
 
 
 @dataclass
