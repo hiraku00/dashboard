@@ -22,7 +22,7 @@ migration適用後は、主要APIと既存画面を確認します。既存デ�
 
 本番WorkerはGitHub Actionsから自動デプロイします。`main`へのpush、つまりPRのmergeが成功すると、次の順序で実行されます。
 
-1. Node.js 22.13.0をセットアップ
+1. Node.js 24.x（LTS）をセットアップ
 2. `npm ci`でlockfileどおりに依存関係をインストール
 3. `npm run lint`で静的解析を実行
 4. `npm run typecheck`でTypeScriptコンパイラチェックを実行
