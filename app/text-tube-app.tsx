@@ -375,12 +375,18 @@ export function VideoEditor({
     }
   }
   return (
-    <div className="tt-modal-backdrop">
-      <section className="tt-editor">
+    <div className="tt-modal-backdrop" role="presentation" onClick={onClose}>
+      <section
+        className="tt-editor"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="texttube-editor-title"
+        onClick={(event) => event.stopPropagation()}
+      >
         <div className="tt-editor-head">
           <div>
             <p className="tt-kicker">TEXTTUBE STUDIO</p>
-            <h2>{title}</h2>
+            <h2 id="texttube-editor-title">{title}</h2>
           </div>
           <button onClick={onClose}>×</button>
         </div>

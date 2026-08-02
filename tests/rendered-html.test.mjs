@@ -121,3 +121,16 @@ test("imports TextTube captions through the managed transcript API and records a
   assert.match(usagePage, /Supadataで確認/);
   assert.match(usagePage, /dash\.supadata\.ai/);
 });
+
+test("closes the TextTube editor when its backdrop is clicked", async () => {
+  const app = await readFile(
+    new URL("../app/text-tube-app.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.match(
+    app,
+    /className="tt-modal-backdrop" role="presentation" onClick=\{onClose\}/,
+  );
+  assert.match(app, /onClick=\{\(event\) => event\.stopPropagation\(\)\}/);
+  assert.match(app, /aria-modal="true"/);
+});
