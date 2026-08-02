@@ -58,7 +58,7 @@ APIキーは次の命名規則でmacOS Keychainに保存します。
 
 ### 本日分が表示されない
 
-- launchdが旧collectorを実行している
+- launchdが登録済みのcollectorを実行していない
 - `PORTAL_URL` またはService AuthのKeychain値が未設定
 - 取得は成功したが同期APIが失敗している
 - source単位で取得日時が異なり、前回成功値が表示されている

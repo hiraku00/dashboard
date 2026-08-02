@@ -7,14 +7,14 @@
   <key>ProgramArguments</key>
   <array>
     <string>/usr/local/bin/python3</string>
-    <string>/Users/hiraku/Practice/platform/collector/scripts/daily_update.py</string>
+    <string>__PROJECT_ROOT__/collector/scripts/daily_update.py</string>
   </array>
   <key>StartInterval</key>
   <integer>60</integer>
   <key>RunAtLoad</key>
   <false/>
   <key>WorkingDirectory</key>
-  <string>/Users/hiraku/Practice/platform/collector</string>
+  <string>__PROJECT_ROOT__/collector</string>
   <key>EnvironmentVariables</key>
   <dict>
     <key>PORTAL_URL</key>
@@ -23,8 +23,8 @@
     <string>f47d396cd28306989ca5737cce5a006c.access</string>
   </dict>
   <key>StandardOutPath</key>
-  <string>/Users/hiraku/Practice/platform/collector/data/launchd.stdout.log</string>
+  <string>__PROJECT_ROOT__/collector/data/launchd.stdout.log</string>
   <key>StandardErrorPath</key>
-  <string>/Users/hiraku/Practice/platform/collector/data/launchd.stderr.log</string>
+  <string>__PROJECT_ROOT__/collector/data/launchd.stderr.log</string>
 </dict>
 </plist>

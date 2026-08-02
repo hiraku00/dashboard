@@ -1,6 +1,6 @@
 # Manage Asset local collector
 
-このディレクトリは、旧 `/Users/hiraku/Practice/manage-asset` から移植したMac専用の取得処理です。
+このディレクトリは、Manage AssetのMac専用取得処理です。取得はローカルで行い、認証情報をCloudflare Workerへ渡さず、完了したスナップショットだけをポータルへ同期します。
 
 Personal Portal全体の構成は、リポジトリ直下の [README](../README.md)、データ取得と表示の責務は [Manage Asset運用](../docs/manage-asset.md) を参照してください。
 
@@ -22,7 +22,7 @@ python3 -m pip install -r collector/requirements.txt
 python3 -m playwright install chromium
 ```
 
-`collector/data/` は個人データのためGit管理対象外です。移行時は旧collectorから `wallets.json`、`sources.json`、既存JSONLをコピーします。
+`collector/data/` は個人データのためGit管理対象外です。既存のローカルデータを移行する場合は、実行環境のデータディレクトリから `wallets.json`、`sources.json`、既存JSONLをコピーします。
 
 ## 手動検証
 
@@ -36,14 +36,13 @@ python3 collector/scripts/daily_update.py
 
 実行時間外に手動検証する場合は、一時的に `collector/config/app-config.json` の時間帯を変更するか、collectorの関数テストを使用してください。取得処理はMac上でのみ実行し、Cloudflare Worker内ではAPIキーを扱いません。
 
-## launchd切替
+## launchd登録
 
 ```bash
-cp collector/launchd/com.watch-list.manage-asset-collector.plist ~/Library/LaunchAgents/
-launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.watch-list.manage-asset-collector.plist
+bash collector/scripts/install_launchd.sh
 ```
 
-新collectorの手動実行・Cloudflare同期・launchd実行を確認した後、旧 `com.manage-asset.daily-update` を停止します。旧プロジェクトの削除は、数回の定期実行を確認してから行います。
+スクリプトがリポジトリの現在位置を基準にplistを生成し、`~/Library/LaunchAgents/`へ登録します。登録後は、`launchctl print gui/$(id -u)/com.watch-list.manage-asset-collector` で実行パスを確認します。
 
 ## 同期後の確認
 
@@ -53,4 +52,4 @@ launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.watch-list.manage-as
 4. `/manage-asset` の総資産、stETH、資産配分を確認する。
 5. `/manage-asset/currencies` と `/manage-asset/locations` の合計がホームと整合することを確認する。
 
-Service AuthやKeychainが失敗した場合は、APIキーの値をログに出力せず、サービス名、戻り値、実行時刻だけを調査材料にします。旧collectorと新collectorを同じsourceに対して同時実行しないでください。
+Service AuthやKeychainが失敗した場合は、APIキーの値をログに出力せず、サービス名、戻り値、実行時刻だけを調査材料にします。同じsourceに対するcollectorの二重実行は設定しないでください。
