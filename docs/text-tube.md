@@ -28,6 +28,15 @@ TextTubeは単独アプリではなく、ポータルの共通ヘッダー・認
 
 本文の編集では、メタデータ更新と本文オブジェクト更新のどちらか一方だけが成功した状態を避けます。失敗時はrevisionの整合性を確認し、必要に応じて再保存します。
 
+## YouTube URL取り込み
+
+Studioの「動画情報を取得」は、YouTube Data API v3で動画メタデータを、SupadataでYouTube標準字幕を取得します。字幕はタイムスタンプ付きMarkdownに変換し、保存時にR2へ格納します。
+
+- Cloudflare Secret: `YOUTUBE_DATA_API_KEY`、`SUPADATA_API_KEY`
+- 字幕取得は `mode=native` に固定し、AI文字起こしへ自動フォールバックしません。
+- Supadataの応答ヘッダー `x-billable-requests` をD1の `text_tube_api_usage` に記録します。
+- `/settings/storage` の「字幕API 使用量」と [Supadataダッシュボード](https://dash.supadata.ai) で実消費を確認できます。
+
 ## 移行
 
 既存データの移行は `scripts/import-text-tube.mjs` を使用します。移行前にJSON/Markdown原本を保存し、件数、タイトル、本文、リンク、改訂版のR2キーを検証します。
