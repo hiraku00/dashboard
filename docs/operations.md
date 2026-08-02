@@ -14,10 +14,12 @@
 ## ローカル確認
 
 ```bash
-cd /Users/hiraku/Practice/watch-list
+cd <dashboard-repository>
 python3 collector/scripts/daily_update.py
 python3 collector/scripts/sync_to_portal.py
 ```
+
+`<dashboard-repository>` は実際にcloneしたローカルディレクトリへ置き換えます。個人ユーザー名を含む絶対パスはリポジトリへ記録しません。
 
 通常運用ではlaunchdを使用します。手動実行時もAPIキーをコマンド履歴やログへ出力しないでください。collectorの詳細は `collector/README.md` を参照します。
 
@@ -25,7 +27,7 @@ python3 collector/scripts/sync_to_portal.py
 
 確認順序:
 
-1. launchdが現在の `watch-list/collector` を実行しているか
+1. launchdが現在の `dashboard/collector` を実行しているか
 2. collectorのexit codeとsource別エラー
 3. `PORTAL_URL` がworkers.devの本番URLか
 4. Access Service Authのclient ID/secretがKeychainにあるか
