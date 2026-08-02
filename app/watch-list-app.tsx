@@ -28,6 +28,9 @@ export function WatchListApp() {
   const [isNew, setIsNew] = useState(false);
   const [draft, setDraft] = useState<Draft>(emptyDraft());
   const [saving, setSaving] = useState(false);
+  const [youTubeUrl, setYouTubeUrl] = useState("");
+  const [youTubeLoading, setYouTubeLoading] = useState(false);
+  const [youTubeNotice, setYouTubeNotice] = useState("");
   const [page, setPage] = useState(1);
   const [totalResults, setTotalResults] = useState(0);
 
@@ -76,10 +79,22 @@ export function WatchListApp() {
   const paginationPages = [...new Set([1, page, totalPages])].sort((a, b) => a - b);
   const pagination = !loading && totalPages > 1 ? <nav className="pagination" aria-label="ページ移動"><button type="button" aria-label="前のページ" disabled={page === 1} onClick={() => setPage((current) => current - 1)}>‹</button>{paginationPages.map((value, index) => <span className="page-number" key={value}>{index > 0 && value - paginationPages[index - 1] > 1 && <i aria-hidden="true">…</i>}<button type="button" className={value === page ? "current-page" : ""} aria-current={value === page ? "page" : undefined} onClick={() => setPage(value)}>{value}</button></span>)}<button type="button" aria-label="次のページ" disabled={page === totalPages} onClick={() => setPage((current) => current + 1)}>›</button></nav> : null;
 
-  function openNew() { setDraft(emptyDraft()); setEditing(null); setIsNew(true); setNotice(""); }
-  function openEdit(item: Item) { setDraft({ ...item, links: item.links.map((link) => ({ ...link })) }); setEditing(item); setIsNew(false); setNotice(""); }
+  function openNew() { setDraft(emptyDraft()); setYouTubeUrl(""); setYouTubeNotice(""); setEditing(null); setIsNew(true); setNotice(""); }
+  function openEdit(item: Item) { setDraft({ ...item, links: item.links.map((link) => ({ ...link })) }); setYouTubeUrl(""); setYouTubeNotice(""); setEditing(item); setIsNew(false); setNotice(""); }
   function closeEditor() { setEditing(null); setIsNew(false); }
   function patchDraft(patch: Partial<Draft>) { setDraft((current) => ({ ...current, ...patch })); }
+
+  async function importYouTube() {
+    setYouTubeLoading(true); setYouTubeNotice("");
+    try {
+      const response = await fetch("/api/watch-list/youtube-preview", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ url: youTubeUrl }) });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error ?? "YouTubeから情報を取得できませんでした。");
+      patchDraft(data.item);
+      setYouTubeNotice("チャンネル名・タイトル・リンクを入力しました。内容を確認して保存してください。");
+    } catch (error) { setYouTubeNotice(error instanceof Error ? error.message : "YouTubeから情報を取得できませんでした。"); }
+    finally { setYouTubeLoading(false); }
+  }
 
   async function save(event: FormEvent) {
     event.preventDefault(); setSaving(true); setNotice("");
@@ -148,6 +163,7 @@ export function WatchListApp() {
     </section>
 
     {activeEditor && <div className="modal-backdrop" role="presentation" onClick={closeEditor}><section className="editor" role="dialog" aria-modal="true" aria-labelledby="editor-title" onClick={(event) => event.stopPropagation()}><div className="editor-heading"><div><p className="app-kicker">{editing ? "EDIT CONTENT" : "NEW CONTENT"}</p><h2 id="editor-title">{editing ? "コンテンツを編集" : "コンテンツを追加"}</h2></div><button className="close-button" onClick={closeEditor} aria-label="閉じる">×</button></div><form className="editor-form" onSubmit={save}>
+      <section className="youtube-import" aria-labelledby="youtube-import-title"><div><strong id="youtube-import-title">YouTubeから入力</strong><p>動画URLからチャンネル名、タイトル、リンクを入力します。</p></div><div className="youtube-import-controls"><input type="url" value={youTubeUrl} onChange={(event) => setYouTubeUrl(event.target.value)} placeholder="https://www.youtube.com/watch?v=..." aria-label="YouTube動画URL" /><button type="button" onClick={importYouTube} disabled={youTubeLoading || !youTubeUrl.trim()}>{youTubeLoading ? "取得中…" : "情報を取得"}</button></div>{youTubeNotice && <p className="youtube-import-notice" role="status">{youTubeNotice}</p>}</section>
       <div className="form-grid compact first-grid"><label>種別<select value={draft.contentType} onChange={(event) => patchDraft({ contentType: event.target.value as ContentType })}>{(Object.keys(typeLabel) as ContentType[]).map((key) => <option key={key} value={key}>{typeLabel[key]}</option>)}</select></label><label>状態<select value={draft.status} onChange={(event) => patchDraft({ status: event.target.value as Status })}>{(Object.keys(statusLabel) as Status[]).map((key) => <option key={key} value={key}>{statusLabel[key]}</option>)}</select></label></div>
       <div className="form-grid"><label>人物・媒体<input value={draft.creatorName} onChange={(event) => patchDraft({ creatorName: event.target.value })} placeholder="例：NHK、ちきりん" /></label><label>番組・連載名<input value={draft.seriesTitle} onChange={(event) => patchDraft({ seriesTitle: event.target.value })} placeholder="例：WBS" /></label></div>
       <label className="title-field"><span>タイトル <b>必須</b></span><input required value={draft.title} onChange={(event) => patchDraft({ title: event.target.value })} placeholder="鑑賞したいコンテンツの名前" /></label>

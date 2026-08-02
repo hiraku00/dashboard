@@ -33,3 +33,17 @@ test("uses Cloudflare Access native logout", async () => {
   const nav = await readFile(new URL("../app/portal-nav.tsx", import.meta.url), "utf8");
   assert.match(nav, /href="\/cdn-cgi\/access\/logout"/);
 });
+
+test("imports public YouTube page metadata into the Watch List editor", async () => {
+  const [app, route] = await Promise.all([
+    readFile(new URL("../app/watch-list-app.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/watch-list/youtube-preview/route.ts", import.meta.url), "utf8"),
+  ]);
+  assert.match(app, /YouTubeから入力/);
+  assert.match(app, /api\/watch-list\/youtube-preview/);
+  assert.match(route, /www\.youtube\.com\/watch/);
+  assert.match(route, /og:title/);
+  assert.match(route, /ownerChannelName/);
+  assert.match(route, /label: "YouTube"/);
+  assert.doesNotMatch(route, /googleapis\.com|oembed/);
+});

@@ -8,6 +8,7 @@
 | --- | --- |
 | `GET /api/items` | 検索、絞り込み、ページング付き一覧 |
 | `POST /api/items` | 項目作成 |
+| `POST /api/watch-list/youtube-preview` | 公開YouTube動画URLから、チャンネル名・タイトル・正規化リンクを取得して入力用データを返す。YouTube Data APIやAPIキーは使用しない。 |
 | `GET /api/items/:id` | 項目詳細 |
 | `PATCH /api/items/:id` | 項目更新 |
 | `DELETE /api/items/:id` | 論理削除 |
