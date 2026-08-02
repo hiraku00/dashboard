@@ -12,6 +12,7 @@
 
 - `text_tube_videos`: 一覧・検索用の動画/音声/記事メタデータ
 - `text_tube_video_revisions`: 詳細本文の版管理とR2オブジェクト参照
+- `text_tube_api_usage`: 字幕APIの実消費クレジット、HTTP状態、取得日時
 
 ### Manage Asset
 

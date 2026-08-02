@@ -6,7 +6,7 @@ Watch List、TextTube、Manage Assetを一つのCloudflare上で管理する、�
 ## できること
 
 - **Watch List**: 番組・記事・音声・映画などの視聴候補を、検索、絞り込み、優先度、ステータス、リンク付きで管理
-- **TextTube**: 動画・音声・記事のライブラリ、詳細Markdown、目次、Markdown表、Mermaid図を含む本文表示、Studio編集
+- **TextTube**: 動画・音声・記事のライブラリ、詳細Markdown、目次、Markdown表、Mermaid図を含む本文表示、Studio編集。公開YouTube URLからメタデータと既存字幕を取り込み可能
 - **Manage Asset**: 資産総額、資産配分、保有資産、保管場所、通貨推移、履歴、設定、データ更新を表示
 - **ローカル資産取得**: APIキーをmacOS Keychainに保持したローカルcollectorが各サービスから取得し、スナップショットだけをCloudflareへ同期
 - **ストレージ管理**: D1/R2の利用状況、カテゴリ別容量、日次集計、上限アラートを確認
@@ -33,7 +33,7 @@ Watch List、TextTube、Manage Assetを一つのCloudflare上で管理する、�
 | `/manage-asset/currencies` | 通貨ごとの資産推移と履歴 |
 | `/manage-asset/sync` | データ取得・同期状況、古いデータ、手動同期状態 |
 | `/manage-asset/settings` | Manage Asset表示・同期設定 |
-| `/settings/storage` | D1/R2の利用状況とストレージ管理 |
+| `/settings/storage` | D1/R2の利用状況、TextTube字幕APIの実消費クレジット、ストレージ管理 |
 
 各機能画面には共通ポータルヘッダーが表示されます。Manage Assetの中心画面は、既存UIの表示仕様を維持した静的アセットをベースに、ポータルのナビゲーションを外側から追加する構成です。
 
@@ -88,6 +88,17 @@ npm run build
 本番到達性を確認する場合は`npm run smoke:production`を実行します。Access認証前のリダイレクトも正常応答として扱います。
 
 ローカルのWorkerは、設定に応じてD1/R2のローカルまたはリモート接続を使います。APIキーやService Tokenをソースコード、`.env`、Wrangler設定へ書き込まないでください。
+
+### TextTubeのYouTube取り込み
+
+動画追加フォームに公開YouTube URLを入力し「動画情報を取得」を押すと、タイトル、チャンネル、画像、公開日、動画時間、既存字幕を入力します。字幕はタイムスタンプ付きMarkdownとして保存できます。
+
+Cloudflare Workerには次のSecretを登録します。値をリポジトリ、`.env`、`wrangler.jsonc`へ保存してはいけません。
+
+- `YOUTUBE_DATA_API_KEY`: YouTube Data API v3のメタデータ取得用
+- `SUPADATA_API_KEY`: Supadataの既存YouTube字幕取得用
+
+字幕取得は既存字幕だけを取得する設定で、AI文字起こしへの自動フォールバックは行いません。実消費は`/settings/storage`と[Supadata Dashboard](https://dash.supadata.ai)で確認できます。
 
 ## デプロイ
 
