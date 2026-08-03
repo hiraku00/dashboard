@@ -176,3 +176,7 @@ h1,h2,h3 { color:var(--ink); } h1 { margin:0; font-size:30px; line-height:1.1; l
 
 /* Usage is read as a vertical operational checklist, not as competing tiles. */
 .usage-page-stack{grid-template-columns:1fr}.usage-page-stack>.usage-panel:first-child{grid-column:auto}
+
+/* Desktop: the shortened meter earns its space by carrying the explanatory
+   copy beside it.  Mobile keeps the readable stacked form. */
+@media(min-width:761px){.usage-meter{grid-template-columns:minmax(180px,40%) minmax(0,1fr);column-gap:22px;align-items:center;padding-block:4px 16px}.usage-meter .usage-bar{grid-row:1/-1;width:100%}.usage-meter p{max-width:none}.usage-meter p+p{margin-top:-9px}}
