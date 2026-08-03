@@ -185,31 +185,31 @@ h1,h2,h3 { color:var(--ink); } h1 { margin:0; font-size:30px; line-height:1.1; l
    once, while each card compresses secondary detail into its own grid. */
 @media(min-width:1180px){.usage-page-stack{grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;align-items:stretch}.usage-panel .panel-heading{min-height:76px;padding:18px 20px}.usage-panel .panel-heading h2{font-size:20px}.usage-primary{gap:10px;padding:16px 20px 6px}.usage-primary strong{font-size:28px}.usage-meter{grid-template-columns:1fr;gap:7px;padding:4px 20px 14px}.usage-meter .usage-bar{grid-row:auto;width:100%}.usage-meter p{font-size:12px;line-height:1.55}.usage-meter p+p{margin-top:-5px}.usage-panel .usage-row{min-height:0;padding:11px 14px;font-size:12px}.usage-panel .usage-row strong{font-size:12px}.usage-section-label{padding:12px 14px 3px}.usage-metrics-grid{grid-template-columns:repeat(4,minmax(0,1fr))}.usage-metrics-grid>div{min-height:72px;padding:12px 10px}.usage-metrics-grid strong{font-size:16px}.usage-breakdown{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}.usage-breakdown .usage-section-label{grid-column:1/-1}.usage-breakdown .usage-row{border-top:1px solid var(--line)}.database-breakdown{grid-template-columns:repeat(3,minmax(0,1fr))}.database-breakdown .usage-row{display:grid;gap:4px;align-content:start}.database-breakdown .usage-row strong{text-align:left}.transcript-usage-panel .secondary-button{min-height:34px;padding-inline:10px;font-size:12px}}
 
-/* Desktop usage overview: consume the available viewport height deliberately.
-   The cards are summaries, not compressed tiles; secondary details are stacked
-   so every Japanese label and tabular value has room to breathe. */
+/* Desktop usage overview: keep the primary figure prominent, then pack
+   operational detail at a natural reading density. Cards do not stretch merely
+   to match the tallest neighbor. */
 @media(min-width:1180px){
-  .usage-page-stack{align-items:stretch}
-  .usage-panel{height:clamp(620px,calc(100dvh - 235px),800px)}
-  .usage-panel .panel-heading{min-height:104px;padding:24px 26px}
-  .usage-panel .panel-heading h2{font-size:22px;line-height:1.4}
-  .usage-primary{padding:28px 26px 10px}
-  .usage-primary strong{font-size:34px;line-height:1.2}
-  .usage-primary span{font-size:14px}
-  .usage-meter{gap:10px;padding:8px 26px 28px}
+  .usage-page-stack{align-items:start}
+  .usage-panel{height:auto}
+  .usage-panel .panel-heading{min-height:86px;padding:20px 24px}
+  .usage-panel .panel-heading h2{font-size:21px;line-height:1.4}
+  .usage-primary{padding:20px 24px 6px}
+  .usage-primary strong{font-size:31px;line-height:1.2}
+  .usage-primary span{font-size:13px}
+  .usage-meter{gap:8px;padding:6px 24px 18px}
   .usage-meter .usage-bar{width:52%}
-  .usage-meter p{font-size:14px;line-height:1.75}
-  .usage-meter p+p{margin-top:-4px}
+  .usage-meter p{font-size:13px;line-height:1.65}
+  .usage-meter p+p{margin-top:-3px}
   .usage-metrics-grid{grid-template-columns:repeat(2,minmax(0,1fr));margin-top:0}
-  .usage-metrics-grid>div{min-height:88px;padding:17px 20px}
-  .usage-metrics-grid span{font-size:13px;line-height:1.5}
-  .usage-metrics-grid strong{font-size:21px;line-height:1.25;white-space:nowrap}
-  .usage-breakdown{display:flex;flex:1;flex-direction:column;margin-top:0}
-  .usage-section-label{padding:18px 26px 7px;font-size:13px}
-  .usage-panel .usage-row{display:flex;min-height:64px;flex:1;align-items:center;padding:14px 26px;font-size:14px;line-height:1.55}
-  .usage-panel .usage-row strong{font-size:14px;line-height:1.55;text-align:right}
+  .usage-metrics-grid>div{min-height:0;padding:12px 16px}
+  .usage-metrics-grid span{font-size:12px;line-height:1.45}
+  .usage-metrics-grid strong{font-size:16px;line-height:1.35;white-space:nowrap}
+  .usage-breakdown{display:block;margin-top:0}
+  .usage-section-label{padding:12px 24px 4px;font-size:12px}
+  .usage-panel .usage-row{display:flex;min-height:44px;align-items:center;padding:10px 24px;font-size:13px;line-height:1.5}
+  .usage-panel .usage-row strong{font-size:13px;line-height:1.5;text-align:right}
   .database-breakdown .usage-row{display:flex}
   .database-breakdown .usage-row strong{text-align:right}
-  .d1-usage-panel>.muted-copy{display:flex;flex:1;align-items:center;max-width:31ch;padding:24px 26px;font-size:15px;line-height:1.8}
-  .transcript-usage-panel .secondary-button{min-height:38px;padding-inline:12px;font-size:13px}
+  .d1-usage-panel>.muted-copy{max-width:31ch;padding:16px 24px 20px;font-size:13px;line-height:1.7}
+  .transcript-usage-panel .secondary-button{min-height:36px;padding-inline:12px;font-size:12px}
 }
