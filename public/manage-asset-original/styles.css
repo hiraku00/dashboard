@@ -314,13 +314,15 @@ input:hover, select:hover { border-color: rgba(60,60,67,.42); }
   .update-steps li { width: auto; height: auto; min-height: 80px; }
 }
 @media (max-width: 900px) {
-  body { padding-bottom: 78px; }
   .topbar { position: static; background: transparent; border: 0; box-shadow: none; backdrop-filter: none; }
-  .bar-inner { min-height: 70px; padding: 12px 18px; }
+  .bar-inner { min-height: 70px; flex-wrap: wrap; padding: 12px 18px 8px; }
   .brand { width: auto; flex: 1; }
   .brand-copy small { display: none; }
-  .topbar nav { position: fixed; z-index: 30; left: 12px; right: 12px; bottom: max(10px, env(safe-area-inset-bottom)); justify-content: space-around; gap: 2px; padding: 7px; overflow-x: auto; border: 1px solid rgba(255,255,255,.7); border-radius: 20px; background: rgba(247,247,250,.8); backdrop-filter: blur(24px) saturate(180%); box-shadow: 0 12px 40px rgba(0,0,0,.18); }
-  .nav { flex: 1; min-width: 62px; min-height: 50px; padding: 5px 4px; flex-direction: column; gap: 1px; border-radius: 14px; background: transparent; font-size: .66rem; }
+  /* Keep view switching where its context begins: directly below the product
+     header. A fixed bottom bar hides the current section and competes with
+     the portal navigation above this embedded app. */
+  .topbar nav { order: 3; flex: 0 0 100%; justify-content: flex-start; gap: 4px; padding: 6px 0 0; overflow-x: auto; }
+  .nav { flex: 0 0 auto; min-width: 72px; min-height: 44px; padding: 6px 9px; flex-direction: row; gap: 5px; border-radius: 9px; background: transparent; font-size: .72rem; }
   .nav svg { display: block; width: 19px; height: 19px; }
   .nav.active { background: rgba(10,132,255,.11); box-shadow: none; }
   .shell { padding: 0 14px 28px; }
