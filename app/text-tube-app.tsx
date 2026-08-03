@@ -57,41 +57,6 @@ function TextTubeIcon({ children }: { children: React.ReactNode }) {
   );
 }
 
-function TextTubeOriginalHeader() {
-  return (
-    <header className="tt-header tt-embedded-header">
-      <div className="tt-head-left">
-        <button className="tt-menu" type="button" aria-label="メニュー">
-          ☰
-        </button>
-        <Link className="tt-logo" href="/text-tube">
-          <span>▶</span>
-          <b>TextTube</b>
-        </Link>
-      </div>
-      <form className="tt-search" action="/text-tube">
-        <input
-          name="q"
-          type="search"
-          placeholder="検索"
-          aria-label="TextTubeを検索"
-        />
-        <button type="submit" aria-label="検索">
-          ⌕
-        </button>
-      </form>
-      <div className="tt-head-actions">
-        <Link href="/text-tube/studio" aria-label="Studio">
-          ＋
-        </Link>
-        <Link href="/settings/storage" aria-label="使用量">
-          <span className="tt-avatar">U</span>
-        </Link>
-      </div>
-    </header>
-  );
-}
-
 function TextTubeOriginalSidebar({ active }: { active: string }) {
   const items = [
     ["/text-tube", "⌂", "ホーム"],
@@ -132,36 +97,36 @@ export function TextTubeChrome({
 }) {
   return (
     <main className="portal-shell texttube-workspace">
-      <PortalHeader title="TextTube" active="/text-tube" />
+      <PortalHeader
+        title={
+          <>
+            <span className="texttube-logo-mark" aria-hidden="true">
+              ▶
+            </span>
+            TextTube
+          </>
+        }
+        active="/text-tube"
+      >
+        <nav className="texttube-section-nav" aria-label="TextTube メニュー">
+          <Link
+            className={active === "/text-tube" ? "active" : ""}
+            href="/text-tube"
+          >
+            ライブラリ
+          </Link>
+          <Link
+            className={active === "/text-tube/studio" ? "active" : ""}
+            href="/text-tube/studio"
+          >
+            Studio
+          </Link>
+        </nav>
+      </PortalHeader>
       <div className="tt-original-frame">
-        <TextTubeOriginalHeader />
         <div className="tt-original-body">
           <TextTubeOriginalSidebar active={active} />
-          <div className="tt-main">
-            <div className="page-toolbar tt-portal-toolbar">
-              <Link className="add-button" href="/text-tube/studio">
-                Studioを開く
-              </Link>
-            </div>
-            <nav
-              className="asset-tabs texttube-tabs"
-              aria-label="TextTube メニュー"
-            >
-              <Link
-                className={active === "/text-tube" ? "active" : ""}
-                href="/text-tube"
-              >
-                ライブラリ
-              </Link>
-              <Link
-                className={active === "/text-tube/studio" ? "active" : ""}
-                href="/text-tube/studio"
-              >
-                Studio
-              </Link>
-            </nav>
-            {children}
-          </div>
+          <div className="tt-main">{children}</div>
         </div>
       </div>
     </main>
