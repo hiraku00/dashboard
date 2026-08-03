@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { ReactNode } from "react";
 
 export function PortalNav({ active }: { active?: string }) {
   const links = [
@@ -13,12 +14,13 @@ export function PortalNav({ active }: { active?: string }) {
   </nav>;
 }
 
-export function PortalHeader({ title, active }: { title: string; active?: string }) {
+export function PortalHeader({ title, active, children }: { title: string; active?: string; children?: ReactNode }) {
   return <div className="portal-chrome">
     <header className="portal-header">
       <h1>{title}</h1>
       <a className="logout-link" href="/cdn-cgi/access/logout">ログアウト</a>
     </header>
     <PortalNav active={active} />
+    {children}
   </div>;
 }

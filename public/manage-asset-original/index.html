@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#f2f2f7" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="#f2f2f7">
   <title>暗号資産ポートフォリオ</title>
-  <script>document.documentElement.dataset.theme='light';try{localStorage.setItem('portfolio-theme','light')}catch(error){}</script>
+  <script>document.documentElement.dataset.theme='light';if(new URLSearchParams(location.search).has('embedded'))document.documentElement.classList.add('embedded');try{localStorage.setItem('portfolio-theme','light')}catch(error){}</script>
   <link rel="stylesheet" href="./styles.css?v=20260728e">
 </head>
 <body>

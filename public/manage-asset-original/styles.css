@@ -93,6 +93,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-v
 .brand-copy small { margin-top: 3px; color: var(--faint); font-size: .61rem; font-weight: 650; letter-spacing: .05em; }
 nav { display: flex; flex: 1; gap: 4px; }
 .topbar nav { justify-content: flex-end; }
+.embedded .topbar nav { display: none; }
 .nav {
   display: inline-flex;
   align-items: center;
