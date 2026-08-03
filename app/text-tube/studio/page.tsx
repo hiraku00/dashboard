@@ -1,6 +1,7 @@
 "use client";
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import Image from "next/image";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   TextTubeChrome,
   Video,
@@ -17,13 +18,13 @@ export default function TextTubeStudio() {
       (Video & { detailedScript?: string }) | null
     >(null),
     [notice, setNotice] = useState("");
-  async function load() {
+  const load = useCallback(async () => {
     const r = await fetch(`/api/text-tube/videos?q=${encodeURIComponent(q)}`);
     if (r.ok) setVideos((await r.json()).videos);
-  }
-  useEffect(() => {
-    load();
   }, [q]);
+  useEffect(() => {
+    void load();
+  }, [load]);
   const sorted = useMemo(
     () =>
       videos
@@ -125,7 +126,21 @@ export default function TextTubeStudio() {
                   <td>
                     <div className="tt-studio-video">
                       <div className="tt-studio-thumb">
-                        {v.thumbnail_url ? <img src={v.thumbnail_url} alt="" onError={(event) => { event.currentTarget.hidden = true; event.currentTarget.parentElement?.classList.add("missing-thumbnail"); }} /> : null}
+                        {v.thumbnail_url ? (
+                          <Image
+                            src={v.thumbnail_url}
+                            alt=""
+                            fill
+                            sizes="140px"
+                            unoptimized
+                            onError={(event) => {
+                              event.currentTarget.hidden = true;
+                              event.currentTarget.parentElement?.classList.add(
+                                "missing-thumbnail",
+                              );
+                            }}
+                          />
+                        ) : null}
                         <span aria-hidden="true">▶</span>
                       </div>
                       <div>

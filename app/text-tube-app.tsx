@@ -1,6 +1,7 @@
 "use client";
 import Link from "next/link";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import Image from "next/image";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { PortalHeader } from "./portal-nav";
 
 export type Video = {
@@ -140,14 +141,14 @@ export function TextTubeApp() {
     [open, setOpen] = useState(false),
     [notice, setNotice] = useState(""),
     [form, setForm] = useState<VideoForm>(blankVideo);
-  async function load() {
+  const load = useCallback(async () => {
     const r = await fetch(`/api/text-tube/videos?q=${encodeURIComponent(q)}`);
     if (r.ok) setVideos((await r.json()).videos);
-  }
+  }, [q]);
   useEffect(() => {
     const t = setTimeout(load, q ? 180 : 0);
     return () => clearTimeout(t);
-  }, [q]);
+  }, [load, q]);
   const channels = useMemo(
     () =>
       Array.from(
@@ -235,7 +236,13 @@ export function TextTubeApp() {
           >
             <div className="tt-thumb">
               {v.thumbnail_url ? (
-                <img src={v.thumbnail_url} alt="" />
+                <Image
+                  src={v.thumbnail_url}
+                  alt=""
+                  fill
+                  sizes="(max-width: 460px) 100vw, (max-width: 1000px) 50vw, 25vw"
+                  unoptimized
+                />
               ) : (
                 <span>
                   TEXT
