@@ -90,11 +90,11 @@ export async function GET() {
         "SELECT * FROM storage_usage_daily ORDER BY usage_date DESC LIMIT 1",
       ).all<Record<string, unknown>>()
     ).results?.[0] ?? null;
-  const watchList = (
-    await env.DB.prepare(
-      "SELECT COUNT(*) AS count FROM items WHERE deleted_at IS NULL",
-    ).all<{ count: number }>()
-  ).results?.[0] ?? { count: 0 };
+  const [watchList, manageAsset, textTube] = await Promise.all([
+    env.DB.prepare("SELECT COUNT(*) AS count FROM items WHERE deleted_at IS NULL").all<{ count: number }>(),
+    env.DB.prepare("SELECT COUNT(*) AS count FROM asset_snapshots").all<{ count: number }>(),
+    env.DB.prepare("SELECT COUNT(*) AS count FROM text_tube_videos WHERE deleted_at IS NULL").all<{ count: number }>(),
+  ]);
   const month = new Date().toISOString().slice(0, 7);
   const transcriptUsage = (
     await env.DB.prepare(
@@ -108,7 +108,11 @@ export async function GET() {
     softLimitBytes: R2_SOFT_LIMIT_BYTES,
     usage,
     categories,
-    watchListItemCount: Number(watchList.count ?? 0),
+    databaseRecords: {
+      watchList: Number(watchList.results?.[0]?.count ?? 0),
+      manageAsset: Number(manageAsset.results?.[0]?.count ?? 0),
+      textTube: Number(textTube.results?.[0]?.count ?? 0),
+    },
     latestReconciliation: latest,
     transcriptUsage: {
       month,
