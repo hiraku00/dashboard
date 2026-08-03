@@ -173,3 +173,6 @@ h1,h2,h3 { color:var(--ink); } h1 { margin:0; font-size:30px; line-height:1.1; l
    operational rhythm as the surrounding dashboard. */
 .usage-provider{display:grid!important;gap:1px}.usage-provider span:last-child{color:var(--muted);font-size:10px;letter-spacing:.08em}.usage-section-label{padding:14px 26px 4px;color:var(--muted);font-size:12px;font-weight:700;letter-spacing:.04em}.usage-metrics-grid{margin-top:0}.d1-usage-panel .usage-primary{padding-bottom:8px}.usage-meter{display:grid;gap:9px;padding:4px 26px 22px}.usage-meter .usage-bar{width:min(50%,360px);margin:0}.usage-meter p{max-width:52em;margin:0;color:var(--muted);font-size:13px;line-height:1.7}.usage-meter p+p{margin-top:-5px}.usage-meter .usage-bar span{min-width:2px}.database-breakdown{border-top:1px solid var(--line)}
 @media(max-width:760px){.usage-section-label{padding-inline:20px}.usage-meter{padding:4px 20px 18px}.usage-meter .usage-bar{width:50%}.usage-meter p{font-size:13px;line-height:1.65}}
+
+/* Usage is read as a vertical operational checklist, not as competing tiles. */
+.usage-page-stack{grid-template-columns:1fr}.usage-page-stack>.usage-panel:first-child{grid-column:auto}
