@@ -62,7 +62,7 @@ export default function StoragePage() {
     <main className="portal-shell">
       <PortalHeader title="使用量・上限" active="/settings/storage" />
       <div className="usage-page-stack">
-      <section className="settings-panel usage-panel">
+      <section className="settings-panel usage-panel r2-usage-panel">
         <div className="panel-heading">
           <div>
             <p className="app-kicker usage-provider"><span>CLOUDFLARE</span><span>R2</span></p>
@@ -78,17 +78,21 @@ export default function StoragePage() {
           <div className="usage-bar"><span style={{ width: `${pct}%` }} /></div>
           <p>ファイルを保存する領域です。Watch Listはファイルを持たず、D1に記録します。</p>
         </div>
-        <div className="usage-breakdown">
+        <div className="usage-breakdown r2-breakdown">
           <div className="usage-section-label">保存しているファイル</div>
-        {data?.categories?.map((row) => (
-          <div className="usage-row" key={row.category}>
-            <span>{storageCategoryName(row.category)}</span>
-            <strong>
-              {(Number(row.bytes) / 1024 / 1024).toFixed(2)} MB · {row.count}{" "}
-              件
-            </strong>
-          </div>
-        ))}
+        {data?.categories?.length ? (
+          data.categories.map((row) => (
+            <div className="usage-row" key={row.category}>
+              <span>{storageCategoryName(row.category)}</span>
+              <strong>
+                {(Number(row.bytes) / 1024 / 1024).toFixed(2)} MB · {row.count}{" "}
+                件
+              </strong>
+            </div>
+          ))
+        ) : (
+          <div className="usage-row"><span>保存されたファイルはまだありません</span></div>
+        )}
         </div>
       </section>
       <section className="settings-panel usage-panel d1-usage-panel">
@@ -112,7 +116,7 @@ export default function StoragePage() {
               <p>保存対象: Watch List、Manage Asset、TextTubeのデータと履歴。</p>
               <p>無料枠: 5 GB · 読取500万行/日 · 書込10万行/日</p>
             </div>
-            <div className="usage-metrics-grid">
+            <div className="usage-metrics-grid" aria-label="直近30日のD1利用状況">
               <div><span>読み取り行数</span><strong>{count.format(d1.rowsRead ?? 0)}</strong></div>
               <div><span>書き込み行数</span><strong>{count.format(d1.rowsWritten ?? 0)}</strong></div>
               <div><span>読み取りクエリ</span><strong>{count.format(d1.readQueries ?? 0)}</strong></div>
