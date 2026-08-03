@@ -189,7 +189,7 @@ h1,h2,h3 { color:var(--ink); } h1 { margin:0; font-size:30px; line-height:1.1; l
    operational detail at a natural reading density. Cards do not stretch merely
    to match the tallest neighbor. */
 @media(min-width:1180px){
-  .usage-page-stack{align-items:start}
+  .usage-page-stack{align-items:stretch}
   .usage-panel{height:auto}
   .usage-panel .panel-heading{min-height:86px;padding:20px 24px}
   .usage-panel .panel-heading h2{font-size:21px;line-height:1.4}
