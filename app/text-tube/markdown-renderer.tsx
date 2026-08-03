@@ -2,6 +2,7 @@
 
 import ReactMarkdown from "react-markdown";
 import type { Components } from "react-markdown";
+import { useEffect, useRef } from "react";
 import remarkGfm from "remark-gfm";
 import { MermaidDiagram } from "./mermaid-diagram";
 
@@ -35,6 +36,19 @@ export function markdownSlug(value: string): string {
  */
 export function normalizeMarkdown(content: string): string {
   return content.replace(/\|\s+\|/g, "|\n|");
+}
+
+function ResponsiveTable({ children }: { children?: React.ReactNode }) {
+  const container = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const table = container.current?.querySelector("table");
+    if (!table) return;
+    const labels = [...table.querySelectorAll("thead th")].map((header) => header.textContent?.trim() || "項目");
+    table.querySelectorAll("tbody tr").forEach((row) => {
+      row.querySelectorAll("td").forEach((cell, index) => cell.setAttribute("data-label", labels[index] || `項目 ${index + 1}`));
+    });
+  }, [children]);
+  return <div ref={container} className="markdown-table-scroll"><table>{children}</table></div>;
 }
 
 export function MarkdownRenderer({ content }: { content: string }) {
@@ -74,11 +88,7 @@ export function MarkdownRenderer({ content }: { content: string }) {
     ol: ({ children }) => <ol>{children}</ol>,
     li: ({ children }) => <li>{children}</li>,
     blockquote: ({ children }) => <blockquote>{children}</blockquote>,
-    table: ({ children }) => (
-      <div className="markdown-table-scroll">
-        <table>{children}</table>
-      </div>
-    ),
+    table: ({ children }) => <ResponsiveTable>{children}</ResponsiveTable>,
     thead: ({ children }) => <thead>{children}</thead>,
     th: ({ children }) => <th>{children}</th>,
     td: ({ children }) => <td>{children}</td>,
