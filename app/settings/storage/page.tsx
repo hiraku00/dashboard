@@ -7,7 +7,11 @@ type StorageData = {
   usage?: { bytes?: number };
   softLimitBytes?: number;
   categories?: Array<{ category: string; bytes: number; count: number }>;
-  watchListItemCount?: number;
+  databaseRecords?: {
+    watchList: number;
+    manageAsset: number;
+    textTube: number;
+  };
   transcriptUsage?: {
     month: string;
     credits: number;
@@ -61,7 +65,7 @@ export default function StoragePage() {
       <section className="settings-panel usage-panel">
         <div className="panel-heading">
           <div>
-            <p className="app-kicker">CLOUDFLARE · R2</p>
+            <p className="app-kicker usage-provider"><span>CLOUDFLARE</span><span>R2</span></p>
             <h2>保存容量</h2>
           </div>
           <span>安全上限 8 GB</span>
@@ -90,7 +94,7 @@ export default function StoragePage() {
       <section className="settings-panel usage-panel d1-usage-panel">
         <div className="panel-heading">
           <div>
-            <p className="app-kicker">CLOUDFLARE · D1</p>
+            <p className="app-kicker usage-provider"><span>CLOUDFLARE</span><span>D1</span></p>
             <h2>データベース使用量</h2>
           </div>
           <span>{d1?.configured ? "直近30日" : "未設定"}</span>
@@ -114,7 +118,12 @@ export default function StoragePage() {
               <div><span>読み取りクエリ</span><strong>{count.format(d1.readQueries ?? 0)}</strong></div>
               <div><span>書き込みクエリ</span><strong>{count.format(d1.writeQueries ?? 0)}</strong></div>
             </div>
-            <div className="usage-row usage-watch-list-row"><span>Watch Listに保存中</span><strong>{count.format(data?.watchListItemCount ?? 0)} 件</strong></div>
+            <div className="usage-breakdown database-breakdown">
+              <div className="usage-section-label">主な保存データ</div>
+              <div className="usage-row"><span>Watch List</span><strong>{count.format(data?.databaseRecords?.watchList ?? 0)} 件</strong></div>
+              <div className="usage-row"><span>Manage Assetのスナップショット</span><strong>{count.format(data?.databaseRecords?.manageAsset ?? 0)} 件</strong></div>
+              <div className="usage-row"><span>TextTubeの動画</span><strong>{count.format(data?.databaseRecords?.textTube ?? 0)} 件</strong></div>
+            </div>
           </>
         ) : (
           <p className="muted-copy">Cloudflare Analyticsの読み取り専用トークンを設定すると、D1容量と直近30日の読み書き量を表示します。</p>
@@ -123,7 +132,7 @@ export default function StoragePage() {
       <section className="settings-panel usage-panel transcript-usage-panel">
         <div className="panel-heading">
           <div>
-            <p className="app-kicker">TEXTTUBE · SUPADATA</p>
+            <p className="app-kicker usage-provider"><span>SUPADATA</span><span>TextTube</span></p>
             <h2>字幕API使用量</h2>
           </div>
           <a
