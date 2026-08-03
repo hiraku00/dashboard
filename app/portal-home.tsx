@@ -24,6 +24,7 @@ export function PortalHome() {
       <Link className="portal-card portal-card-watch" href="/watch-list"><h2>Watch List</h2><strong>{state?.watch.total ?? "—"}<small> 件</small></strong><p>{state ? `${state.watch.completed}件完了` : "読み込み中"}</p></Link>
       <Link className="portal-card portal-card-text" href="/text-tube"><h2>TextTube</h2><strong>{state?.textTube.total ?? "—"}<small> 本</small></strong><p>{state?.textTube.latest?.title ?? (state ? "" : "読み込み中")}</p></Link>
       <Link className="portal-card portal-card-asset" href="/manage-asset"><h2>Manage Asset</h2><strong>{state ? usd.format(state.assets.totalUsd) : "—"}</strong><p>{state ? `${yen.format(state.assets.totalJpy)}円` : "読み込み中"}</p></Link>
+      <Link className="portal-card" href="/settings/storage"><h2>使用量</h2><strong>R2 / D1</strong><p>保存容量・DB利用量・TextTube字幕API</p></Link>
     </section>
   </main>;
 }

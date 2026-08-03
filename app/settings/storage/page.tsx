@@ -13,6 +13,15 @@ type StorageData = {
     attempts: number;
     lastUsedAt: string | null;
   };
+  d1?: {
+    configured: boolean;
+    storageBytes?: number;
+    period?: { start: string; end: string };
+    readQueries?: number;
+    writeQueries?: number;
+    rowsRead?: number;
+    rowsWritten?: number;
+  };
 };
 
 export default function StoragePage() {
@@ -26,6 +35,8 @@ export default function StoragePage() {
   const limit = Number(data?.softLimitBytes ?? 1);
   const pct = Math.min(100, (used / limit) * 100);
   const transcript = data?.transcriptUsage;
+  const d1 = data?.d1;
+  const count = new Intl.NumberFormat("ja-JP");
 
   return (
     <main className="portal-shell">
@@ -57,6 +68,31 @@ export default function StoragePage() {
             </strong>
           </div>
         ))}
+      </section>
+      <section className="settings-panel d1-usage-panel">
+        <div className="panel-heading">
+          <div>
+            <p className="app-kicker">CLOUDFLARE D1</p>
+            <h2>データベース使用量</h2>
+          </div>
+          <span>{d1?.configured ? "直近30日" : "未設定"}</span>
+        </div>
+        {d1?.configured ? (
+          <>
+            <div className="usage-values">
+              <strong>
+                {((d1.storageBytes ?? 0) / 1024 / 1024).toFixed(2)} MB
+              </strong>
+              <span>現在の D1 サイズ</span>
+            </div>
+            <div className="usage-row"><span>読み取り行数</span><strong>{count.format(d1.rowsRead ?? 0)}</strong></div>
+            <div className="usage-row"><span>書き込み行数</span><strong>{count.format(d1.rowsWritten ?? 0)}</strong></div>
+            <div className="usage-row"><span>読み取りクエリ</span><strong>{count.format(d1.readQueries ?? 0)}</strong></div>
+            <div className="usage-row"><span>書き込みクエリ</span><strong>{count.format(d1.writeQueries ?? 0)}</strong></div>
+          </>
+        ) : (
+          <p className="muted-copy">Cloudflare Analyticsの読み取り専用トークンを設定すると、D1容量と直近30日の読み書き量を表示します。</p>
+        )}
       </section>
       <section className="settings-panel transcript-usage-panel">
         <div className="panel-heading">
