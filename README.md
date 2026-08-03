@@ -96,6 +96,15 @@ npm run build
 Cloudflare Workerには次のSecretを登録します。値をリポジトリ、`.env`、`wrangler.jsonc`へ保存してはいけません。
 
 - `YOUTUBE_DATA_API_KEY`: YouTube Data API v3のメタデータ取得用
+
+### D1使用量の表示
+
+`/settings/storage` でD1の容量と直近30日の読み書き量を表示するには、Cloudflareで発行した読み取り専用APIトークンをWorker Secretとして登録します。トークンには対象アカウントの **D1 Read** と **Analytics Read** のみを付与し、デプロイ用トークンを流用しません。
+
+```bash
+npx wrangler secret put CF_ANALYTICS_TOKEN
+npx wrangler secret put CF_ACCOUNT_ID
+```
 - `SUPADATA_API_KEY`: Supadataの既存YouTube字幕取得用
 
 字幕取得は既存字幕だけを取得する設定で、AI文字起こしへの自動フォールバックは行いません。実消費は`/settings/storage`と[Supadata Dashboard](https://dash.supadata.ai)で確認できます。
