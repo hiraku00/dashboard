@@ -43,6 +43,11 @@ export default function StoragePage() {
     100,
     ((d1?.storageBytes ?? 0) / d1StorageLimit) * 100,
   );
+  const transcriptLimit = 100;
+  const transcriptPct = Math.min(
+    100,
+    ((transcript?.credits ?? 0) / transcriptLimit) * 100,
+  );
   const storageCategoryName = (category: string) => {
     if (category === "manage-asset/raw") return "Manage Assetの取得原本";
     if (category === "text-tube/videos") return "TextTubeの保存済み本文";
@@ -56,21 +61,19 @@ export default function StoragePage() {
       <section className="settings-panel usage-panel">
         <div className="panel-heading">
           <div>
-            <p className="app-kicker">R2 OBJECT STORAGE</p>
-            <h2>保存容量（R2）</h2>
+            <p className="app-kicker">CLOUDFLARE · R2</p>
+            <h2>保存容量</h2>
           </div>
-          <span>{pct.toFixed(2)}%</span>
-        </div>
-        <div className="usage-bar">
-          <span style={{ width: `${pct}%` }} />
+          <span>安全上限 8 GB</span>
         </div>
         <div className="usage-primary">
           <strong>{(used / 1024 / 1024 / 1024).toFixed(2)} GB</strong>
-          <span>アプリの安全上限 8.00 GB</span>
+          <span>使用率 {pct.toFixed(2)}%</span>
         </div>
-        <p className="muted-copy">
-          ファイル本体を置く領域です。上限に到達すると、Manage Assetの原本保存とTextTubeの新規本文保存を停止します。Watch Listはファイルを保存せず、下のD1に項目・リンクとして記録します。
-        </p>
+        <div className="usage-meter" aria-label={`R2保存容量 ${pct.toFixed(2)}%`}>
+          <div className="usage-bar"><span style={{ width: `${pct}%` }} /></div>
+          <p>ファイルを保存する領域です。Watch Listはファイルを持たず、D1に記録します。</p>
+        </div>
         <div className="usage-breakdown">
           <div className="usage-section-label">保存しているファイル</div>
         {data?.categories?.map((row) => (
@@ -87,8 +90,8 @@ export default function StoragePage() {
       <section className="settings-panel usage-panel d1-usage-panel">
         <div className="panel-heading">
           <div>
-            <p className="app-kicker">CLOUDFLARE D1</p>
-            <h2>データベース使用量（D1）</h2>
+            <p className="app-kicker">CLOUDFLARE · D1</p>
+            <h2>データベース使用量</h2>
           </div>
           <span>{d1?.configured ? "直近30日" : "未設定"}</span>
         </div>
@@ -98,11 +101,13 @@ export default function StoragePage() {
               <strong>
                 {((d1.storageBytes ?? 0) / 1024 / 1024).toFixed(2)} MB
               </strong>
-              <span>無料プラン目安 5 GB · {d1StoragePct.toFixed(2)}%</span>
+              <span>使用率 {d1StoragePct.toFixed(2)}%</span>
             </div>
-            <p className="muted-copy d1-limit-copy">
-              Watch Listの項目・リンク、Manage AssetとTextTubeの一覧・履歴を保存しています。読み書き量は直近30日合計です。無料プランの目安は1日あたり読み取り500万行・書き込み10万行です。
-            </p>
+            <div className="usage-meter" aria-label={`D1データベース容量 ${d1StoragePct.toFixed(2)}%`}>
+              <div className="usage-bar"><span style={{ width: `${d1StoragePct}%` }} /></div>
+              <p>保存対象: Watch List、Manage Asset、TextTubeのデータと履歴。</p>
+              <p>無料枠: 5 GB · 読取500万行/日 · 書込10万行/日</p>
+            </div>
             <div className="usage-metrics-grid">
               <div><span>読み取り行数</span><strong>{count.format(d1.rowsRead ?? 0)}</strong></div>
               <div><span>書き込み行数</span><strong>{count.format(d1.rowsWritten ?? 0)}</strong></div>
@@ -118,8 +123,8 @@ export default function StoragePage() {
       <section className="settings-panel usage-panel transcript-usage-panel">
         <div className="panel-heading">
           <div>
-            <p className="app-kicker">TEXTTUBE</p>
-            <h2>字幕API使用量（Supadata）</h2>
+            <p className="app-kicker">TEXTTUBE · SUPADATA</p>
+            <h2>字幕API使用量</h2>
           </div>
           <a
             className="secondary-button"
@@ -132,11 +137,12 @@ export default function StoragePage() {
         </div>
         <div className="usage-primary">
           <strong>{transcript?.credits ?? 0} 回</strong>
-          <span>{transcript?.month ?? "---- --"} の実消費クレジット</span>
+          <span>無料枠の目安 100回/月</span>
         </div>
-        <p className="muted-copy">
-          字幕取得1回は通常1クレジットです。無料プランの目安は月100リクエストで、実際の請求・上限はSupadataの契約内容が適用されます。
-        </p>
+        <div className="usage-meter" aria-label={`字幕API使用量 ${transcriptPct.toFixed(2)}%`}>
+          <div className="usage-bar"><span style={{ width: `${transcriptPct}%` }} /></div>
+          <p>{transcript?.month ?? "今月"}の実消費。字幕取得は通常1回=1クレジットです。</p>
+        </div>
         <div className="usage-breakdown">
           <div className="usage-row"><span>取得試行</span><strong>{transcript?.attempts ?? 0} 回</strong></div>
           <div className="usage-row"><span>最終取得</span><strong>
