@@ -31,6 +31,17 @@
 | `POST /api/text-tube/youtube-preview`     | YouTube Data API v3でメタデータ、Supadataで既存YouTube字幕を取得してTextTube入力用データを返す。`YOUTUBE_DATA_API_KEY` と `SUPADATA_API_KEY` Secretが必要。 |
 | `GET /api/settings/storage`               | R2使用量に加え、TextTube字幕APIの実消費クレジット・取得試行・最終取得日時を返す。                                                                           |
 
+## To Do
+
+| パス | 用途 |
+| --- | --- |
+| `GET /api/todos/board?date=YYYY-MM-DD` | 日別ボードを返す。対象日の繰り返しタスクを重複なく生成する。 |
+| `POST /api/todos/tasks` | 単発タスクを作成する。 |
+| `GET/PATCH/DELETE /api/todos/tasks/:id` | タスク詳細、編集、論理削除。更新はversion競合を検出する。 |
+| `POST /api/todos/tasks/:id/move` | リスト移動と並び順更新を行う。 |
+| `GET/POST /api/todos/routines` | 繰り返しタスクの一覧と作成。 |
+| `PATCH/DELETE /api/todos/routines/:id` | 繰り返しタスクの停止・再開・削除。 |
+
 ## Manage Asset
 
 | パス                                    | 用途                             |

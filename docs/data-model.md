@@ -21,6 +21,14 @@
 - `asset_snapshots`: 日付ごとの集計スナップショット
 - `asset_positions`: スナップショット内の通貨・保管場所別ポジション
 
+### To Do
+
+- `todo_boards`: 看板の名前とタイムゾーン
+- `todo_columns`: 受信箱・今日・進行中・完了の列と表示順
+- `todo_routines`: 毎日または曜日指定で生成する繰り返しタスクのテンプレート
+- `todo_tasks`: 単発タスクと、繰り返しタスクから日付ごとに生成された実行カード
+- `todo_task_events`: カードの移動履歴
+
 ### Storage
 
 - `storage_objects`: R2オブジェクトの論理台帳

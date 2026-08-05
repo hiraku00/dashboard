@@ -12,12 +12,29 @@ test("defines the dashboard and its primary functions", async () => {
   assert.match(portal, /Dashboard/);
   assert.match(portal, /TextTube/);
   assert.match(portal, /Manage Asset/);
+  assert.match(portal, /To Do/);
   assert.match(app, /Watch List/);
   assert.match(app, /target="_blank"/);
   assert.match(app, /dateLabel/);
   assert.match(app, /api\/items/);
   assert.match(app, /portal-nav/);
   assert.match(layout, /Dashboard/);
+});
+
+test("ships the To Do board, recurring-task API, and portal navigation", async () => {
+  const [app, board, routines, nav, migration] = await Promise.all([
+    readFile(new URL("../app/todo-app.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/todos/board/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/todos/routines/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/portal-nav.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../drizzle/0003_todo.sql", import.meta.url), "utf8"),
+  ]);
+  assert.match(app, /繰り返しタスク/);
+  assert.match(app, /api\/todos\/tasks/);
+  assert.match(board, /materializeRoutines/);
+  assert.match(routines, /schedule_type/);
+  assert.match(nav, /"\/todo", "To Do"/);
+  assert.match(migration, /UNIQUE\(routine_id, occurrence_date\)/);
 });
 
 test("keeps Manage Asset positions attached to one D1 snapshot", async () => {

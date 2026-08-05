@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 
 const baseUrl = (process.env.SMOKE_BASE_URL ?? "https://dashboard.hiraku00.workers.dev").replace(/\/$/, "");
-const paths = ["/", "/watch-list", "/text-tube", "/manage-asset"];
+const paths = ["/", "/watch-list", "/text-tube", "/manage-asset", "/todo"];
 
 for (const path of paths) {
   const response = await fetch(`${baseUrl}${path}`, {

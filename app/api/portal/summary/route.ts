@@ -3,13 +3,15 @@ import { ensureSchema } from "@/db";
 
 export async function GET() {
   await ensureSchema({ seed: false });
-  const [watch, completed, textTube, latestVideo, latestAsset, sources] = await env.DB.batch([
+  const [watch, completed, textTube, latestVideo, latestAsset, sources, todoTotal, todoCompleted] = await env.DB.batch([
     env.DB.prepare("SELECT COUNT(*) AS count FROM items WHERE deleted_at IS NULL"),
     env.DB.prepare("SELECT COUNT(*) AS count FROM items WHERE deleted_at IS NULL AND status='completed'"),
     env.DB.prepare("SELECT COUNT(*) AS count FROM text_tube_videos WHERE deleted_at IS NULL"),
     env.DB.prepare("SELECT id,title,channel_name FROM text_tube_videos WHERE deleted_at IS NULL ORDER BY created_at DESC LIMIT 1"),
     env.DB.prepare("SELECT MAX(captured_at) AS latest_at FROM asset_snapshots"),
     env.DB.prepare("SELECT COUNT(*) AS count FROM asset_sources WHERE enabled=1"),
+    env.DB.prepare("SELECT COUNT(*) AS count FROM todo_tasks WHERE deleted_at IS NULL AND occurrence_date = strftime('%Y-%m-%d','now','+7 hours')"),
+    env.DB.prepare("SELECT COUNT(*) AS count FROM todo_tasks WHERE deleted_at IS NULL AND occurrence_date = strftime('%Y-%m-%d','now','+7 hours') AND completed_at IS NOT NULL"),
   ]);
   const latestSnapshots = (await env.DB.prepare("SELECT s.id, s.total_usd, s.total_jpy FROM asset_snapshots s WHERE s.id IN (SELECT id FROM asset_snapshots x WHERE x.source_id=s.source_id ORDER BY x.captured_at DESC LIMIT 1)").all<Record<string, unknown>>()).results ?? [];
   const snapshotIds = latestSnapshots.map((row) => String(row.id ?? "")).filter(Boolean);
@@ -32,5 +34,6 @@ export async function GET() {
     watch: { total: number(watch, "count"), completed: number(completed, "count") },
     textTube: { total: number(textTube, "count"), latest: latestVideo.results?.[0] ?? null },
     assets: { totalUsd: assetTotals.usd, totalJpy: assetTotals.jpy, latestAt: latestAsset.results?.[0]?.latest_at ?? null, sourceCount: number(sources, "count") },
+    todo: { total: number(todoTotal, "count"), completed: number(todoCompleted, "count") },
   });
 }
