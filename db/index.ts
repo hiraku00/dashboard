@@ -150,6 +150,15 @@ export async function ensureSchema({ seed = true }: { seed?: boolean } = {}) {
     env.DB.prepare(
       "CREATE INDEX IF NOT EXISTS text_tube_api_usage_created_idx ON text_tube_api_usage(provider, created_at DESC)",
     ),
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS todo_boards (id TEXT PRIMARY KEY, name TEXT NOT NULL, timezone TEXT NOT NULL DEFAULT 'Asia/Bangkok', created_at TEXT NOT NULL, archived_at TEXT)`),
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS todo_columns (id TEXT PRIMARY KEY, board_id TEXT NOT NULL, name TEXT NOT NULL, kind TEXT NOT NULL, position INTEGER NOT NULL, created_at TEXT NOT NULL)`),
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS todo_routines (id TEXT PRIMARY KEY, board_id TEXT NOT NULL, title TEXT NOT NULL, description TEXT NOT NULL DEFAULT '', priority INTEGER, schedule_type TEXT NOT NULL, weekdays TEXT NOT NULL DEFAULT '', default_column_id TEXT NOT NULL, active INTEGER NOT NULL DEFAULT 1, version INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT)`),
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS todo_tasks (id TEXT PRIMARY KEY, board_id TEXT NOT NULL, column_id TEXT NOT NULL, routine_id TEXT, occurrence_date TEXT, title TEXT NOT NULL, description TEXT NOT NULL DEFAULT '', priority INTEGER, due_time TEXT, position INTEGER NOT NULL, completed_at TEXT, skipped_at TEXT, version INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT, UNIQUE(routine_id, occurrence_date))`),
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS todo_task_events (id TEXT PRIMARY KEY, task_id TEXT NOT NULL, event_type TEXT NOT NULL, from_column_id TEXT, to_column_id TEXT, occurred_at TEXT NOT NULL)`),
+    env.DB.prepare("CREATE INDEX IF NOT EXISTS todo_columns_board_position_idx ON todo_columns(board_id, position)"),
+    env.DB.prepare("CREATE INDEX IF NOT EXISTS todo_routines_board_active_idx ON todo_routines(board_id, active)"),
+    env.DB.prepare("CREATE INDEX IF NOT EXISTS todo_tasks_board_date_column_position_idx ON todo_tasks(board_id, occurrence_date, column_id, position)"),
+    env.DB.prepare("CREATE INDEX IF NOT EXISTS todo_task_events_task_idx ON todo_task_events(task_id, occurred_at)"),
   ]);
   const countResult = seed
     ? await env.DB.prepare("SELECT COUNT(*) AS count FROM items").all<{

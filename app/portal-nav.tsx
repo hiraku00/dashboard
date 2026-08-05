@@ -7,6 +7,7 @@ export function PortalNav({ active }: { active?: string }) {
     ["/watch-list", "Watch List"],
     ["/text-tube", "TextTube"],
     ["/manage-asset", "Manage Asset"],
+    ["/todo", "To Do"],
     ["/settings/storage", "使用量"],
   ];
   return (

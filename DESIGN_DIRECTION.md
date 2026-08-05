@@ -23,3 +23,15 @@
 | `src/components/ui/MarkdownRenderer.tsx` | `app/text-tube/markdown-renderer.tsx`。GFM表、目次アンカー、Mermaidを維持 |
 
 ポータルの固定ヘッダーは元TextTubeの外側に配置する。これにより、記事をスクロールしてもポータル全機能への導線が常に見える一方、TextTube内部のレイアウトは元コードの構造を保つ。
+
+## To Do 方向宣言
+
+- ジョブ: 今日やることを素早く把握し、迷わず着手・完了・翌日へ持ち越す。
+- レジスター: 主=精密、副=親愛。日々の道具として静かに使え、未完了を責めない。
+- サーフェス: web。
+- パレット: 地 `#EEF0F5`、面 `#FBFBFD`、本文 `#1D1D1F`、アクセント `#0A84FF`、成功 `#16824A`、危険 `#C52A37`。
+- タイポ: 意図したAppleネイティブ感として `-apple-system` / `SF Pro Display` / `Hiragino Sans`。数値にはtabular-numsを使う。
+- 余白リズム: 8ptグリッド。列内8px、カード間8px、列間12px。
+- モーション: 160ms ease-out。状態変化を説明するものだけを使い、reduced-motionでは停止する。
+- シグネチャー: 日付を替えても同じ看板のまま、対象日の実行カードだけが入れ替わる。
+- 禁じ手: Trelloの青背景を模倣すること、カード内の情報過多、色だけに依存した完了状態。

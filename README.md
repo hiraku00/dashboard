@@ -1,6 +1,6 @@
 # Dashboard
 
-Watch List、TextTube、Manage Assetを一つのCloudflare上で管理する、個人用ポータルです。
+Watch List、TextTube、Manage Asset、To Doを一つのCloudflare上で管理する、個人用ポータルです。
 ブラウザからはCloudflare Accessで保護されたWorkerへアクセスし、永続データはD1、Markdown本文や大きなファイルはR2に保存します。
 
 ## できること
@@ -8,13 +8,14 @@ Watch List、TextTube、Manage Assetを一つのCloudflare上で管理する、�
 - **Watch List**: 番組・記事・音声・映画などの視聴候補を、検索、絞り込み、優先度、ステータス、リンク付きで管理
 - **TextTube**: 動画・音声・記事のライブラリ、詳細Markdown、目次、Markdown表、Mermaid図を含む本文表示、Studio編集。公開YouTube URLからメタデータと既存字幕を取り込み可能
 - **Manage Asset**: 資産総額、資産配分、保有資産、保管場所、通貨推移、履歴、設定、データ更新を表示
+- **To Do**: 日ごとの看板でタスクを管理。単発タスクと毎日／曜日指定の繰り返しタスクを分けて保存
 - **ローカル資産取得**: APIキーをmacOS Keychainに保持したローカルcollectorが各サービスから取得し、スナップショットだけをCloudflareへ同期
 - **ストレージ管理**: D1/R2の利用状況、カテゴリ別容量、日次集計、上限アラートを確認
 
 ## 本番環境
 
 - Worker: <https://dashboard.hiraku00.workers.dev>
-- 主な画面: `/`, `/watch-list`, `/text-tube`, `/manage-asset`, `/settings/storage`
+- 主な画面: `/`, `/watch-list`, `/text-tube`, `/manage-asset`, `/todo`, `/settings/storage`
 - 本番データ: Cloudflare D1 `hiraku-watch-list` / R2 `hiraku-portal-files`
 
 本番URLはCloudflare Accessで保護されています。Accessの認証・セッションがない環境からは画面/APIを利用できません。
@@ -33,6 +34,7 @@ Watch List、TextTube、Manage Assetを一つのCloudflare上で管理する、�
 | `/manage-asset/currencies` | 通貨ごとの資産推移と履歴 |
 | `/manage-asset/sync` | データ取得・同期状況、古いデータ、手動同期状態 |
 | `/manage-asset/settings` | Manage Asset表示・同期設定 |
+| `/todo` | 日別の看板、単発タスク、毎日／曜日指定の繰り返しタスク |
 | `/settings/storage` | D1/R2の利用状況、TextTube字幕APIの実消費クレジット、ストレージ管理 |
 
 各機能画面には共通ポータルヘッダーが表示されます。Manage Assetの中心画面は、既存UIの表示仕様を維持した静的アセットをベースに、ポータルのナビゲーションを外側から追加する構成です。
@@ -44,7 +46,7 @@ Watch List、TextTube、Manage Assetを一つのCloudflare上で管理する、�
   │ Cloudflare Access
   ▼
 Cloudflare Worker (Vinext/React)
-  ├─ UI: Watch List / TextTube / Manage Asset / Storage
+  ├─ UI: Watch List / TextTube / Manage Asset / To Do / Storage
   ├─ API: D1・R2への認証済みアクセス
   ├─ D1: 検索・一覧・履歴・スナップショットのメタデータ
   └─ R2: Markdown本文・インポート原本・大きなファイル
