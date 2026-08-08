@@ -54,7 +54,7 @@ export async function materializeRoutines(date: string) {
     const matches = routine.schedule_type === "daily" || String(routine.weekdays).split(",").includes(String(weekday));
     if (!matches) continue;
     statements.push(env.DB.prepare("INSERT OR IGNORE INTO todo_tasks (id,board_id,column_id,routine_id,occurrence_date,title,description,priority,due_time,position,version,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,1,?,?)")
-      .bind(crypto.randomUUID(), BOARD_ID, routine.default_column_id, routine.id, date, routine.title, routine.description, routine.priority, null, Date.now(), createdAt, createdAt));
+      .bind(crypto.randomUUID(), BOARD_ID, routine.default_column_id, routine.id, date, routine.title, routine.description, routine.priority, routine.default_due_time ?? null, Date.now(), createdAt, createdAt));
   }
   if (statements.length) await env.DB.batch(statements);
 }

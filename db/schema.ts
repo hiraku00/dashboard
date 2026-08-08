@@ -69,7 +69,7 @@ export const todoColumns = sqliteTable("todo_columns", {
 export const todoRoutines = sqliteTable("todo_routines", {
   id: text("id").primaryKey(), boardId: text("board_id").notNull(), title: text("title").notNull(),
   description: text("description").notNull().default(""), priority: integer("priority"), scheduleType: text("schedule_type").notNull(),
-  weekdays: text("weekdays").notNull().default(""), defaultColumnId: text("default_column_id").notNull(), active: integer("active").notNull().default(1),
+  weekdays: text("weekdays").notNull().default(""), defaultColumnId: text("default_column_id").notNull(), defaultDueTime: text("default_due_time"), active: integer("active").notNull().default(1),
   version: integer("version").notNull().default(1), createdAt: text("created_at").notNull(), updatedAt: text("updated_at").notNull(), deletedAt: text("deleted_at"),
 }, (table) => [index("todo_routines_board_active_idx").on(table.boardId, table.active)]);
 
