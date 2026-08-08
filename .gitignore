@@ -20,6 +20,7 @@
 .DS_Store
 .idea/
 .vscode/
+.claude/
 *.log
 npm-debug.log*
 yarn-debug.log*
