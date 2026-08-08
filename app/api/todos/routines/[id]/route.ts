@@ -15,8 +15,8 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   }
 
   const normalized = routineInput(body ?? {}); if (!normalized.value) return Response.json({ error: normalized.error }, { status: 400 });
-  await env.DB.prepare("UPDATE todo_routines SET title=?,description=?,priority=?,schedule_type=?,weekdays=?,version=version+1,updated_at=? WHERE id=?")
-    .bind(normalized.value.title, normalized.value.description, normalized.value.priority, normalized.value.scheduleType, normalized.value.weekdays, now(), id).run();
+  await env.DB.prepare("UPDATE todo_routines SET title=?,description=?,priority=?,schedule_type=?,weekdays=?,default_due_time=?,version=version+1,updated_at=? WHERE id=?")
+    .bind(normalized.value.title, normalized.value.description, normalized.value.priority, normalized.value.scheduleType, normalized.value.weekdays, normalized.value.dueTime, now(), id).run();
   return Response.json({ routine: await env.DB.prepare("SELECT * FROM todo_routines WHERE id=?").bind(id).first() });
 }
 export async function DELETE(_: Request, { params }: { params: Promise<{ id: string }> }) { const { id } = await params; const result = await env.DB.prepare("UPDATE todo_routines SET deleted_at=?,updated_at=? WHERE id=? AND board_id=? AND deleted_at IS NULL").bind(now(), now(), id, BOARD_ID).run(); return result.meta.changes ? Response.json({ ok: true }) : Response.json({ error: "繰り返しタスクが見つかりません。" }, { status: 404 }); }
