@@ -1,7 +1,7 @@
 import { env } from "cloudflare:workers";
 import { BOARD_ID, boardColumns, clean, now } from "../_lib";
 
-function routineInput(body: Record<string, unknown>) {
+export function routineInput(body: Record<string, unknown>) {
   const title = clean(body.title, 240); const description = clean(body.description, 6000); const scheduleType = clean(body.scheduleType, 20);
   const weekdays = Array.isArray(body.weekdays) ? body.weekdays.map(Number).filter((day) => Number.isInteger(day) && day >= 0 && day <= 6).sort().join(",") : "";
   const priority = body.priority === "" || body.priority === null || body.priority === undefined ? null : Number(body.priority);

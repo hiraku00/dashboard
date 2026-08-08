@@ -35,12 +35,12 @@
 
 | パス | 用途 |
 | --- | --- |
-| `GET /api/todos/board?date=YYYY-MM-DD` | 日別ボードを返す。対象日の繰り返しタスクを重複なく生成する。 |
+| `GET /api/todos/board?date=YYYY-MM-DD` | 日別ボードを返す。対象日の繰り返しタスクを重複なく生成する（テンプレート作成日より前の日付には生成しない）。 |
 | `POST /api/todos/tasks` | 単発タスクを作成する。 |
 | `GET/PATCH/DELETE /api/todos/tasks/:id` | タスク詳細、編集、論理削除。更新はversion競合を検出する。 |
 | `POST /api/todos/tasks/:id/move` | リスト移動と並び順更新を行う。 |
 | `GET/POST /api/todos/routines` | 繰り返しタスクの一覧と作成。 |
-| `PATCH/DELETE /api/todos/routines/:id` | 繰り返しタスクの停止・再開・削除。 |
+| `PATCH/DELETE /api/todos/routines/:id` | 繰り返しタスクの編集（タイトル・メモ・繰り返し設定・優先度）、停止・再開、論理削除。更新はversion競合を検出する。 |
 
 ## Manage Asset
 
