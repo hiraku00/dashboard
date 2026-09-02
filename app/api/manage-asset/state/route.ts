@@ -5,10 +5,27 @@ import { exchangePositions, holdingsFromPositions, walletPositions } from "@/app
 export async function GET() {
   await ensureSchema({ seed: false });
   const sources = (await env.DB.prepare("SELECT * FROM asset_sources WHERE enabled=1 ORDER BY display_name").all<Record<string, unknown>>()).results ?? [];
-  const snapshotRows = (await env.DB.prepare("SELECT s.*, a.source_type, a.display_name, a.provider, a.public_address FROM asset_snapshots s JOIN asset_sources a ON a.id=s.source_id WHERE s.id IN (SELECT x.id FROM asset_snapshots x LEFT JOIN asset_sync_runs xr ON xr.id=x.run_id WHERE x.source_id=s.source_id ORDER BY COALESCE(xr.received_at, '') DESC, x.rowid DESC LIMIT 1) ORDER BY s.total_usd DESC").all<Record<string, unknown>>()).results ?? [];
+  // The previous version of this query re-ran a per-row correlated subquery
+  // (WHERE s.id IN (SELECT ... WHERE x.source_id=s.source_id ORDER BY ... LIMIT 1))
+  // for every joined row, which cost tens of millions of D1 "rows read" per
+  // call as asset_snapshots/asset_positions grew. A single ROW_NUMBER() pass
+  // computes the same "latest snapshot per source" result without re-scanning.
+  const snapshotRows = (await env.DB.prepare(`WITH ranked_snapshots AS (
+    SELECT s.*, a.source_type, a.display_name, a.provider, a.public_address,
+      ROW_NUMBER() OVER (PARTITION BY s.source_id ORDER BY COALESCE(xr.received_at, '') DESC, s.rowid DESC) AS rn
+    FROM asset_snapshots s
+    JOIN asset_sources a ON a.id = s.source_id
+    LEFT JOIN asset_sync_runs xr ON xr.id = s.run_id
+  )
+  SELECT * FROM ranked_snapshots WHERE rn = 1 ORDER BY total_usd DESC`).all<Record<string, unknown>>()).results ?? [];
   const history = (await env.DB.prepare("SELECT as_of_date, SUM(total_usd) AS total_usd, SUM(total_jpy) AS total_jpy FROM asset_snapshots GROUP BY as_of_date ORDER BY as_of_date DESC LIMIT 90").all<Record<string, unknown>>()).results ?? [];
   const runs = (await env.DB.prepare("SELECT * FROM asset_sync_runs ORDER BY received_at DESC LIMIT 20").all<Record<string, unknown>>()).results ?? [];
-  const positions = (await env.DB.prepare(`SELECT p.*, a.display_name, a.provider FROM asset_positions p JOIN asset_snapshots s ON s.id=p.snapshot_id JOIN asset_sources a ON a.id=s.source_id WHERE s.id IN (SELECT x.id FROM asset_snapshots x LEFT JOIN asset_sync_runs xr ON xr.id=x.run_id WHERE x.source_id=s.source_id ORDER BY COALESCE(xr.received_at, '') DESC, x.rowid DESC LIMIT 1) ORDER BY p.value_usd DESC`).all<Record<string, unknown>>()).results ?? [];
+  // Reuse the snapshot ids already resolved above instead of re-running the
+  // same "latest per source" lookup a second time for positions.
+  const latestSnapshotIds = snapshotRows.map((row) => String(row.id ?? "")).filter(Boolean);
+  const positions = latestSnapshotIds.length
+    ? (await env.DB.prepare(`SELECT p.*, a.display_name, a.provider FROM asset_positions p JOIN asset_snapshots s ON s.id=p.snapshot_id JOIN asset_sources a ON a.id=s.source_id WHERE p.snapshot_id IN (${latestSnapshotIds.map(() => "?").join(",")}) ORDER BY p.value_usd DESC`).bind(...latestSnapshotIds).all<Record<string, unknown>>()).results ?? []
+    : [];
   const positionsBySnapshot = new Map<string, Record<string, unknown>[]>();
   for (const position of positions) {
     const rows = positionsBySnapshot.get(String(position.snapshot_id)) ?? [];
