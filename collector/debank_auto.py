@@ -29,6 +29,8 @@ alternative.
 from __future__ import annotations
 
 import os
+import subprocess
+import sys
 from dataclasses import dataclass
 
 DEBANK_PROFILE_URL = "https://debank.com/profile/{address}"
@@ -43,6 +45,28 @@ DEFAULT_USER_AGENT = (
 
 class DebankAutoError(RuntimeError):
     """Raised for setup failures (e.g. Playwright not installed)."""
+
+
+def _launch_chromium_with_recovery(playwright, headless: bool):
+    """Launch Chromium, self-healing once if the browser binary is missing.
+
+    ~/Library/Caches/ms-playwright holds the actual browser executable
+    (separate from the pip package) and periodic disk-cleanup runs on this
+    machine treat it as disposable cache and delete it. When that happens,
+    launch() fails with "Executable doesn't exist" even though Playwright
+    itself is still installed. Re-running `playwright install chromium`
+    restores it without requiring a human to notice and intervene.
+    """
+    try:
+        return playwright.chromium.launch(headless=headless)
+    except Exception as exc:
+        if "Executable doesn't exist" not in str(exc):
+            raise
+        subprocess.run(
+            [sys.executable, "-m", "playwright", "install", "chromium"],
+            check=True,
+        )
+        return playwright.chromium.launch(headless=headless)
 
 
 @dataclass
@@ -108,7 +132,7 @@ def fetch_wallets_html(
 
     results: list[WalletFetchResult] = []
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=headless)
+        browser = _launch_chromium_with_recovery(p, headless)
         context = browser.new_context(user_agent=DEFAULT_USER_AGENT)
         try:
             for i, wallet in enumerate(wallets):

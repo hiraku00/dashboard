@@ -24,6 +24,8 @@ python3 -m playwright install chromium
 
 `collector/data/` は個人データのためGit管理対象外です。既存のローカルデータを移行する場合は、実行環境のデータディレクトリから `wallets.json`、`sources.json`、既存JSONLをコピーします。
 
+Playwrightの実ブラウザ本体（Chromium）は`~/Library/Caches/ms-playwright/`に保存されます。pipパッケージ本体とは別物のため、macOSのディスク容量整理やキャッシュ削除ツールで消えることがあります。`debank_auto.py`はブラウザ起動時にこの状態を検知すると`playwright install chromium`を自動実行して復旧するため、手動対応は不要です。
+
 ## 手動検証
 
 ```bash
