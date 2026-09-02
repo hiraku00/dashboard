@@ -13,7 +13,15 @@ export async function GET() {
     env.DB.prepare("SELECT COUNT(*) AS count FROM todo_tasks WHERE deleted_at IS NULL AND occurrence_date = strftime('%Y-%m-%d','now','+7 hours')"),
     env.DB.prepare("SELECT COUNT(*) AS count FROM todo_tasks WHERE deleted_at IS NULL AND occurrence_date = strftime('%Y-%m-%d','now','+7 hours') AND completed_at IS NOT NULL"),
   ]);
-  const latestSnapshots = (await env.DB.prepare("SELECT s.id, s.total_usd, s.total_jpy FROM asset_snapshots s WHERE s.id IN (SELECT id FROM asset_snapshots x WHERE x.source_id=s.source_id ORDER BY x.captured_at DESC LIMIT 1)").all<Record<string, unknown>>()).results ?? [];
+  // A per-row correlated subquery here re-scans asset_snapshots once per
+  // outer row; a single ROW_NUMBER() pass computes the same "latest
+  // snapshot per source" result in one scan instead.
+  const latestSnapshots = (await env.DB.prepare(`WITH ranked AS (
+    SELECT id, total_usd, total_jpy,
+      ROW_NUMBER() OVER (PARTITION BY source_id ORDER BY captured_at DESC) AS rn
+    FROM asset_snapshots
+  )
+  SELECT id, total_usd, total_jpy FROM ranked WHERE rn = 1`).all<Record<string, unknown>>()).results ?? [];
   const snapshotIds = latestSnapshots.map((row) => String(row.id ?? "")).filter(Boolean);
   const positionsBySnapshot = new Map<string, { usd: number; jpy: number }>();
   if (snapshotIds.length) {
