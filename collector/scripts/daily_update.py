@@ -296,7 +296,18 @@ def main() -> int:
         )
         portal_url = os.environ.get("PORTAL_URL", "").strip()
         portal_sync_failed = False
-        if portal_url:
+        # A scheduled retry slot with nothing new to fetch (wallet_success and
+        # exchange_success both 0) previously still re-ran the portal sync
+        # unconditionally, re-uploading the same day's data to production on
+        # every 10-minute slot for hours. portal_sync_pending already tracked
+        # "does today's data still need to reach the portal" but nothing read
+        # it before deciding whether to sync. Only sync when either this run
+        # fetched something new, or a previous attempt fetched data that
+        # never made it to the portal.
+        should_sync = bool(existing_state.get("portal_sync_pending", True)) or wallet_success > 0 or exchange_success > 0
+        if portal_url and not should_sync:
+            LOG.info("Portal sync skipped: no new data since the last successful sync")
+        if portal_url and should_sync:
             try:
                 result = subprocess.run(
                     [sys.executable, str(ROOT / "scripts" / "sync_to_portal.py"), portal_url],
