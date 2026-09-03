@@ -26,6 +26,8 @@ python3 -m playwright install chromium
 
 Playwrightの実ブラウザ本体（Chromium）は`~/Library/Caches/ms-playwright/`に保存されます。pipパッケージ本体とは別物のため、macOSのディスク容量整理やキャッシュ削除ツールで消えることがあります。`debank_auto.py`はブラウザ起動時にこの状態を検知すると`playwright install chromium`を自動実行して復旧するため、手動対応は不要です。
 
+`daily_update.py`は`config/app-config.json`の`windows`/`additional_retry_times`で定義された各スロット（例: 06:30〜07:50を10分おき）ごとに起動されますが、Portal同期は「新規に取得したデータがある」か「前回の同期がまだ成功していない（`portal_sync_pending`）」場合のみ実行します。取得済みのデータをスロットのたびに再送信することはありません。
+
 ## 手動検証
 
 ```bash
