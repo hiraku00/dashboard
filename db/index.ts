@@ -26,10 +26,40 @@ let schemaReady = false;
  *  that nothing read at runtime and that had drifted (it declared indexes,
  *  such as items_creator_idx, that were never created). It was removed rather
  *  than reconciled, since the drizzle ORM was never actually used to query. */
+/** Bump whenever the DDL below changes, so existing databases re-run it once.
+ *  A database whose schema_meta row already matches skips the whole batch. */
+const SCHEMA_VERSION = 1;
+
+/** Reads the recorded schema version. A database that predates schema_meta (or
+ *  a brand new one) has no table, and the query fails rather than returning a
+ *  row -- treat that as "not provisioned" and fall through to the DDL. */
+async function recordedSchemaVersion(): Promise<number | null> {
+  try {
+    const row = (
+      await env.DB.prepare("SELECT version FROM schema_meta WHERE id = 1").all<{ version: number }>()
+    ).results?.[0];
+    return row ? Number(row.version) : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function ensureSchema({ seed = true }: { seed?: boolean } = {}) {
   if (schemaReady) return;
 
+  // schemaReady is per-isolate, so without this check every new isolate's
+  // first request re-ran ~40 DDL statements against D1 -- all no-ops on an
+  // already-provisioned database, but each one still a write query against
+  // the daily quota. One cheap single-row read replaces them.
+  if ((await recordedSchemaVersion()) === SCHEMA_VERSION) {
+    schemaReady = true;
+    return;
+  }
+
   await env.DB.batch([
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS schema_meta (
+      id INTEGER PRIMARY KEY CHECK (id = 1), version INTEGER NOT NULL
+    )`),
     env.DB.prepare(`CREATE TABLE IF NOT EXISTS items (
       id TEXT PRIMARY KEY, content_type TEXT NOT NULL, creator_name TEXT NOT NULL DEFAULT '',
       series_title TEXT NOT NULL DEFAULT '', title TEXT NOT NULL, description TEXT NOT NULL DEFAULT '',
@@ -246,5 +276,10 @@ export async function ensureSchema({ seed = true }: { seed?: boolean } = {}) {
     for (let start = 0; start < statements.length; start += 50)
       await env.DB.batch(statements.slice(start, start + 50));
   }
+  // Only after the DDL (and any seeding) succeeded, so a run that failed
+  // partway is retried by the next request rather than marked done.
+  await env.DB.prepare(
+    "INSERT INTO schema_meta (id, version) VALUES (1, ?) ON CONFLICT(id) DO UPDATE SET version = excluded.version",
+  ).bind(SCHEMA_VERSION).run();
   schemaReady = true;
 }
