@@ -2,6 +2,7 @@
 import { handleImageOptimization, DEFAULT_DEVICE_SIZES, DEFAULT_IMAGE_SIZES } from "vinext/server/image-optimization";
 import handler from "vinext/server/app-router-entry";
 import { reconcileStorageUsage } from "../app/lib/storage-usage";
+import { guardRequest } from "../app/lib/access";
 
 interface Env {
   ASSETS: Fetcher;
@@ -30,6 +31,14 @@ interface ExecutionContext {
 const worker = {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
+
+    // Cloudflare Access is configured per hostname, so a hostname it does not
+    // cover reaches this Worker unchecked. Re-verify its assertion here, ahead
+    // of everything else including static assets and the image optimizer, so
+    // the app is not relying on the edge alone. No-op until ACCESS_TEAM_DOMAIN
+    // and ACCESS_AUD are set.
+    const denied = await guardRequest(request, env as unknown as Record<string, unknown>);
+    if (denied) return denied;
 
     if (url.pathname === "/_vinext/image") {
       const allowedWidths = [...DEFAULT_DEVICE_SIZES, ...DEFAULT_IMAGE_SIZES];
