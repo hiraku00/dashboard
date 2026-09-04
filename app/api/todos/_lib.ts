@@ -1,13 +1,13 @@
 import { env } from "cloudflare:workers";
 import { ensureSchema } from "@/db";
+import { clean, validDate } from "@/app/lib/text";
 
+export { clean, validDate };
 export const BOARD_ID = "todo-default";
 export const columnKinds = ["inbox", "today", "doing", "done"] as const;
 export type ColumnKind = (typeof columnKinds)[number];
 export type TaskInput = { title?: unknown; description?: unknown; priority?: unknown; occurrenceDate?: unknown; dueTime?: unknown; columnId?: unknown; version?: unknown };
 
-export const clean = (value: unknown, max = 4000) => typeof value === "string" ? value.trim().slice(0, max) : "";
-export const validDate = (value: string) => !value || /^\d{4}-\d{2}-\d{2}$/.test(value);
 export const validTime = (value: string) => !value || /^([01]\d|2[0-3]):[0-5]\d$/.test(value);
 export const now = () => new Date().toISOString();
 

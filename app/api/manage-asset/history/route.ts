@@ -1,6 +1,7 @@
 import { env } from "cloudflare:workers";
 import { ensureSchema } from "@/db";
 import { currencyHistory, holdingsFromPositions, historyPoints, stethRewardHistory, walletPositions, exchangePositions } from "@/app/lib/manage-asset-core";
+import { toLegacyExchangeSnapshot, toLegacyWalletSnapshot } from "@/app/lib/manage-asset-legacy";
 
 function newestRecord(current: Record<string, unknown>, previous: Record<string, unknown>): boolean {
   const currentSync = String(current.sync_received_at ?? "");
@@ -41,43 +42,12 @@ export async function GET() {
   for (const row of normalized) {
     const key = String(row.id ?? "");
     const positions = positionsBySnapshot.get(key) ?? [];
+    // Same mappers /api/manage-asset/state uses, so the two endpoints cannot
+    // drift in the shape they hand the legacy frontend.
     if (String(row.source_type).toLowerCase() === "wallet") {
-      snapshots.push({
-        wallet_id: row.source_id,
-        wallet_name: row.display_name,
-        address: row.public_address,
-        as_of_date: row.as_of_date,
-        captured_at: row.captured_at,
-        sync_received_at: row.sync_received_at,
-        fx_usdjpy: row.fx_usdjpy,
-        total_usd: row.total_usd,
-        total_jpy: row.total_jpy,
-        tokens: positions.map((position) => ({
-          symbol: position.symbol,
-          amount_value: position.quantity,
-          // The original browser client reads usd_value_display. Keep both
-          // names so the legacy renderer and the normalized API agree.
-          usd_value_display: position.value_usd,
-          usd_value: position.value_usd,
-        })),
-      });
+      snapshots.push(toLegacyWalletSnapshot(row, positions));
     } else {
-      exchangeSnapshots.push({
-        source_id: row.source_id,
-        account_name: row.display_name,
-        as_of_date: row.as_of_date,
-        captured_at: row.captured_at,
-        sync_received_at: row.sync_received_at,
-        fx_usdjpy: row.fx_usdjpy,
-        totals: { net_asset_usd: row.total_usd, net_asset_jpy: row.total_jpy },
-        positions: positions.map((position) => ({
-          symbol: position.symbol,
-          quantity: position.quantity,
-          usd_value: position.value_usd,
-          account_type: position.protocol,
-          is_liability: Boolean(position.is_debt),
-        })),
-      });
+      exchangeSnapshots.push(toLegacyExchangeSnapshot(row, positions));
     }
   }
   // A launchd retry can leave both a legacy-import row and a normalized row

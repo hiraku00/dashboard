@@ -1,5 +1,6 @@
 import { env } from "cloudflare:workers";
 import { ensureSchema } from "@/db";
+import { canonicalUrl, clean as cleanText, validDate } from "@/app/lib/text";
 
 type ContentType = "text" | "audio" | "movie" | "other";
 type Status = "backlog" | "in_progress" | "completed" | "dropped";
@@ -23,27 +24,6 @@ export type ItemInput = {
   rawSource?: string | null;
   links?: Array<{ label?: string; url: string; linkType?: string }>;
 };
-
-function cleanText(value: unknown, max = 4000) {
-  return typeof value === "string" ? value.trim().slice(0, max) : "";
-}
-
-function validDate(value: string) {
-  return !value || /^\d{4}-\d{2}-\d{2}$/.test(value);
-}
-
-function canonicalUrl(value: string) {
-  try {
-    const url = new URL(value);
-    url.hash = "";
-    for (const key of [...url.searchParams.keys()]) {
-      if (key.startsWith("utm_") || key === "fbclid") url.searchParams.delete(key);
-    }
-    return url.toString();
-  } catch {
-    return "";
-  }
-}
 
 export function normalizeItem(input: unknown): { value?: ItemInput; error?: string } {
   if (!input || typeof input !== "object") return { error: "JSONオブジェクトを指定してください。" };

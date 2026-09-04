@@ -1,12 +1,10 @@
 import { env } from "cloudflare:workers";
 import { ensureSchema } from "@/db";
 
+export { clean } from "@/app/lib/text";
+
 export const R2_SOFT_LIMIT_BYTES = 8 * 1024 * 1024 * 1024;
 const MAX_OBJECT_BYTES = 25 * 1024 * 1024;
-
-export function clean(value: unknown, max = 4000) {
-  return typeof value === "string" ? value.trim().slice(0, max) : "";
-}
 
 export async function sha256(body: ArrayBuffer) {
   const digest = await crypto.subtle.digest("SHA-256", body);
