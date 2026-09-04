@@ -105,6 +105,11 @@ export async function ensureSchema({ seed = true }: { seed?: boolean } = {}) {
     env.DB.prepare(
       "CREATE INDEX IF NOT EXISTS asset_snapshots_source_date_idx ON asset_snapshots(source_id, as_of_date DESC)",
     ),
+    // The sync "complete" action counts a single run's snapshots; without this
+    // the WHERE run_id=? scans the whole table on every completed sync.
+    env.DB.prepare(
+      "CREATE INDEX IF NOT EXISTS asset_snapshots_run_idx ON asset_snapshots(run_id)",
+    ),
     env.DB.prepare(
       "CREATE INDEX IF NOT EXISTS asset_positions_snapshot_idx ON asset_positions(snapshot_id)",
     ),
