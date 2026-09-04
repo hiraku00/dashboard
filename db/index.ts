@@ -175,6 +175,21 @@ export async function ensureSchema({ seed = true }: { seed?: boolean } = {}) {
     env.DB.prepare("CREATE INDEX IF NOT EXISTS todo_task_events_task_idx ON todo_task_events(task_id, occurred_at)"),
   ]);
   await env.DB.prepare("ALTER TABLE todo_routines ADD COLUMN default_due_time TEXT").run().catch(() => {});
+  // One snapshot per source and date. The collector syncs 8-20 times a day and
+  // both readers only ever use the newest row per source and date, so appending
+  // the rest only grew the table that every request scans. The sync route's
+  // upsert targets this constraint, which also makes a retried (non-idempotent)
+  // sync POST unable to duplicate a snapshot.
+  //
+  // Deliberately outside the batch above and tolerant of failure: an existing
+  // database must run db/migrations/2026-09-04-dedupe-asset-snapshots.sql first,
+  // and creating this index fails while duplicates remain. Inside the batch that
+  // failure would take every table's DDL -- and so every route -- down with it.
+  // Out here, a database that has not been migrated yet only fails the sync
+  // upsert, which is the one thing that actually needs the constraint.
+  await env.DB.prepare(
+    "CREATE UNIQUE INDEX IF NOT EXISTS asset_snapshots_source_date_unique ON asset_snapshots(source_id, as_of_date)",
+  ).run().catch(() => {});
   const countResult = seed
     ? await env.DB.prepare("SELECT COUNT(*) AS count FROM items").all<{
         count: number;
