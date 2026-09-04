@@ -29,7 +29,7 @@
 
 ### D1
 
-`hiraku-watch-list` は検索、一覧、集計、履歴、同期状態などの構造化データを保存します。Drizzle schemaは `db/schema.ts`、migrationは `drizzle/` が正です。
+`hiraku-watch-list` は検索、一覧、集計、履歴、同期状態などの構造化データを保存します。スキーマの正は `db/index.ts` の `ensureSchema()` で、これが新規DBに対して全テーブルとインデックスを作成します。既存DBへ適用済みのSQLは `migrations/` にあり、D1の `d1_migrations` テーブルで管理されます（wrangler の `migrations_dir`）。スキーマ変更時は**両方**の更新が必要です。
 
 ### R2
 

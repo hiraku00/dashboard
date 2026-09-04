@@ -12,7 +12,7 @@
       "binding": "DB",
       "database_name": "hiraku-watch-list",
       "database_id": "a88eabc6-5b74-48e8-b347-07720d2297d1",
-      "migrations_dir": "drizzle"
+      "migrations_dir": "migrations"
     }
   ],
   "r2_buckets": [

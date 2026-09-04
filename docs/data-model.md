@@ -34,7 +34,7 @@
 - `storage_objects`: R2オブジェクトの論理台帳
 - `storage_usage_daily`: 日次使用量とカテゴリ別集計
 
-正確な列定義は `db/schema.ts` と `drizzle/0001_portal.sql` を正とします。スキーマ変更時はDrizzle migrationを追加し、既存データを壊す変更はバックアップとロールバック手順を先に用意します。
+正確な列定義は `db/index.ts` の `ensureSchema()` を正とします（新規DB向けのCREATE文一式）。既存DBへ適用済みの変更は `migrations/` のSQLに残っています。スキーマ変更時は `migrations/` に連番のSQLを追加し（`wrangler d1 migrations apply` で適用）、同じ変更を `ensureSchema()` にも反映します。既存データを壊す変更はバックアップとロールバック手順を先に用意します。
 
 ## R2
 

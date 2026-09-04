@@ -27,7 +27,7 @@ test("ships the To Do board, recurring-task API, and portal navigation", async (
     readFile(new URL("../app/api/todos/board/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/todos/routines/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/portal-nav.tsx", import.meta.url), "utf8"),
-    readFile(new URL("../drizzle/0003_todo.sql", import.meta.url), "utf8"),
+    readFile(new URL("../migrations/0003_todo.sql", import.meta.url), "utf8"),
   ]);
   assert.match(app, /繰り返しタスク/);
   assert.match(app, /api\/todos\/tasks/);
