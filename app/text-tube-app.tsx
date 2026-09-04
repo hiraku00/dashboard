@@ -3,6 +3,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { PortalHeader } from "./portal-nav";
+import { ApiError, readJson } from "./lib/json";
 
 export type Video = {
   id: string;
@@ -143,7 +144,7 @@ export function TextTubeApp() {
     [form, setForm] = useState<VideoForm>(blankVideo);
   const load = useCallback(async () => {
     const r = await fetch(`/api/text-tube/videos?q=${encodeURIComponent(q)}`);
-    if (r.ok) setVideos((await r.json()).videos);
+    if (r.ok) setVideos((await readJson<{ videos: Video[] }>(r)).videos);
   }, [q]);
   useEffect(() => {
     const t = setTimeout(load, q ? 180 : 0);
@@ -178,7 +179,7 @@ export function TextTubeApp() {
       headers: { "content-type": "application/json" },
       body: JSON.stringify(formToPayload(form)),
     });
-    const d = await r.json();
+    const d = await readJson<ApiError & { id: string }>(r);
     if (!r.ok) {
       setNotice(d.error ?? "保存できませんでした。");
       return;
@@ -334,7 +335,7 @@ export function VideoEditor({
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ url: value.originalUrl }),
       });
-      const d = await r.json();
+      const d = await readJson<ApiError & { preview?: Partial<VideoForm>; captionNotice?: string }>(r);
       if (!r.ok) throw Error(d.error);
       onChange({ ...value, ...d.preview });
       if (d.captionNotice) setImportError(`字幕: ${d.captionNotice}`);

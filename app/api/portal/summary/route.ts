@@ -3,7 +3,7 @@ import { ensureSchema } from "@/db";
 
 export async function GET() {
   await ensureSchema({ seed: false });
-  const [watch, completed, textTube, latestVideo, latestAsset, sources, todoTotal, todoCompleted] = await env.DB.batch([
+  const [watch, completed, textTube, latestVideo, latestAsset, sources, todoTotal, todoCompleted] = await env.DB.batch<Record<string, unknown>>([
     env.DB.prepare("SELECT COUNT(*) AS count FROM items WHERE deleted_at IS NULL"),
     env.DB.prepare("SELECT COUNT(*) AS count FROM items WHERE deleted_at IS NULL AND status='completed'"),
     env.DB.prepare("SELECT COUNT(*) AS count FROM text_tube_videos WHERE deleted_at IS NULL"),
@@ -29,7 +29,7 @@ export async function GET() {
     const positions = (await env.DB.prepare(`SELECT snapshot_id, COALESCE(SUM(value_usd),0) AS total_usd, COALESCE(SUM(value_jpy),0) AS total_jpy FROM asset_positions WHERE snapshot_id IN (${placeholders}) GROUP BY snapshot_id`).bind(...snapshotIds).all<Record<string, unknown>>()).results ?? [];
     for (const row of positions) positionsBySnapshot.set(String(row.snapshot_id), { usd: Number(row.total_usd ?? 0), jpy: Number(row.total_jpy ?? 0) });
   }
-  const assetTotals = latestSnapshots.reduce((totals, row) => {
+  const assetTotals = latestSnapshots.reduce<{ usd: number; jpy: number }>((totals, row) => {
     const positionTotals = positionsBySnapshot.get(String(row.id));
     const storedUsd = Number(row.total_usd ?? 0);
     const storedJpy = Number(row.total_jpy ?? 0);

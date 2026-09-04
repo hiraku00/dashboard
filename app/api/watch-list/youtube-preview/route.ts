@@ -17,12 +17,13 @@ function attribute(tag: string, name: string) {
 }
 
 function decodeHtml(value: string) {
-  return value.replace(/&#(x[\da-f]+|\d+);|&(quot|amp|lt|gt|#39);/gi, (_, numeric, named) => {
+  const named: Record<string, string> = { quot: '"', amp: "&", lt: "<", gt: ">", "#39": "'" };
+  return value.replace(/&#(x[\da-f]+|\d+);|&(quot|amp|lt|gt|#39);/gi, (match: string, numeric: string | undefined, entity: string | undefined) => {
     if (numeric) {
       const codePoint = numeric.toLowerCase().startsWith("x") ? Number.parseInt(numeric.slice(1), 16) : Number.parseInt(numeric, 10);
-      return Number.isFinite(codePoint) && codePoint >= 0 && codePoint <= 0x10ffff ? String.fromCodePoint(codePoint) : _;
+      return Number.isFinite(codePoint) && codePoint >= 0 && codePoint <= 0x10ffff ? String.fromCodePoint(codePoint) : match;
     }
-    return { quot: '"', amp: "&", lt: "<", gt: ">", "#39": "'" }[named.toLowerCase()] ?? _;
+    return named[(entity ?? "").toLowerCase()] ?? match;
   });
 }
 

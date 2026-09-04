@@ -11,10 +11,15 @@ const assetViews = [
   ["settings", "設定"],
 ] as const;
 
-export function ManageAssetApp() {
+/** The view ids the embedded legacy app knows (its nav `data-view` values). */
+export type AssetView = (typeof assetViews)[number][0];
+
+export function ManageAssetApp({ initialView = "overview" }: { initialView?: AssetView } = {}) {
   const frame = useRef<HTMLIFrameElement>(null);
   const [height, setHeight] = useState(900);
-  const [view, setView] = useState<(typeof assetViews)[number][0]>("overview");
+  // The iframe is told which view to show in onLoad, so starting here is what
+  // makes /manage-asset/settings and friends open on their own section.
+  const [view, setView] = useState<AssetView>(initialView);
   const scrollToViewStart = () => {
     const target = frame.current;
     const chrome = document.querySelector<HTMLElement>(
@@ -58,12 +63,21 @@ export function ManageAssetApp() {
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
   }, []);
-  const selectView = (nextView: (typeof assetViews)[number][0]) => {
-    setView(nextView);
+  const postView = (nextView: AssetView) =>
     frame.current?.contentWindow?.postMessage(
       { type: "manage-asset:view", view: nextView },
       window.location.origin,
     );
+  // The iframe is server-rendered, so it usually finishes loading before React
+  // hydrates and its onLoad handler never fires. Posting the view from an
+  // effect as well is what makes /manage-asset/settings and friends open on
+  // their own section; onLoad still covers the reverse order.
+  useEffect(() => {
+    postView(view);
+  }, [view]);
+  const selectView = (nextView: AssetView) => {
+    setView(nextView);
+    postView(nextView);
     scrollToViewStart();
   };
   return (
@@ -89,7 +103,7 @@ export function ManageAssetApp() {
         style={{ height }}
         src="/manage-asset-original/index.html?embedded=1"
         title="Manage Asset"
-        onLoad={() => selectView(view)}
+        onLoad={() => postView(view)}
       />
     </main>
   );

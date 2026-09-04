@@ -1,3 +1,3 @@
 import { ManageAssetApp } from "../../manage-asset-app";
 
-export default function ManageAssetSyncPage() { return <ManageAssetApp initialView="sync" />; }
+export default function ManageAssetSyncPage() { return <ManageAssetApp initialView="update" />; }

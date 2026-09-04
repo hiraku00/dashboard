@@ -8,7 +8,7 @@ export async function GET(request: Request) {
   const links = (await env.DB.prepare("SELECT * FROM item_links ORDER BY position").all<Record<string, unknown>>()).results ?? [];
   const byItem = new Map<string, Array<Record<string, unknown>>>();
   for (const link of links) byItem.set(String(link.item_id), [...(byItem.get(String(link.item_id)) ?? []), link]);
-  const payload = items.map((item) => ({ ...item, links: byItem.get(String(item.id)) ?? [] }));
+  const payload: Array<Record<string, unknown>> = items.map((item) => ({ ...item, links: byItem.get(String(item.id)) ?? [] }));
   if (format === "csv") {
     const header = ["type", "creator", "series", "title", "description", "priority", "status", "added_on", "watched_on", "links", "comment"];
     const escape = (value: unknown) => `"${String(value ?? "").replaceAll('"', '""')}"`;

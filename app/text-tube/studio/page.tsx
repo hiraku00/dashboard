@@ -8,6 +8,7 @@ import {
   VideoEditor,
   formToPayload,
 } from "../../text-tube-app";
+import { readJson } from "../../lib/json";
 const date = (v?: string | null) =>
   v ? new Date(v).toLocaleDateString("ja-JP") : "—";
 export default function TextTubeStudio() {
@@ -20,7 +21,7 @@ export default function TextTubeStudio() {
     [notice, setNotice] = useState("");
   const load = useCallback(async () => {
     const r = await fetch(`/api/text-tube/videos?q=${encodeURIComponent(q)}`);
-    if (r.ok) setVideos((await r.json()).videos);
+    if (r.ok) setVideos((await readJson<{ videos: Video[] }>(r)).videos);
   }, [q]);
   useEffect(() => {
     void load();
@@ -42,7 +43,7 @@ export default function TextTubeStudio() {
   );
   async function edit(v: Video) {
     const [detail, doc] = await Promise.all([
-      fetch(`/api/text-tube/videos/${v.id}`).then((r) => r.json()),
+      fetch(`/api/text-tube/videos/${v.id}`).then((r) => readJson<{ video: Video }>(r)),
       fetch(`/api/text-tube/videos/${v.id}/document`).then((r) =>
         r.ok ? r.text() : "",
       ),
