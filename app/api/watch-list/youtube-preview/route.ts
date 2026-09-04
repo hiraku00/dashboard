@@ -1,3 +1,5 @@
+import { youTubeVideoId } from "@/app/lib/youtube";
+
 type YouTubePreview = {
   item: {
     contentType: "movie";
@@ -7,9 +9,6 @@ type YouTubePreview = {
     links: Array<{ label: string; url: string; linkType: "reference" }>;
   };
 };
-
-const videoIdPattern = /^[A-Za-z0-9_-]{11}$/;
-const youtubeHosts = new Set(["youtube.com", "www.youtube.com", "m.youtube.com", "music.youtube.com"]);
 
 function attribute(tag: string, name: string) {
   const match = tag.match(new RegExp(`\\b${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`, "i"));
@@ -27,25 +26,6 @@ function decodeHtml(value: string) {
   });
 }
 
-function videoIdFromUrl(value: unknown) {
-  if (typeof value !== "string" || !value.trim()) return "";
-  let url: URL;
-  try {
-    url = new URL(value.trim());
-  } catch {
-    return "";
-  }
-  if (url.protocol !== "https:" && url.protocol !== "http:") return "";
-  const host = url.hostname.toLowerCase();
-  let id = "";
-  if (host === "youtu.be" || host === "www.youtu.be") id = url.pathname.split("/").filter(Boolean)[0] ?? "";
-  if (youtubeHosts.has(host)) {
-    if (url.pathname === "/watch") id = url.searchParams.get("v") ?? "";
-    else id = url.pathname.match(/^\/(?:shorts|embed|live)\/([^/?#]+)/)?.[1] ?? "";
-  }
-  return videoIdPattern.test(id) ? id : "";
-}
-
 function tagContent(html: string, selector: (tag: string) => boolean) {
   return html.match(/<(?:meta|link)\b[^>]*>/gi)?.map((tag) => ({ tag, content: attribute(tag, "content") })).find(({ tag, content }) => content && selector(tag))?.content ?? "";
 }
@@ -60,7 +40,7 @@ function channelName(html: string) {
 
 export async function POST(request: Request) {
   const body = await request.json().catch(() => null) as { url?: unknown } | null;
-  const videoId = videoIdFromUrl(body?.url);
+  const videoId = youTubeVideoId(body?.url);
   if (!videoId) return Response.json({ error: "YouTube動画のURLを入力してください。" }, { status: 400 });
 
   const url = `https://www.youtube.com/watch?v=${videoId}`;

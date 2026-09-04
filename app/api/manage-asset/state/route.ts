@@ -1,6 +1,7 @@
 import { env } from "cloudflare:workers";
 import { ensureSchema } from "@/db";
 import { exchangePositions, holdingsFromPositions, walletPositions } from "@/app/lib/manage-asset-core";
+import { toLegacyExchangeSnapshot, toLegacyWalletSnapshot } from "@/app/lib/manage-asset-legacy";
 
 export async function GET() {
   await ensureSchema({ seed: false });
@@ -32,41 +33,14 @@ export async function GET() {
     rows.push(position);
     positionsBySnapshot.set(String(position.snapshot_id), rows);
   }
-  // Keep the response shape expected by the original Manage Asset frontend.
-  // The normalized D1 tables use source_id/display_name for both source types,
-  // while the original UI distinguishes wallet_id/wallet_name and
-  // source_id/account_name.
-  const snapshots = snapshotRows.filter((row) => String(row.source_type).toLowerCase() === "wallet").map((row) => ({
-    wallet_id: row.source_id,
-    wallet_name: row.display_name,
-    address: row.public_address,
-    as_of_date: row.as_of_date,
-    captured_at: row.captured_at,
-    fx_usdjpy: row.fx_usdjpy,
-    total_usd: row.total_usd,
-    total_jpy: row.total_jpy,
-    tokens: (positionsBySnapshot.get(String(row.id)) ?? []).map((position) => ({
-      symbol: position.symbol,
-      amount_value: position.quantity,
-      usd_value_display: position.value_usd,
-    })),
-  }));
-  const exchangeSnapshots = snapshotRows.filter((row) => String(row.source_type).toLowerCase() !== "wallet").map((row) => ({
-    source_id: row.source_id,
-    account_name: row.display_name,
-    as_of_date: row.as_of_date,
-    captured_at: row.captured_at,
-    fx_usdjpy: row.fx_usdjpy,
-    totals: { net_asset_usd: row.total_usd, net_asset_jpy: row.total_jpy },
-    positions: (positionsBySnapshot.get(String(row.id)) ?? []).map((position) => ({
-      symbol: position.symbol,
-      quantity: position.quantity,
-      net_quantity: position.quantity,
-      usd_value: position.value_usd,
-      is_liability: Boolean(position.is_debt),
-      account_type: position.protocol,
-    })),
-  }));
+  // Response shape expected by the original Manage Asset frontend; the same
+  // mappers /api/manage-asset/history uses, so the two endpoints cannot drift.
+  const snapshots = snapshotRows
+    .filter((row) => String(row.source_type).toLowerCase() === "wallet")
+    .map((row) => toLegacyWalletSnapshot(row, positionsBySnapshot.get(String(row.id)) ?? []));
+  const exchangeSnapshots = snapshotRows
+    .filter((row) => String(row.source_type).toLowerCase() !== "wallet")
+    .map((row) => toLegacyExchangeSnapshot(row, positionsBySnapshot.get(String(row.id)) ?? []));
   const directHoldings = Object.values(positions.reduce<Record<string, Record<string, unknown>>>((acc, row) => { const key=String(row.symbol); const item=acc[key]??={symbol:key,quantity:0,value_usd:0,value_jpy:0,locations:[]}; item.quantity=Number(item.quantity)+Number(row.quantity??0); item.value_usd=Number(item.value_usd)+Number(row.value_usd??0); item.value_jpy=Number(item.value_jpy)+Number(row.value_jpy??0); (item.locations as Array<Record<string,unknown>>).push(row); return acc; }, {}));
   // Older portal syncs stored only wallet tokens. Use the imported raw history
   // as a read-only fallback until the next normalized sync replaces the source.

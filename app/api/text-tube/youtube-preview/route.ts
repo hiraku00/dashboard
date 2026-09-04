@@ -1,32 +1,6 @@
 import { env } from "cloudflare:workers";
 import { ensureSchema } from "@/db";
-
-const idPattern = /^[A-Za-z0-9_-]{11}$/;
-const hosts = new Set([
-  "youtube.com",
-  "www.youtube.com",
-  "m.youtube.com",
-  "music.youtube.com",
-]);
-
-function videoId(value: unknown) {
-  try {
-    const url = new URL(String(value));
-    const host = url.hostname.toLowerCase();
-    const id =
-      host === "youtu.be"
-        ? url.pathname.slice(1)
-        : hosts.has(host)
-          ? url.pathname === "/watch"
-            ? (url.searchParams.get("v") ?? "")
-            : (url.pathname.match(/^\/(?:shorts|embed|live)\/([^/?#]+)/)?.[1] ??
-              "")
-          : "";
-    return idPattern.test(id) ? id : "";
-  } catch {
-    return "";
-  }
-}
+import { youTubeVideoId } from "@/app/lib/youtube";
 
 function pick(value: Record<string, { url?: string }> | undefined) {
   return (
@@ -150,7 +124,7 @@ async function transcript(url: string, key: string | undefined) {
 
 export async function POST(request: Request) {
   await ensureSchema({ seed: false });
-  const id = videoId(
+  const id = youTubeVideoId(
     ((await request.json().catch(() => ({}))) as { url?: unknown }).url,
   );
   const key = (env as { YOUTUBE_DATA_API_KEY?: string }).YOUTUBE_DATA_API_KEY;

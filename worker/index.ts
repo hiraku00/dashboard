@@ -1,6 +1,7 @@
 /** Cloudflare Worker entry point for the vinext-starter template. */
 import { handleImageOptimization, DEFAULT_DEVICE_SIZES, DEFAULT_IMAGE_SIZES } from "vinext/server/image-optimization";
 import handler from "vinext/server/app-router-entry";
+import { reconcileStorageUsage } from "../app/lib/storage-usage";
 
 interface Env {
   ASSETS: Fetcher;
@@ -47,17 +48,7 @@ const worker = {
     void _controller;
     void _ctx;
     if (!env.FILES || !env.DB) return;
-    let cursor: string | undefined;
-    let count = 0;
-    let bytes = 0;
-    do {
-      const page = await env.FILES.list({ cursor, limit: 1000 });
-      for (const object of page.objects) { count += 1; bytes += object.size; }
-      cursor = page.truncated ? page.cursor : undefined;
-    } while (cursor);
-    const now = new Date().toISOString();
-    await env.DB.prepare("INSERT INTO storage_usage_daily (usage_date,object_count,payload_bytes,source,updated_at) VALUES (?,?,?,?,?) ON CONFLICT(usage_date) DO UPDATE SET object_count=excluded.object_count,payload_bytes=excluded.payload_bytes,source=excluded.source,updated_at=excluded.updated_at")
-      .bind(now.slice(0, 10), count, bytes, "scheduled-r2-list", now).run();
+    await reconcileStorageUsage(env.FILES, env.DB, "scheduled-r2-list");
   },
 };
 

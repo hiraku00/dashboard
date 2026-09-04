@@ -2,6 +2,7 @@ import { env } from "cloudflare:workers";
 import { drizzle } from "drizzle-orm/d1";
 import * as schema from "./schema";
 import initialWatchList from "../data/initial-watch-list.example.json";
+import { canonicalUrl } from "@/app/lib/text";
 
 /** Shape of data/initial-watch-list.json. The tracked example file has an
  *  empty `items` array, which TypeScript would otherwise infer as never[]. */
@@ -223,8 +224,9 @@ export async function ensureSchema({ seed = true }: { seed?: boolean } = {}) {
         ),
       );
       for (const [position, link] of seed.links.entries()) {
-        const url = new URL(link.url);
-        url.hash = "";
+        // Same canonicalUrl() the API routes use, so a seeded link and one
+        // added later through /api/items dedupe alike on
+        // item_links_canonical_idx.
         statements.push(
           env.DB.prepare(
             "INSERT INTO item_links (id,item_id,label,url,link_type,position,canonical_url) VALUES (?,?,?,?,?,?,?)",
@@ -235,7 +237,7 @@ export async function ensureSchema({ seed = true }: { seed?: boolean } = {}) {
             link.url,
             link.linkType,
             position,
-            url.toString(),
+            canonicalUrl(link.url),
           ),
         );
       }
