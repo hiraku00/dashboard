@@ -3,6 +3,15 @@ import { drizzle } from "drizzle-orm/d1";
 import * as schema from "./schema";
 import initialWatchList from "../data/initial-watch-list.example.json";
 
+/** Shape of data/initial-watch-list.json. The tracked example file has an
+ *  empty `items` array, which TypeScript would otherwise infer as never[]. */
+type SeedItem = {
+  contentType: string; creatorName: string; seriesTitle: string; title: string; description: string;
+  priority: number | null; status: string; addedOn: string | null; watchedOn: string | null;
+  comment: string; sourceSystem: string; externalId: string | null; rawSource: string | null;
+  links: Array<{ label: string; url: string; linkType: string }>;
+};
+
 export function getDb() {
   if (!env.DB) {
     throw new Error(
@@ -174,7 +183,7 @@ export async function ensureSchema({ seed = true }: { seed?: boolean } = {}) {
   if (seed && Number(countResult?.results?.[0]?.count ?? 0) === 0) {
     const now = new Date().toISOString();
     const statements: D1PreparedStatement[] = [];
-    for (const seed of initialWatchList.items) {
+    for (const seed of initialWatchList.items as SeedItem[]) {
       const id = crypto.randomUUID();
       statements.push(
         env.DB.prepare(

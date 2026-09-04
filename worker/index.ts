@@ -41,7 +41,15 @@ const worker = {
       }, allowedWidths);
     }
 
-    return handler.fetch(request, env, ctx);
+    const response = await handler.fetch(request, env, ctx);
+    // Document responses must not be cached: a stale shell would keep serving
+    // an old client bundle after a deploy. This used to live in
+    // worker/auth-wrapper.ts, which wrangler.jsonc named as `main` but which
+    // the build's generated config never actually deployed.
+    if (!request.headers.get("accept")?.includes("text/html")) return response;
+    const headers = new Headers(response.headers);
+    headers.set("cache-control", "no-store, max-age=0, must-revalidate");
+    return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
   },
   async scheduled(_controller: ScheduledController, env: Env, _ctx: ExecutionContext) {
     void _controller;

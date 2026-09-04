@@ -2,12 +2,14 @@
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { PortalHeader } from "./portal-nav";
+import { ApiError, readJson } from "./lib/json";
 
 type ContentType = "text" | "audio" | "movie" | "other";
 type Status = "backlog" | "in_progress" | "completed" | "dropped";
 type Link = { id?: string; label: string; url: string; linkType?: string };
 type Item = { id: string; contentType: ContentType; creatorName: string; seriesTitle: string; title: string; description: string; priority: number | null; status: Status; addedOn: string | null; watchedOn: string | null; comment: string; version: number; links: Link[] };
 type Draft = Omit<Item, "id" | "version">;
+type Stats = { total: number; completed: number; movie: number; audio: number; text: number };
 
 const emptyDraft = (): Draft => ({ contentType: "movie", creatorName: "", seriesTitle: "", title: "", description: "", priority: null, status: "backlog", addedOn: new Date().toISOString().slice(0, 10), watchedOn: null, comment: "", links: [{ label: "", url: "", linkType: "reference" }] });
 const typeLabel: Record<ContentType, string> = { movie: "映像", audio: "音声", text: "テキスト", other: "その他" };
@@ -17,7 +19,7 @@ const pageSize = 10;
 
 export function WatchListApp() {
   const [items, setItems] = useState<Item[]>([]);
-  const [stats, setStats] = useState({ total: 0, completed: 0, movie: 0, audio: 0, text: 0 });
+  const [stats, setStats] = useState<Stats>({ total: 0, completed: 0, movie: 0, audio: 0, text: 0 });
   const [query, setQuery] = useState("");
   const [type, setType] = useState<"all" | ContentType>("all");
   const [status, setStatus] = useState<"all" | Status>("all");
@@ -46,11 +48,11 @@ export function WatchListApp() {
       params.set("offset", String((page - 1) * pageSize));
       const itemsResponse = await fetch(`/api/items?${params}`);
       if (!itemsResponse.ok) throw new Error("一覧を読み込めませんでした。再読み込みしてください。");
-      const itemPayload = await itemsResponse.json();
+      const itemPayload = await readJson<{ items: Item[]; pagination?: { total?: number } }>(itemsResponse);
       setItems(itemPayload.items);
       setTotalResults(itemPayload.pagination?.total ?? itemPayload.items.length);
       const statsResponse = await fetch("/api/stats");
-      if (statsResponse.ok) setStats(await statsResponse.json());
+      if (statsResponse.ok) setStats(await readJson<Stats>(statsResponse));
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "読み込みに失敗しました。");
     } finally {
@@ -88,7 +90,7 @@ export function WatchListApp() {
     setYouTubeLoading(true); setYouTubeNotice("");
     try {
       const response = await fetch("/api/watch-list/youtube-preview", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ url: youTubeUrl }) });
-      const data = await response.json();
+      const data = await readJson<ApiError & { item: Partial<Draft> }>(response);
       if (!response.ok) throw new Error(data.error ?? "YouTubeから情報を取得できませんでした。");
       patchDraft(data.item);
       setYouTubeNotice("チャンネル名・タイトル・リンクを入力しました。内容を確認して保存してください。");
@@ -100,7 +102,7 @@ export function WatchListApp() {
     event.preventDefault(); setSaving(true); setNotice("");
     try {
       const response = await fetch(editing ? `/api/items/${editing.id}` : "/api/items", { method: editing ? "PATCH" : "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...draft, version: editing?.version }) });
-      const data = await response.json();
+      const data = await readJson<ApiError>(response);
       if (!response.ok) throw new Error(data.error ?? "保存できませんでした。");
       closeEditor(); setNotice(editing ? "変更を保存しました。" : "コンテンツを追加しました。"); await refresh();
     } catch (error) { setNotice(error instanceof Error ? error.message : "保存に失敗しました。"); }
@@ -110,7 +112,7 @@ export function WatchListApp() {
   async function updateStatus(item: Item, nextStatus: Status) {
     const watchedOn = nextStatus === "completed" ? item.watchedOn ?? new Date().toISOString().slice(0, 10) : null;
     const response = await fetch(`/api/items/${item.id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...item, status: nextStatus, watchedOn, version: item.version }) });
-    if (!response.ok) { const data = await response.json(); setNotice(data.error ?? "更新に失敗しました。"); return; }
+    if (!response.ok) { const data = await readJson<ApiError>(response); setNotice(data.error ?? "更新に失敗しました。"); return; }
     setNotice(`状態を「${statusLabel[nextStatus]}」に変更しました。`); await refresh();
   }
 
