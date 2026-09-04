@@ -28,6 +28,8 @@ Playwrightの実ブラウザ本体（Chromium）は`~/Library/Caches/ms-playwrig
 
 `daily_update.py`は`config/app-config.json`の`windows`/`additional_retry_times`で定義された各スロット（例: 06:30〜07:50を10分おき）ごとに起動されますが、Portal同期は「新規に取得したデータがある」か「前回の同期がまだ成功していない（`portal_sync_pending`）」場合のみ実行します。取得済みのデータをスロットのたびに再送信することはありません。
 
+`sync_to_portal.py`は`start` → `sources`（最大25件ずつのバッチ、`BATCH_SIZE`）→ `complete`の順にPortalへ送信します。Portal側はR2使用量の集計（`storage_objects`テーブル全体の集計）をリクエストごとに1回だけ行うため、ソース1件ずつ送るとこの集計がソース数分繰り返されます。バッチ送信により、17ソースで約9万行あったD1読み取りが約5千行に減ります。Portal側は旧形式の`source`（1件ずつ）も引き続き受け付けるため、collectorとWorkerのバージョンが一時的にずれても同期は継続します。
+
 ## 手動検証
 
 ```bash

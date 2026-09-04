@@ -42,7 +42,16 @@ def keychain_token() -> str:
     return result.stdout.strip()
 
 
-def post(base_url: str, token: str, body: dict) -> dict:
+# Sources travel in one request per chunk instead of one request each: the
+# portal measures its R2 total once per request, and that aggregate is by far
+# the most expensive read in a sync. Chunked rather than unbounded so a single
+# invocation stays well inside the Workers Free 10ms CPU budget (the portal
+# rejects anything above 50 entries).
+BATCH_SIZE = 25
+BATCH_TIMEOUT_S = 120
+
+
+def post(base_url: str, token: str, body: dict, timeout: int = 30) -> dict:
     client_id = os.environ.get("PORTAL_SYNC_CLIENT_ID", "").strip()
     if not client_id:
         raise RuntimeError("PORTAL_SYNC_CLIENT_IDを設定してください")
@@ -61,7 +70,7 @@ def post(base_url: str, token: str, body: dict) -> dict:
     last_error = None
     for attempt in range(4):
         try:
-            with urllib.request.urlopen(request, timeout=30, context=context) as response:
+            with urllib.request.urlopen(request, timeout=timeout, context=context) as response:
                 return json.loads(response.read().decode("utf-8"))
         except (urllib.error.URLError, TimeoutError) as exc:
             last_error = exc
@@ -109,9 +118,22 @@ def main() -> int:
     exchanges = app.latest_portfolio_snapshots()
     entries = [wallet_entry(row) for row in wallets] + [exchange_entry(row) for row in exchanges]
     client_run_id = "manage-asset-" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    start = post(base_url, token, {"action": "start", "clientRunId": client_run_id, "clientVersion": "manage-asset-local/1", "sourceCount": len(entries)})
-    for entry in entries:
-        post(base_url, token, {"action": "source", "clientRunId": client_run_id, **entry})
+    start = post(base_url, token, {"action": "start", "clientRunId": client_run_id, "clientVersion": "manage-asset-local/2", "sourceCount": len(entries)})
+    failures: list[dict] = []
+    for offset in range(0, len(entries), BATCH_SIZE):
+        chunk = entries[offset:offset + BATCH_SIZE]
+        result = post(
+            base_url,
+            token,
+            {"action": "sources", "clientRunId": client_run_id, "entries": chunk},
+            timeout=BATCH_TIMEOUT_S,
+        )
+        # Keep going through the remaining chunks so one bad source does not
+        # hold back the rest, then fail the run so the caller's retry (state
+        # file portal_sync_pending) picks it up on the next scheduled slot.
+        failures.extend(row for row in (result.get("results") or []) if row.get("error"))
+    if failures:
+        raise RuntimeError("Portal同期に失敗したsourceがあります: " + json.dumps(failures, ensure_ascii=False))
     done = post(base_url, token, {"action": "complete", "clientRunId": client_run_id})
     print(json.dumps({"ok": True, "run_id": start.get("runId"), "source_count": len(entries), "complete": done}, ensure_ascii=False))
     return 0
