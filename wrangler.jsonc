@@ -4,6 +4,12 @@
   "main": "worker/auth-wrapper.ts",
   "compatibility_date": "2026-05-22",
   "compatibility_flags": ["nodejs_compat"],
+  // Version Preview URLs are served from a different hostname than the
+  // deployed Worker, so the hostname-scoped Cloudflare Access application
+  // that guards this app does not cover them. Access is this app's only
+  // access control -- there is no app-layer auth behind it -- so any route
+  // that Access does not cover is an unguarded route. Keep this false.
+  "preview_urls": false,
   "assets": {
     "directory": "dist/client"
   },
