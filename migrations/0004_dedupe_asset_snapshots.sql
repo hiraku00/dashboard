@@ -6,21 +6,21 @@
 -- every request and then thrown away. At 40 days of data that was 4,377 of
 -- 5,057 snapshot rows (and 14,069 of 16,241 position rows) read for nothing.
 --
--- Run this ONCE, BEFORE deploying the code that upserts snapshots. Creating the
--- unique index fails while duplicates remain; db/index.ts runs that same
--- CREATE UNIQUE INDEX outside its startup batch and tolerates the failure, so
--- an unmigrated database only breaks the sync route's upsert, not every route
--- -- but the sync route should never actually hit that path in production.
+-- Must run BEFORE the code that upserts snapshots ships. Creating the unique
+-- index fails while duplicates remain; db/index.ts runs that same CREATE
+-- UNIQUE INDEX outside its startup batch and tolerates the failure, so an
+-- unmigrated database only breaks the sync route's upsert, not every route.
 --
---   npx wrangler d1 execute hiraku-watch-list --remote --yes \
---     --file=db/migrations/2026-09-04-dedupe-asset-snapshots.sql
+-- Already applied to production on 2026-09-04, by hand with `wrangler d1
+-- execute --file` before this directory existed, so d1_migrations has no row
+-- for it. Re-running is a no-op and safe: with the unique index in place no
+-- duplicate can exist, so both DELETEs match nothing, and the CREATE is
+-- IF NOT EXISTS. Applying it through `wrangler d1 migrations apply` simply
+-- records it.
 --
--- (wrangler 4.92.0's interactive confirm prompt can crash with a TypeError on
--- some terminals; --yes skips the prompt entirely.)
---
--- Already run against production on 2026-09-04: 5,057 -> 680 snapshot rows,
--- 16,241 -> 2,172 position rows, 0 duplicate groups remaining, displayed
--- per-date totals unchanged (verified against a pre-migration fingerprint).
+-- Result of that run: 5,057 -> 680 snapshot rows, 16,241 -> 2,172 position
+-- rows, 0 duplicate groups remaining, displayed per-date totals unchanged
+-- (verified against a pre-migration fingerprint).
 --
 -- A full pre-migration backup of both tables is in R2 under
 -- manage-asset/backup/2026-09-04-pre-dedupe/.

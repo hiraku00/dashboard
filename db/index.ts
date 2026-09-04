@@ -1,6 +1,4 @@
 import { env } from "cloudflare:workers";
-import { drizzle } from "drizzle-orm/d1";
-import * as schema from "./schema";
 import initialWatchList from "../data/initial-watch-list.example.json";
 import { canonicalUrl } from "@/app/lib/text";
 
@@ -13,18 +11,21 @@ type SeedItem = {
   links: Array<{ label: string; url: string; linkType: string }>;
 };
 
-export function getDb() {
-  if (!env.DB) {
-    throw new Error(
-      "Cloudflare D1 binding `DB` is unavailable. Check the D1 binding in wrangler.jsonc before using the database.",
-    );
-  }
-
-  return drizzle(env.DB, { schema });
-}
-
 let schemaReady = false;
 
+/** Creates every table and index this app needs, idempotently, on the first
+ *  request an isolate serves.
+ *
+ *  This is the working source of truth for the schema. `migrations/` holds the
+ *  SQL that has actually been applied to the production database (tracked in
+ *  D1's own d1_migrations table via wrangler's migrations_dir), and the two
+ *  must be kept in step by hand: a schema change needs both a migration file
+ *  for the existing database and the matching CREATE here for a fresh one.
+ *
+ *  There used to be a third definition -- a drizzle schema in db/schema.ts --
+ *  that nothing read at runtime and that had drifted (it declared indexes,
+ *  such as items_creator_idx, that were never created). It was removed rather
+ *  than reconciled, since the drizzle ORM was never actually used to query. */
 export async function ensureSchema({ seed = true }: { seed?: boolean } = {}) {
   if (schemaReady) return;
 
