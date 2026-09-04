@@ -30,14 +30,28 @@ async function storeEntry(runId: string, entry: Entry, now: string, knownUsedByt
   if (!sourceId || !provider || !displayName || !/^\d{4}-\d{2}-\d{2}$/.test(asOfDate) || !capturedAt) throw new SyncEntryError("sourceId、provider、displayName、capturedAt、asOfDateが必要です。");
   const sourceAddress = clean(entry.source.publicAddress ?? entry.source.address, 300); const sourceType = clean(entry.source.sourceType, 60) || "unknown";
   await env.DB.prepare(`INSERT INTO asset_sources (id,source_type,provider,display_name,public_address,enabled,created_at) VALUES (?,?,?,?,?,1,?) ON CONFLICT(id) DO UPDATE SET source_type=excluded.source_type,provider=excluded.provider,display_name=excluded.display_name,public_address=excluded.public_address`).bind(sourceId,sourceType,provider,displayName,sourceAddress,now).run();
-  const snapshotId = crypto.randomUUID(); const rawJson = JSON.stringify({ source: entry.source, snapshot: entry.snapshot, positions: entry.positions ?? [] }); const rawBody = new TextEncoder().encode(rawJson).buffer;
-  const key = `manage-asset/raw/${asOfDate.replaceAll("-", "/")}/${runId}/${sourceId}.json`;
+  const rawJson = JSON.stringify({ source: entry.source, snapshot: entry.snapshot, positions: entry.positions ?? [] }); const rawBody = new TextEncoder().encode(rawJson).buffer;
+  // Keyed by date and source rather than by run: a same-day re-sync overwrites
+  // its own raw object instead of leaving 8-20 copies a day in R2, matching the
+  // one-snapshot-per-source-per-date rule the D1 rows now follow.
+  const key = `manage-asset/raw/${asOfDate.replaceAll("-", "/")}/${sourceId}.json`;
   let stored: { key: string; size: number; sha256: string; usedBytes: number } | null = null; let storageStatus = "local_only";
   try { stored = await putPortalObject({ key, body: rawBody, category: "manage-asset/raw", contentType: "application/json", expiresAt: new Date(Date.now() + 365 * 86400000).toISOString(), knownUsedBytes }); storageStatus = "stored"; } catch (error) { if (!(error instanceof Error) || !error.message.includes("安全上限")) throw error; }
   const totals = entry.snapshot as Record<string, unknown>; const totalUsd = Number(totals.totalUsd ?? totals.total_usd ?? 0) || 0; const totalJpy = Number(totals.totalJpy ?? totals.total_jpy ?? 0) || 0; const fx = Number(totals.fxUsdjpy ?? totals.fx_usdjpy ?? 0) || null;
+  // One snapshot per source and date. A later sync on the same day replaces the
+  // row it already wrote, which is what both readers resolve to anyway; it also
+  // makes a retried POST (the collector retries on timeout, and the request is
+  // not idempotent) unable to duplicate a snapshot.
+  const upserted = await env.DB.prepare(`INSERT INTO asset_snapshots (id,run_id,source_id,captured_at,as_of_date,total_usd,total_jpy,fx_usdjpy,raw_object_key,raw_sha256,raw_size,raw_storage_status) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+    ON CONFLICT(source_id,as_of_date) DO UPDATE SET run_id=excluded.run_id,captured_at=excluded.captured_at,total_usd=excluded.total_usd,total_jpy=excluded.total_jpy,fx_usdjpy=excluded.fx_usdjpy,raw_object_key=excluded.raw_object_key,raw_sha256=excluded.raw_sha256,raw_size=excluded.raw_size,raw_storage_status=excluded.raw_storage_status
+    RETURNING id`).bind(crypto.randomUUID(),runId,sourceId,capturedAt,asOfDate,totalUsd,totalJpy,fx,stored?.key ?? null,stored?.sha256 ?? null,stored?.size ?? rawBody.byteLength,storageStatus).all<{ id: string }>();
+  const snapshotId = String(upserted.results?.[0]?.id ?? "");
+  if (!snapshotId) throw new SyncEntryError("スナップショットを保存できませんでした。");
   await env.DB.batch([
-    env.DB.prepare("INSERT INTO asset_snapshots (id,run_id,source_id,captured_at,as_of_date,total_usd,total_jpy,fx_usdjpy,raw_object_key,raw_sha256,raw_size,raw_storage_status) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)").bind(snapshotId,runId,sourceId,capturedAt,asOfDate,totalUsd,totalJpy,fx,stored?.key ?? null,stored?.sha256 ?? null,stored?.size ?? rawBody.byteLength,storageStatus),
     env.DB.prepare("UPDATE asset_sources SET last_success_at=? WHERE id=?").bind(capturedAt,sourceId),
+    // The upsert may have reused an existing snapshot row, whose positions now
+    // describe the earlier sync. Replace them rather than adding to them.
+    env.DB.prepare("DELETE FROM asset_positions WHERE snapshot_id=?").bind(snapshotId),
   ]);
   const suppliedPositions = (Array.isArray(entry.positions) ? entry.positions : []).filter((position): position is Record<string, unknown> => Boolean(position && typeof position === "object"));
   // A wallet's stETH is nested under protocols[].panels[].assets[] in the local
