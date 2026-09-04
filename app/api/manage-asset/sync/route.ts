@@ -2,6 +2,7 @@ import { env } from "cloudflare:workers";
 import { ensureSchema } from "@/db";
 import { clean, currentStorageBytes, putPortalObject } from "@/app/lib/portal";
 import { normalizeSyncedPositions } from "@/app/lib/manage-asset-core";
+import { summarizeRun } from "@/app/lib/sync-summary";
 
 // One request carries every source of a run, so cap it: the Workers Free plan
 // allows 10ms of CPU per invocation, and the collector chunks well below this.
@@ -84,12 +85,22 @@ export async function POST(request: Request) {
     return Response.json({ runId });
   }
 
-  const run = (await env.DB.prepare("SELECT id,status FROM asset_sync_runs WHERE client_run_id=?").bind(clientRunId).all<{ id: string; status: string }>()).results?.[0];
+  const run = (await env.DB.prepare("SELECT id,status,source_count FROM asset_sync_runs WHERE client_run_id=?").bind(clientRunId).all<{ id: string; status: string; source_count: number }>()).results?.[0];
   if (!run) return Response.json({ error: "同期runが見つかりません。" }, { status: 404 });
   if (body.action === "complete") {
-    const counts = (await env.DB.prepare("SELECT COUNT(*) AS total, SUM(CASE WHEN raw_storage_status='stored' THEN 1 ELSE 0 END) AS success FROM asset_snapshots WHERE run_id=?").bind(run.id).all<{ total: number; success: number }>()).results?.[0];
-    await env.DB.prepare("UPDATE asset_sync_runs SET completed_at=?,status=?,success_count=?,error_count=? WHERE id=?").bind(now,"completed",Number(counts?.total??0),0,run.id).run();
-    return Response.json({ ok: true, runId: run.id });
+    // A source that failed in the "sources" batch never wrote a snapshot, so
+    // the shortfall against the declared source_count is the error count.
+    // This used to record success_count = the snapshot total and error_count =
+    // a literal 0, which made a partially failed run indistinguishable from a
+    // clean one in the only record that outlives the run.
+    const counts = (await env.DB.prepare("SELECT COUNT(*) AS total, SUM(CASE WHEN raw_storage_status='stored' THEN 1 ELSE 0 END) AS raw_stored FROM asset_snapshots WHERE run_id=?").bind(run.id).all<{ total: number; raw_stored: number }>()).results?.[0];
+    const summary = summarizeRun({
+      declaredSourceCount: Number(run.source_count ?? 0),
+      snapshotCount: Number(counts?.total ?? 0),
+      rawStoredCount: Number(counts?.raw_stored ?? 0),
+    });
+    await env.DB.prepare("UPDATE asset_sync_runs SET completed_at=?,status=?,success_count=?,error_count=? WHERE id=?").bind(now,summary.status,summary.successCount,summary.errorCount,run.id).run();
+    return Response.json({ ok: summary.errorCount === 0, runId: run.id, ...summary });
   }
 
   if (body.action === "sources") {
