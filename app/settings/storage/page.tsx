@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { PortalHeader } from "../../portal-nav";
+import { dailyResetWindows } from "../../lib/usage-window";
 
 type StorageData = {
   usage?: { bytes?: number };
@@ -133,7 +134,23 @@ export default function StoragePage() {
               <p>保存対象: Watch List、Manage Asset、TextTubeのデータと履歴。</p>
               <p>無料枠: 5 GB · 読取500万行/日 · 書込10万行/日</p>
             </div>
-            <div className="usage-section-label">本日の利用状況（UTC基準・日次上限との対比）</div>
+            <div className="usage-section-label">本日の利用状況（日次上限との対比）</div>
+            {/* The counters reset at UTC 00:00, which is the middle of the
+                morning here. Spelling the window out in local time is what
+                makes a near-zero reading readable: just after the boundary
+                almost nothing has been counted yet, and the overnight
+                collector sync lands in the PREVIOUS day. */}
+            <p className="usage-window-note">
+              集計期間: {d1?.today?.date ?? ""}（UTC 00:00〜24:00）
+              {dailyResetWindows(d1?.today?.date ?? "").map((window) => (
+                <span key={window.label}>
+                  {window.label}時間（{window.offsetLabel}）{window.start} 〜 {window.end}
+                </span>
+              ))}
+              <span className="usage-window-caveat">
+                コレクタの同期もUTC基準（00:00〜02:50）で動くため、必ずこの集計期間の中に入ります。
+              </span>
+            </p>
             <div className="usage-meter" aria-label={`本日の読み取り行数 ${todayReadPct.toFixed(2)}%`}>
               <div className="usage-bar"><span style={{ width: `${todayReadPct}%` }} /></div>
               <p>読み取り {count.format(todayRowsRead)} / 5,000,000 行（{todayReadPct.toFixed(2)}%）</p>
