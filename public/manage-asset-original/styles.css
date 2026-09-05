@@ -485,5 +485,16 @@ input:hover, select:hover { border-color: rgba(60,60,67,.42); }
    block !important }` above -- higher specificity (two classes) beats it
    regardless of source order. */
 .embedded .topbar { display: none !important; }
+/* .page-head's own top padding (38px, or 24px under the narrow-width media
+   query below) existed to create breathing room under the standalone app's
+   topbar. .shell already adds its own 24px top padding in embedded mode (see
+   `.shell { padding-top:24px }` further down), and the topbar above is now
+   hidden entirely, so a page that starts with .page-head was stacking both
+   paddings -- 24px (shell) + 38px/24px (page-head) -- before its own heading.
+   Zero page-head's share in embedded mode; .shell's 24px remains the only
+   top offset, matching views that start directly with a card (e.g.
+   #overview, which has no .page-head). The 18px bottom padding is untouched:
+   it still spaces the heading from the card below it. */
+.embedded .page-head { padding-top: 0; }
 html, body { min-height:0 !important; overflow:hidden !important; }
 .shell { max-width:1480px; padding-top:24px; }
