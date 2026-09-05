@@ -1,6 +1,7 @@
 import { env } from "cloudflare:workers";
 import { ensureSchema } from "@/db";
 import { canonicalUrl, clean as cleanText, validDate } from "@/app/lib/text";
+import { attachLinks, listItems } from "@/app/lib/queries/watch-list";
 
 type ContentType = "text" | "audio" | "movie" | "other";
 type Status = "backlog" | "in_progress" | "completed" | "dropped";
@@ -69,55 +70,18 @@ export function normalizeItem(input: unknown): { value?: ItemInput; error?: stri
   };
 }
 
-function toItem(row: Record<string, unknown>, links: Array<Record<string, unknown>>) {
-  return {
-    id: row.id, contentType: row.content_type, creatorName: row.creator_name, seriesTitle: row.series_title,
-    title: row.title, description: row.description, priority: row.priority, status: row.status,
-    addedOn: row.added_on, watchedOn: row.watched_on, comment: row.comment, sourceSystem: row.source_system,
-    externalId: row.external_id, version: row.version, createdAt: row.created_at, updatedAt: row.updated_at,
-    links: links.map((link) => ({ id: link.id, label: link.label, url: link.url, linkType: link.link_type, position: link.position })),
-  };
-}
-
-async function attachLinks(rows: Array<Record<string, unknown>>) {
-  if (!rows.length) return [];
-  const ids = rows.map((row) => row.id as string);
-  const placeholders = ids.map(() => "?").join(",");
-  const { results } = await env.DB.prepare(`SELECT * FROM item_links WHERE item_id IN (${placeholders}) ORDER BY position ASC`).bind(...ids).all<Record<string, unknown>>();
-  const byItem = new Map<string, Array<Record<string, unknown>>>();
-  for (const link of results ?? []) {
-    const itemId = String(link.item_id);
-    byItem.set(itemId, [...(byItem.get(itemId) ?? []), link]);
-  }
-  return rows.map((row) => toItem(row, byItem.get(String(row.id)) ?? []));
-}
-
 export async function GET(request: Request) {
-  await ensureSchema();
   const { searchParams } = new URL(request.url);
-  const query = cleanText(searchParams.get("q"), 200);
-  const type = cleanText(searchParams.get("type"));
-  const status = cleanText(searchParams.get("status"));
-  const creator = cleanText(searchParams.get("creator"), 250);
-  const includeDeleted = searchParams.get("include_deleted") === "true";
-  const limit = Math.min(Math.max(Number(searchParams.get("limit")) || 50, 1), 100);
-  const offset = Math.max(Number(searchParams.get("offset")) || 0, 0);
-  const clauses: string[] = [];
-  const values: string[] = [];
-  if (!includeDeleted) clauses.push("deleted_at IS NULL");
-  if (query) { clauses.push("(title LIKE ? OR description LIKE ? OR creator_name LIKE ? OR series_title LIKE ?)"); values.push(`%${query}%`, `%${query}%`, `%${query}%`, `%${query}%`); }
-  if (contentTypes.has(type as ContentType)) { clauses.push("content_type = ?"); values.push(type); }
-  if (statuses.has(status as Status)) { clauses.push("status = ?"); values.push(status); }
-  if (creator) { clauses.push("creator_name = ?"); values.push(creator); }
-  const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
-  const [rows, totalResult] = await env.DB.batch([
-    env.DB.prepare(`SELECT * FROM items ${where} ORDER BY added_on IS NULL ASC, added_on DESC, created_at DESC LIMIT ? OFFSET ?`).bind(...values, limit, offset),
-    env.DB.prepare(`SELECT COUNT(*) AS count FROM items ${where}`).bind(...values),
-  ]);
-  const results = rows.results as Array<Record<string, unknown>> | undefined;
-  const items = await attachLinks(results ?? []);
-  const total = Number((totalResult.results?.[0] as { count?: number } | undefined)?.count ?? 0);
-  return Response.json({ items, pagination: { total, limit, offset, hasMore: offset + items.length < total } });
+  const result = await listItems({
+    q: searchParams.get("q"),
+    type: searchParams.get("type"),
+    status: searchParams.get("status"),
+    creator: searchParams.get("creator"),
+    includeDeleted: searchParams.get("include_deleted") === "true",
+    limit: Number(searchParams.get("limit")) || undefined,
+    offset: Number(searchParams.get("offset")) || undefined,
+  });
+  return Response.json(result);
 }
 
 export async function POST(request: Request) {
