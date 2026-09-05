@@ -11,22 +11,58 @@ function newestRecord(current: Record<string, unknown>, previous: Record<string,
   return currentCaptured > previousCaptured;
 }
 
-export async function GET() {
+/** Resolves ?days= into the earliest as_of_date to return, or null for "all".
+ *
+ *  The page filters a period client-side as
+ *  `latest_date - (period - 1) days`, keeping that many calendar days
+ *  including the latest, so the cutoff computed here reproduces exactly the
+ *  set the client would have kept. Without a cutoff every request read the
+ *  whole of asset_snapshots and asset_positions -- a cost that grew with the
+ *  history rather than with what the page shows.
+ *
+ *  The latest date has to span both tables: the normalized snapshots hold
+ *  current data and asset_history_records holds the imported past, and the
+ *  client merges them before picking its own latest. */
+async function cutoffDate(days: string): Promise<string | null> {
+  if (!days || days === "all") return null;
+  const window = Number(days);
+  if (!Number.isFinite(window) || window < 1) return null;
+  const row = (
+    await env.DB.prepare(
+      `SELECT MAX(latest) AS latest FROM (
+         SELECT MAX(as_of_date) AS latest FROM asset_snapshots
+         UNION ALL SELECT MAX(as_of_date) FROM asset_history_records)`,
+    ).all<{ latest: string | null }>()
+  ).results?.[0];
+  const latest = row?.latest;
+  if (!latest) return null;
+  const date = new Date(`${latest}T00:00:00Z`);
+  if (Number.isNaN(date.getTime())) return null;
+  date.setUTCDate(date.getUTCDate() - Math.trunc(window) + 1);
+  return date.toISOString().slice(0, 10);
+}
+
+export async function GET(request: Request) {
   await ensureSchema({ seed: false });
-  const records = (await env.DB.prepare("SELECT * FROM asset_history_records ORDER BY as_of_date ASC, captured_at ASC").all<Record<string, unknown>>()).results ?? [];
+  const cutoff = await cutoffDate(new URL(request.url).searchParams.get("days") ?? "");
+  const since = cutoff ?? "";
+  const filterSql = cutoff ? " WHERE as_of_date >= ?" : "";
+  const bind = cutoff ? [since] : [];
+  const records = (await env.DB.prepare(`SELECT * FROM asset_history_records${filterSql} ORDER BY as_of_date ASC, captured_at ASC`).bind(...bind).all<Record<string, unknown>>()).results ?? [];
   let snapshots = records.filter(row => row.record_type === "wallet").map(row => JSON.parse(String(row.payload_json)));
   let exchangeSnapshots = records.filter(row => row.record_type === "exchange").map(row => JSON.parse(String(row.payload_json)));
 
   // The daily collector writes the normalized current snapshot tables, while
   // the migration endpoint writes the legacy history table. Merge both here so
   // today's data is available to the same charts as imported history.
+  const snapshotFilter = cutoff ? " WHERE s.as_of_date >= ?" : "";
   const normalized = (await env.DB.prepare(`SELECT s.*, a.source_type, a.display_name, a.public_address, r.received_at AS sync_received_at
     FROM asset_snapshots s JOIN asset_sources a ON a.id=s.source_id
-    LEFT JOIN asset_sync_runs r ON r.id=s.run_id
-    ORDER BY s.as_of_date ASC, s.captured_at ASC`).all<Record<string, unknown>>()).results ?? [];
+    LEFT JOIN asset_sync_runs r ON r.id=s.run_id${snapshotFilter}
+    ORDER BY s.as_of_date ASC, s.captured_at ASC`).bind(...bind).all<Record<string, unknown>>()).results ?? [];
   const normalizedPositions = (await env.DB.prepare(`SELECT p.*, s.id AS snapshot_id, s.source_id, s.as_of_date, s.captured_at, a.source_type, a.display_name
-    FROM asset_positions p JOIN asset_snapshots s ON s.id=p.snapshot_id JOIN asset_sources a ON a.id=s.source_id
-    ORDER BY s.as_of_date ASC, s.captured_at ASC`).all<Record<string, unknown>>()).results ?? [];
+    FROM asset_positions p JOIN asset_snapshots s ON s.id=p.snapshot_id JOIN asset_sources a ON a.id=s.source_id${snapshotFilter}
+    ORDER BY s.as_of_date ASC, s.captured_at ASC`).bind(...bind).all<Record<string, unknown>>()).results ?? [];
   const positionsBySnapshot = new Map<string, Record<string, unknown>[]>();
   for (const position of normalizedPositions) {
     // Position rows belong to one concrete asset_snapshots row. Do not group
