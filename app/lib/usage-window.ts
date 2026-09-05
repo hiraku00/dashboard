@@ -3,10 +3,10 @@
  *
  *  D1's free-tier daily counters reset at UTC 00:00, so the panel's "today" is
  *  a UTC day. Read from Bangkok that day starts at 07:00 and from Japan at
- *  09:00, which makes the figure confusing on its own: checking just after the
- *  local morning it looks like nothing has been used, and the collector's
- *  overnight sync appears to have consumed nothing at all -- because it ran
- *  before the boundary and was counted against the previous UTC day. */
+ *  09:00, so checking early in the local morning shows a near-zero figure that
+ *  looks broken rather than simply young. The collector's schedule is anchored
+ *  to UTC for the same reason, so its sync always lands inside the window this
+ *  panel is reporting. */
 
 export type UsageWindow = { label: string; start: string; end: string; offsetLabel: string };
 

@@ -148,7 +148,7 @@ export default function StoragePage() {
                 </span>
               ))}
               <span className="usage-window-caveat">
-                コレクタの同期は 06:30〜07:50（バンコク）に走るため、07:00 より前の実行は前日分として計上されます。
+                コレクタの同期もUTC基準（00:00〜02:50）で動くため、必ずこの集計期間の中に入ります。
               </span>
             </p>
             <div className="usage-meter" aria-label={`本日の読み取り行数 ${todayReadPct.toFixed(2)}%`}>

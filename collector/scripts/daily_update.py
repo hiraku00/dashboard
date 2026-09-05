@@ -14,8 +14,9 @@ import os
 import subprocess
 import sys
 import uuid
-from datetime import date, datetime, timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -60,6 +61,34 @@ def scheduled_times(schedule: dict) -> set[str]:
             times.add(current.strftime("%H:%M"))
             current += timedelta(minutes=interval)
     return times
+
+
+def schedule_now(schedule: dict, now: datetime | None = None) -> datetime:
+    """Current time in the timezone the schedule's slots are written in.
+
+    The `timezone` setting used to be declared but never read: slots were
+    matched against the Mac's local clock wherever it happened to be. That
+    matters because D1's free-tier counters reset at UTC 00:00, and the
+    portal's usage page reports a UTC day -- a run scheduled in local time
+    lands on whichever side of that boundary the machine's offset puts it,
+    so the same configuration counted against today in one country and
+    yesterday in another.
+
+    "system" (or an unset/unknown value) keeps the previous local-clock
+    behaviour; any IANA name, including "UTC", anchors the slots to that zone.
+    """
+    reference = now or datetime.now()
+    name = str(schedule.get("timezone", "system")).strip()
+    if not name or name.lower() == "system":
+        return reference if reference.tzinfo is None else reference.astimezone()
+    try:
+        zone = ZoneInfo(name)
+    except (ZoneInfoNotFoundError, ValueError):
+        LOG.warning("Unknown schedule timezone %r; falling back to system time", name)
+        return reference if reference.tzinfo is None else reference.astimezone()
+    if reference.tzinfo is None:
+        reference = reference.astimezone()
+    return reference.astimezone(zone)
 
 
 def due_slot(schedule: dict, now: datetime) -> str | None:
@@ -247,10 +276,15 @@ def save_retry_state(
 
 def main() -> int:
     schedule = load_schedule()
-    now = datetime.now()
+    # Slots are matched in the schedule's own timezone, not the Mac's.
+    now = schedule_now(schedule)
     force_run = os.environ.get("MANAGE_ASSET_FORCE_RUN") == "1"
     slot = due_slot(schedule, now)
-    as_of_date = date.today().isoformat()
+    # Same timezone as the slots, so the "already ran this slot" key and the
+    # snapshot's business date cannot disagree. With the UTC window the date
+    # matches the local one in both Bangkok and Japan, since the run happens
+    # in their morning.
+    as_of_date = now.date().isoformat()
     slot_key = f"{as_of_date}T{slot}" if slot else None
     existing_state = {}
     if STATE_FILE.exists():

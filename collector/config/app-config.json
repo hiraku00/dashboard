@@ -1,17 +1,17 @@
 {
   "daily_update": {
     "enabled": true,
-    "timezone": "system",
+    "timezone": "UTC",
     "windows": [
       {
-        "start": "06:30",
-        "end": "07:50",
+        "start": "00:00",
+        "end": "01:20",
         "interval_minutes": 10
       }
     ],
     "additional_retry_times": [
-      "09:10",
-      "09:20"
+      "02:40",
+      "02:50"
     ]
   }
 }
