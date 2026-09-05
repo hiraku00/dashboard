@@ -475,5 +475,15 @@ input:hover, select:hover { border-color: rgba(60,60,67,.42); }
 .topbar { display:block !important; }
 .topbar .brand, .topbar .theme-toggle, .topbar .sr { display:none !important; }
 .topbar .bar-inner { min-height:52px; justify-content:flex-end; }
+/* Embedded mode already hides .brand, .theme-toggle, .sr (above) and
+   .topbar nav (near .embedded .topbar nav, earlier in this file), which
+   leaves .bar-inner with nothing to show but still reserving min-height:52px
+   -- a blank bar between the host app's own tabs and this app's content, on
+   every view. The host (app/manage-asset-app.tsx) always renders its own
+   navigation, so the whole topbar is redundant in embedded mode; collapse it.
+   !important is required to win over the unconditional `.topbar { display:
+   block !important }` above -- higher specificity (two classes) beats it
+   regardless of source order. */
+.embedded .topbar { display: none !important; }
 html, body { min-height:0 !important; overflow:hidden !important; }
 .shell { max-width:1480px; padding-top:24px; }
