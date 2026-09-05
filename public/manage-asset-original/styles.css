@@ -496,5 +496,15 @@ input:hover, select:hover { border-color: rgba(60,60,67,.42); }
    #overview, which has no .page-head). The 18px bottom padding is untouched:
    it still spaces the heading from the card below it. */
 .embedded .page-head { padding-top: 0; }
+/* Same redundant-spacing issue as .page-head above, on the one view that has
+   no .page-head: #overview's .hero card carries its own margin-top (30px, or
+   10px under the narrow-width media query), which existed to clear the
+   standalone app's topbar. Stacked on .shell's 24px embedded padding, with no
+   data-alerts banner to visually justify it, overview started noticeably
+   lower than the other views now that page-head's share was removed above.
+   Specificity here (.embedded#overview>.hero, two classes) beats both the
+   base rule and the narrow-width one (#overview>.hero, one class each)
+   regardless of source order, so no !important is needed. */
+.embedded #overview > .hero { margin-top: 0; }
 html, body { min-height:0 !important; overflow:hidden !important; }
 .shell { max-width:1480px; padding-top:24px; }
