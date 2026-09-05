@@ -182,3 +182,26 @@ test("GET / does not ask the client to fetch what the server already rendered", 
   // somewhere.
   assert.doesNotMatch(html, /読み込み中/);
 });
+
+// app/watch-list/page.tsx is now a Server Component the same way
+// app/page.tsx is (see app/lib/queries/watch-list.ts). Same two assertions
+// as the portal page above, applied to the first page of the default
+// (unfiltered) item list and the stats cards.
+test("GET /watch-list embeds the real item count and first page of rows in the server-rendered HTML", async () => {
+  const [pageResponse, itemsPage, stats] = await Promise.all([
+    fetch(`${BASE}/watch-list`),
+    fetch(`${BASE}/api/items?limit=10&offset=0`).then((response) => response.json()),
+    fetch(`${BASE}/api/stats`).then((response) => response.json()),
+  ]);
+  const html = await pageResponse.text();
+  const rowCount = (html.match(/<tr class="/g) ?? []).length;
+  assert.equal(rowCount, itemsPage.items.length, "expected the server-rendered table to already have the first page of rows");
+  const summaryTotal = html.match(/summary-card"><span>すべて<\/span><strong>(\d+)/);
+  assert.ok(summaryTotal, "expected the 'すべて' summary card to have a numeric total in the raw HTML");
+  assert.equal(Number(summaryTotal[1]), stats.total);
+});
+
+test("GET /watch-list does not ask the client to fetch what the server already rendered", async () => {
+  const html = await fetch(`${BASE}/watch-list`).then((response) => response.text());
+  assert.doesNotMatch(html, /読み込み中/);
+});
