@@ -17,7 +17,7 @@
   const currencyQuantity=(value,symbol,key)=>value==null?'—':fixed(value,tokenDigits(symbol,key));
   const currencyFiat=(value,_symbol,currency)=>value==null?'—':`${currency==='USD'?'$':'¥'}${fixed(value,fiatDigits(currency))}`;
   const signedCurrencyFiat=(value,symbol,currency)=>value==null?'—':`${value>0?'+':value<0?'-':''}${currencyFiat(Math.abs(value),symbol,currency)}`;
-  let state={wallets:[],snapshots:[],sources:[],exchange_snapshots:[]};
+  let state={wallets:[],snapshots:[],sources:[],exchange_snapshots:[]},historyDays=0;
   let history={snapshots:[],exchange_snapshots:[]};
   let lidoRewards=[];
   let usdJpyRates=[];
@@ -68,7 +68,30 @@
   function providerLabel(source){return providerLabels[source.provider]||source.provider}
   function renderSettings(){const sourceOptions=state.sources.map(source=>`<option value="${escapeHtml(source.source_id)}">${escapeHtml(source.display_name)} (${escapeHtml(providerLabel(source))})</option>`).join(''),walletOptions=state.wallets.filter(wallet=>wallet.enabled!==false).map(wallet=>`<option value="${escapeHtml(wallet.wallet_id)}">${escapeHtml(wallet.name)} (${escapeHtml(wallet.address.slice(0,6)+'…'+wallet.address.slice(-4))})</option>`).join('');$('updateSource').innerHTML=sourceOptions||'<option value="">先に取引所を追加してください</option>';$('importWallet').innerHTML=walletOptions||'<option value="">有効なウォレットがありません</option>';$('sourceList').innerHTML=state.sources.length?`<div class="table-scroll"><table><caption class="sr">接続済み取引所</caption><thead><tr><th>表示名</th><th>取引所</th><th>認証情報</th><th>操作</th></tr></thead><tbody>${state.sources.map(source=>`<tr><td><b>${escapeHtml(source.display_name)}</b></td><td>${escapeHtml(providerLabel(source))}</td><td>${source.credential_configured?'保存済み':'未設定'}</td><td><button class="secondary source-credentials" data-source="${escapeHtml(source.source_id)}">認証情報を更新</button> <button class="secondary source-test" data-source="${escapeHtml(source.source_id)}">接続確認</button> <button class="ghost source-delete" data-source="${escapeHtml(source.source_id)}">削除</button></td></tr>`).join('')}</tbody></table></div>`:'<div class="empty">取引所はまだ登録されていません。</div>';$('walletSettings').innerHTML=state.wallets.length?`<div class="table-scroll"><table><caption class="sr">ウォレット設定</caption><thead><tr><th>表示名</th><th>公開アドレス</th><th>有効</th></tr></thead><tbody>${state.wallets.map((wallet,index)=>`<tr data-index="${index}"><td><input class="wallet-name" value="${escapeHtml(wallet.name)}"></td><td><input class="wallet-address" value="${escapeHtml(wallet.address)}" placeholder="0xから始まる40桁"></td><td><input class="wallet-enabled" type="checkbox" ${wallet.enabled!==false?'checked':''} aria-label="${escapeHtml(wallet.name)}を有効にする"></td></tr>`).join('')}</tbody></table></div>`:'<div class="note">ウォレットが未登録です。</div>'}
   function render(){renderOverview();renderLocations();renderCurrency();renderSettings()}
-  async function load(){const [nextState,nextHistory,providers,rewards,rates]=await Promise.all([fetch('/api/manage-asset/state',{cache:'no-store'}).then(response=>response.json()),fetch('/api/manage-asset/history',{cache:'no-store'}).then(response=>response.json()),fetch('/api/providers',{cache:'no-store'}).then(response=>response.json()),fetch('/api/lido-rewards',{cache:'no-store'}).then(response=>response.ok?response.json():{rows:[]}).catch(()=>({rows:[]})),fetch('/api/usd-jpy-rates',{cache:'no-store'}).then(response=>response.ok?response.json():{rows:[]}).catch(()=>({rows:[]}))]);state=nextState;history=nextHistory; lidoRewards=rewards.rows||[];usdJpyRates=rates.rows||[];providerLabels=Object.fromEntries((providers.providers||[]).map(item=>[item.provider,item.label]));$('provider').innerHTML=providers.providers.map(item=>`<option value="${escapeHtml(item.provider)}">${escapeHtml(item.label)}</option>`).join('');render()}
+  // 履歴APIは ?days= で期間を絞れる。初期表示は90日だけ読み、7d/30d/90d は
+  // 追加取得なしで賄う。All を選んだときだけ全期間を取り直し、一度読んだら
+  // それ以降は再取得しない。取得に失敗しても既存の履歴のまま描画を続ける。
+  // stETH だけは Lido の CSV 履歴とスナップショットを移行境界日('2026-07-12')
+  // で繋いで表示する。CSV最終日より後のスナップショットしか使われないため、
+  // 期間を絞った履歴だと境界日から窓の開始日までが欠ける(いまは90日窓が境界日
+  // より前まで届くので影響しないが、日が経つほど窓が境界日を追い越す)。
+  // 選択中は全期間を読み込んでおく。
+  async function ensureStethHistory(){
+    if(String($('currencySelect')?.value||'').toLowerCase()!=='steth')return false;
+    if(historyDays===Infinity)return false;
+    await ensureHistory('all');
+    return true;
+  }
+  async function ensureHistory(period){
+    const need=period==='all'?Infinity:Number(period)||0;
+    if(need<=historyDays)return;
+    try{
+      const response=await fetch(`/api/manage-asset/history?days=${period==='all'?'all':need}`,{cache:'no-store'});
+      if(!response.ok)return;
+      history=await response.json();historyDays=need;
+    }catch(error){/* 取得に失敗したら既存の履歴で描画を続ける */}
+  }
+  async function load(){const [nextState,nextHistory,providers,rewards,rates]=await Promise.all([fetch('/api/manage-asset/state',{cache:'no-store'}).then(response=>response.json()),fetch('/api/manage-asset/history?days=90',{cache:'no-store'}).then(response=>response.json()),fetch('/api/providers',{cache:'no-store'}).then(response=>response.json()),fetch('/api/lido-rewards',{cache:'no-store'}).then(response=>response.ok?response.json():{rows:[]}).catch(()=>({rows:[]})),fetch('/api/usd-jpy-rates',{cache:'no-store'}).then(response=>response.ok?response.json():{rows:[]}).catch(()=>({rows:[]}))]);state=nextState;history=nextHistory;historyDays=90; lidoRewards=rewards.rows||[];usdJpyRates=rates.rows||[];providerLabels=Object.fromEntries((providers.providers||[]).map(item=>[item.provider,item.label]));$('provider').innerHTML=providers.providers.map(item=>`<option value="${escapeHtml(item.provider)}">${escapeHtml(item.label)}</option>`).join('');render();if(await ensureStethHistory())renderCurrency()}
 
   async function pollJob(job,statusId,basePath){const started=performance.now();while(true){const response=await fetch(`${basePath}/${encodeURIComponent(job.run_id)}`),current=await response.json();if(!response.ok)throw new Error(current.error||'進捗を取得できませんでした');const seconds=Math.round(current.elapsed_seconds??(performance.now()-started)/1000),total=job.total,completed=current.completed||0;if(current.status==='running'){const element=$(statusId);element.className='status';element.innerHTML=`<div class="progress-status"><div class="progress-metric"><strong>${total}</strong><span>対象</span></div><div class="progress-metric"><strong>${completed}</strong><span>完了</span></div><div class="progress-metric"><strong>${Math.max(0,total-completed)}</strong><span>残り</span></div><div class="progress-metric"><strong>${current.success||0}</strong><span>成功</span></div><div class="progress-metric"><strong>${current.failed||0}</strong><span>失敗</span></div></div><div class="progress-elapsed">経過時間 ${seconds}秒</div>`;await new Promise(resolve=>setTimeout(resolve,1000));continue}const results=current.results||[],success=results.filter(item=>item.status==='success'),failed=results.filter(item=>item.status==='error');setStatus(statusId,`完了: 成功 ${success.length}件 / 失敗 ${failed.length}件（${seconds}秒）${failed.length?`\n${failed.map(item=>`${item.name}: ${item.error}`).join('\n')}`:''}`,failed.length>0&&success.length===0);await load();return}}
   async function runButton(button,task){button.disabled=true;try{await task()}catch(error){throw error}finally{button.disabled=false}}
@@ -81,10 +104,10 @@
   $('themeToggle')?.addEventListener('click',toggleTheme);
   matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change',()=>{if(!document.documentElement.dataset.theme)updateThemeControl()});
   $('dust').addEventListener('change',()=>renderAssets(Core.holdings(state),Core.total(state)));
-  $('assetPeriod').addEventListener('change',renderOverview);
-  $('currencySelect').addEventListener('change',()=>{currencyTablePage=0;$('currencyPeriod').value='7';renderCurrency();attachChartTooltip($('currencyChart'))});
+  $('assetPeriod').addEventListener('change',async()=>{await ensureHistory($('assetPeriod').value);renderOverview()});
+  $('currencySelect').addEventListener('change',async()=>{if(await ensureStethHistory()){}currencyTablePage=0;$('currencyPeriod').value='7';renderCurrency();attachChartTooltip($('currencyChart'))});
   $('currencyView').addEventListener('change',()=>{renderCurrency();attachChartTooltip($('currencyChart'))});
-  $('currencyPeriod').addEventListener('change',()=>{renderCurrency();attachChartTooltip($('currencyChart'))});
+  $('currencyPeriod').addEventListener('change',async()=>{await ensureHistory($('currencyPeriod').value);renderCurrency();attachChartTooltip($('currencyChart'))});
   $('updateWallet').addEventListener('click',()=>runButton($('updateWallet'),async()=>{const walletId=$('importWallet').value;if(!walletId)throw new Error('更新対象ウォレットを選択してください');setStatus('importStatus','取得中…');const job=await request(`/api/wallets/auto-import/${encodeURIComponent(walletId)}`,{as_of_date:localDate()});await pollJob(job,'importStatus','/api/wallets/auto-import')}).catch(error=>setStatus('importStatus',error.message,true)));
   $('updateAllWallets').addEventListener('click',()=>runButton($('updateAllWallets'),async()=>{setStatus('importStatus','更新中…');const job=await request('/api/wallets/auto-import',{as_of_date:localDate()});await pollJob(job,'importStatus','/api/wallets/auto-import')}).catch(error=>setStatus('importStatus',error.message,true)));
   $('updateExchange').addEventListener('click',()=>runButton($('updateExchange'),async()=>{const sourceId=$('updateSource').value;if(!sourceId)throw new Error('接続先を選択してください');setStatus('exchangeStatus','取得中…');const preview=await request(`/api/sources/${encodeURIComponent(sourceId)}/preview`,{});await request(`/api/sources/${encodeURIComponent(sourceId)}/snapshots`,{snapshot:preview.snapshot});setStatus('exchangeStatus','更新が完了しました。');await load()}).catch(error=>setStatus('exchangeStatus',error.message,true)));
