@@ -36,31 +36,69 @@ async function storeEntry(runId: string, entry: Entry, now: string, knownUsedByt
   // its own raw object instead of leaving 8-20 copies a day in R2, matching the
   // one-snapshot-per-source-per-date rule the D1 rows now follow.
   const key = `manage-asset/raw/${asOfDate.replaceAll("-", "/")}/${sourceId}.json`;
-  let stored: { key: string; size: number; sha256: string; usedBytes: number } | null = null; let storageStatus = "local_only";
-  try { stored = await putPortalObject({ key, body: rawBody, category: "manage-asset/raw", contentType: "application/json", expiresAt: new Date(Date.now() + 365 * 86400000).toISOString(), knownUsedBytes }); storageStatus = "stored"; } catch (error) { if (!(error instanceof Error) || !error.message.includes("安全上限")) throw error; }
   const totals = entry.snapshot as Record<string, unknown>; const totalUsd = Number(totals.totalUsd ?? totals.total_usd ?? 0) || 0; const totalJpy = Number(totals.totalJpy ?? totals.total_jpy ?? 0) || 0; const fx = Number(totals.fxUsdjpy ?? totals.fx_usdjpy ?? 0) || null;
   // One snapshot per source and date. A later sync on the same day replaces the
   // row it already wrote, which is what both readers resolve to anyway; it also
   // makes a retried POST (the collector retries on timeout, and the request is
   // not idempotent) unable to duplicate a snapshot.
+  //
+  // The D1 row is written BEFORE the R2 put, with raw_storage_status starting
+  // at 'local_only'. It used to be the other way around: R2 first, then this
+  // insert. When the R2 put succeeded and this insert then failed (a transient
+  // D1 error, say), the object was left in storage_objects with no snapshot
+  // row pointing at it -- an orphan that only a future sync landing on the
+  // exact same (source, date) key would ever overwrite. Writing D1 first means
+  // a D1 failure here still fails the whole entry (via the empty snapshotId
+  // check below) but never leaves an R2 object behind, since R2 hasn't been
+  // touched yet.
   const upserted = await env.DB.prepare(`INSERT INTO asset_snapshots (id,run_id,source_id,captured_at,as_of_date,total_usd,total_jpy,fx_usdjpy,raw_object_key,raw_sha256,raw_size,raw_storage_status) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
-    ON CONFLICT(source_id,as_of_date) DO UPDATE SET run_id=excluded.run_id,captured_at=excluded.captured_at,total_usd=excluded.total_usd,total_jpy=excluded.total_jpy,fx_usdjpy=excluded.fx_usdjpy,raw_object_key=excluded.raw_object_key,raw_sha256=excluded.raw_sha256,raw_size=excluded.raw_size,raw_storage_status=excluded.raw_storage_status
-    RETURNING id`).bind(crypto.randomUUID(),runId,sourceId,capturedAt,asOfDate,totalUsd,totalJpy,fx,stored?.key ?? null,stored?.sha256 ?? null,stored?.size ?? rawBody.byteLength,storageStatus).all<{ id: string }>();
+    ON CONFLICT(source_id,as_of_date) DO UPDATE SET run_id=excluded.run_id,captured_at=excluded.captured_at,total_usd=excluded.total_usd,total_jpy=excluded.total_jpy,fx_usdjpy=excluded.fx_usdjpy
+    RETURNING id`).bind(crypto.randomUUID(),runId,sourceId,capturedAt,asOfDate,totalUsd,totalJpy,fx,null,null,rawBody.byteLength,"local_only").all<{ id: string }>();
   const snapshotId = String(upserted.results?.[0]?.id ?? "");
   if (!snapshotId) throw new SyncEntryError("スナップショットを保存できませんでした。");
+  // Best-effort from here on: the figures above are already durable, so an R2
+  // failure -- the safety limit, or anything else putPortalObject can throw --
+  // degrades to local_only rather than failing an entry whose real numbers
+  // saved fine.
+  let storageStatus = "local_only"; let rawStorageError: string | undefined; let usedBytesResult: number | undefined;
+  let storedRaw: { key: string; sha256: string; size: number } | null = null;
+  try {
+    const stored = await putPortalObject({ key, body: rawBody, category: "manage-asset/raw", contentType: "application/json", expiresAt: new Date(Date.now() + 365 * 86400000).toISOString(), knownUsedBytes });
+    storedRaw = stored; usedBytesResult = stored.usedBytes;
+  } catch (error) {
+    rawStorageError = error instanceof Error ? error.message : "原本の保存に失敗しました。";
+  }
+  // Linking the now-uploaded R2 object to its snapshot row rides in the same
+  // batch as the two statements below, rather than its own prepare().run().
+  // D1's batch() is one transaction, so an ordinary D1 write failure here
+  // cannot silently drop the link while still committing last_success_at and
+  // clearing the previous positions -- either all three land, or none do.
+  //
+  // This narrows, but does not fully close, the orphan window from before:
+  // if this batch call itself fails (not just one statement in it -- the
+  // whole call, e.g. a transient D1 outage), the snapshot row keeps its
+  // initial local_only status while the object already sits in R2. That is
+  // self-healing the same way the old bug was "recoverable" in practice: the
+  // R2 key is deterministic per (source, date), so the next successful sync
+  // for this same source and date overwrites it and links it correctly. The
+  // difference from before is that even in this residual case the totals and
+  // positions already committed above are never lost -- only the archived
+  // raw payload's link is temporarily missing, not the numbers anyone reads.
   await env.DB.batch([
     env.DB.prepare("UPDATE asset_sources SET last_success_at=? WHERE id=?").bind(capturedAt,sourceId),
     // The upsert may have reused an existing snapshot row, whose positions now
     // describe the earlier sync. Replace them rather than adding to them.
     env.DB.prepare("DELETE FROM asset_positions WHERE snapshot_id=?").bind(snapshotId),
+    ...(storedRaw ? [env.DB.prepare("UPDATE asset_snapshots SET raw_object_key=?,raw_sha256=?,raw_size=?,raw_storage_status='stored' WHERE id=?").bind(storedRaw.key,storedRaw.sha256,storedRaw.size,snapshotId)] : []),
   ]);
+  if (storedRaw) storageStatus = "stored";
   const suppliedPositions = (Array.isArray(entry.positions) ? entry.positions : []).filter((position): position is Record<string, unknown> => Boolean(position && typeof position === "object"));
   // A wallet's stETH is nested under protocols[].panels[].assets[] in the local
   // DeBank snapshot. Never rely only on the flattened positions payload here.
   const positions = normalizeSyncedPositions(entry.source, entry.snapshot, suppliedPositions);
   const statements = positions.slice(0, 2000).map((position) => env.DB.prepare("INSERT INTO asset_positions (id,snapshot_id,symbol,quantity,price_usd,value_usd,value_jpy,location_type,protocol,position_type,is_debt) VALUES (?,?,?,?,?,?,?,?,?,?,?)").bind(crypto.randomUUID(),snapshotId,clean(position.symbol,100)||"UNKNOWN",position.quantity ?? 0,position.quantity && position.valueUsd ? position.valueUsd / position.quantity : null,position.valueUsd,fx ? position.valueUsd * fx : null,position.locationType,clean(position.protocol,200),position.positionType,position.positionType === "debt" ? 1 : 0));
   for (let start = 0; start < statements.length; start += 50) await env.DB.batch(statements.slice(start,start+50));
-  return { sourceId, snapshotId, rawStorageStatus: storageStatus, usedBytes: stored?.usedBytes ?? knownUsedBytes };
+  return { sourceId, snapshotId, rawStorageStatus: storageStatus, rawStorageError, usedBytes: usedBytesResult ?? knownUsedBytes };
 }
 
 export async function GET() {
@@ -118,7 +156,7 @@ export async function POST(request: Request) {
       try {
         const stored = await storeEntry(run.id, entry, now, usedBytes);
         usedBytes = stored.usedBytes ?? usedBytes;
-        results.push({ sourceId: stored.sourceId, snapshotId: stored.snapshotId, rawStorageStatus: stored.rawStorageStatus });
+        results.push({ sourceId: stored.sourceId, snapshotId: stored.snapshotId, rawStorageStatus: stored.rawStorageStatus, ...(stored.rawStorageError ? { rawStorageError: stored.rawStorageError } : {}) });
       } catch (error) {
         // One bad source must not discard the sources that already stored, and
         // must not hide which one failed: report it per row and keep going.
@@ -131,7 +169,7 @@ export async function POST(request: Request) {
   if (body.action !== "source" || !body.source || !body.snapshot || containsCredential(body)) return Response.json({ error: "source同期データが不正です。秘密情報は送信しないでください。" }, { status: 400 });
   try {
     const stored = await storeEntry(run.id, body, now);
-    return Response.json({ ok: true, runId: run.id, snapshotId: stored.snapshotId, sourceId: stored.sourceId, rawStorageStatus: stored.rawStorageStatus });
+    return Response.json({ ok: true, runId: run.id, snapshotId: stored.snapshotId, sourceId: stored.sourceId, rawStorageStatus: stored.rawStorageStatus, ...(stored.rawStorageError ? { rawStorageError: stored.rawStorageError } : {}) });
   } catch (error) {
     if (error instanceof SyncEntryError) return Response.json({ error: error.message }, { status: 400 });
     throw error;
