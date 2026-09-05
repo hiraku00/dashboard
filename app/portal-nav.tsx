@@ -17,6 +17,17 @@ export function PortalNav({ active }: { active?: string }) {
           key={href}
           className={active === href ? "active" : ""}
           href={href}
+          // Next.js prefetches a <Link> target as soon as it enters the
+          // viewport, not only on hover -- confirmed by watching network
+          // requests fire for every nav item the instant this bar rendered,
+          // with no interaction at all. Once a destination page becomes a
+          // Server Component that reads D1 (the RSC migration this nav is
+          // part of), that means every page view silently reads D1 once for
+          // each nav item shown, whether or not anyone ever clicks it. This
+          // dashboard's D1 read quota has been a repeated concern this
+          // project, so prefetching is turned off here rather than left to
+          // be discovered as a quota surprise once more pages are migrated.
+          prefetch={false}
         >
           {label}
         </Link>

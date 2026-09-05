@@ -147,3 +147,38 @@ test("an unknown route still 404s through the Worker rather than hanging", async
   const response = await fetch(`${BASE}/this-route-does-not-exist`);
   assert.equal(response.status, 404);
 });
+
+// app/page.tsx is now a Server Component that fetches the portal summary
+// directly from D1 (app/lib/queries/portal.ts) instead of shipping an empty
+// shell and letting the client fetch /api/portal/summary after hydration.
+// This is the assertion the PR1 harness comment promised: unlike the tests
+// above (which only prove the route responds), this proves the effect the
+// whole migration exists for -- the number is already in the HTML that came
+// back from the server, not something a client-side fetch had to fill in
+// afterward. Comparing against the live /api/portal/summary value (rather
+// than a hardcoded number) keeps this passing as the seeded data changes.
+test("GET / embeds the real Watch List total in the server-rendered HTML", async () => {
+  const [pageResponse, summary] = await Promise.all([
+    fetch(`${BASE}/`),
+    fetch(`${BASE}/api/portal/summary`).then((response) => response.json()),
+  ]);
+  const html = await pageResponse.text();
+  // React renders a text-node boundary comment between static text and a
+  // dynamic value (e.g. `>807<!-- -->件<`), so this checks for the number
+  // immediately following the Watch List card's opening tag rather than an
+  // exact adjacent string match.
+  const watchCard = html.match(/portal-card-watch"[^>]*>.*?<strong>(\d+)/s);
+  assert.ok(watchCard, "expected a portal-card-watch section with a numeric total in the raw HTML");
+  assert.equal(Number(watchCard[1]), summary.watch.total);
+});
+
+test("GET / does not ask the client to fetch what the server already rendered", async () => {
+  const html = await fetch(`${BASE}/`).then((response) => response.text());
+  // "読み込み中" (loading) is what every card shows before the client-side
+  // fetch resolves; the pre-RSC page always shipped this in its initial HTML
+  // because it fetched nothing on the server. Its absence here is direct
+  // evidence the client hydrates into already-complete data instead of a
+  // loading state, not just that portalSummary() happens to have been called
+  // somewhere.
+  assert.doesNotMatch(html, /読み込み中/);
+});
