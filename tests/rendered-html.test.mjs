@@ -79,12 +79,17 @@ test("labels non-stETH balance deltas as changes rather than rewards", async () 
 });
 
 test("derives portal JPY totals when synced snapshot totals are absent", async () => {
-  const route = await readFile(
-    new URL("../app/api/portal/summary/route.ts", import.meta.url),
-    "utf8",
-  );
-  assert.match(route, /asset_positions/);
-  assert.match(route, /storedJpy \|\| positionTotals\?\.jpy/);
+  // This logic moved out of the route handler into app/lib/queries/portal.ts
+  // (the D1 query) and app/lib/portal-summary.ts (the pure fallback decision)
+  // so both the API route and the future RSC page can share it -- see
+  // tests/portal-summary.test.mjs for behavioral coverage of the fallback
+  // itself, not just its presence in the source.
+  const [query, summary] = await Promise.all([
+    readFile(new URL("../app/lib/queries/portal.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/lib/portal-summary.ts", import.meta.url), "utf8"),
+  ]);
+  assert.match(query, /asset_positions/);
+  assert.match(summary, /storedJpy \|\| positionTotals\?\.jpy/);
 });
 
 test("uses Cloudflare Access native logout", async () => {
