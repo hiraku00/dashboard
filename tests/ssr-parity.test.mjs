@@ -232,3 +232,22 @@ for (const path of ["/text-tube", "/text-tube/studio"]) {
     assert.ok(videosPage.videos.length > 0, "this assertion is meaningless against an empty D1 -- seed at least one video before running this suite");
   });
 }
+
+// app/text-tube/watch/[id]/page.tsx is now a Server Component that fetches
+// both the video (D1) and its document (R2) directly at render time -- see
+// getVideoDetail() in app/lib/queries/text-tube.ts.
+test("GET /text-tube/watch/<id> embeds the video's title and summary in the server-rendered HTML", async () => {
+  const videosPage = await fetch(`${BASE}/api/text-tube/videos`).then((response) => response.json());
+  const [video] = videosPage.videos;
+  assert.ok(video, "this assertion is meaningless against an empty D1 -- seed at least one video before running this suite");
+  const html = await fetch(`${BASE}/text-tube/watch/${video.id}`).then((response) => response.text());
+  assert.ok(html.includes(video.title), "expected the server-rendered page to already contain the video's title");
+  assert.doesNotMatch(html, /読み込み中/);
+});
+
+test("GET /text-tube/watch/<id> renders a real not-found page for an id that does not exist, without a client-side retry loop", async () => {
+  const response = await fetch(`${BASE}/text-tube/watch/this-id-does-not-exist`);
+  assert.equal(response.status, 200, "a missing video is a normal page, not a 404 HTTP status, in this app's design");
+  const html = await response.text();
+  assert.match(html, /動画が見つかりません/);
+});
