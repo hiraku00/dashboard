@@ -38,15 +38,25 @@ export function TextTubeWatchApp({
     // the fallback in app/page.tsx and app/watch-list-app.tsx.
     if (initialVideo || initialError) return;
     Promise.all([
-      fetch(`/api/text-tube/videos/${id}`).then((r) => readJson<ApiError & { video: Video }>(r)),
+      fetch(`/api/text-tube/videos/${id}`),
       fetch(`/api/text-tube/videos/${id}/document`).then((r) => (r.ok ? r.text() : "")),
     ])
-      .then(([d, text]) => {
-        if (d.error) throw Error(d.error);
+      .then(async ([videoResponse, text]) => {
+        if (!videoResponse.ok) {
+          // Prefer the API's own message (e.g. the 404 route's
+          // "動画が見つかりません。") when the response actually has one; an
+          // unhandled exception on the API side comes back with an empty
+          // body instead, and response.json() on that throws "Unexpected
+          // end of JSON input" -- that raw parser message is what used to
+          // leak to the user here instead of a real fallback.
+          const body = (await videoResponse.json().catch(() => null)) as ApiError | null;
+          throw new Error(body?.error || "動画を読み込めませんでした。");
+        }
+        const d = await readJson<{ video: Video }>(videoResponse);
         setVideo(d.video);
         setDoc(text);
       })
-      .catch((e) => setError(e.message));
+      .catch((e) => setError(e instanceof Error ? e.message : "動画を読み込めませんでした。"));
   }, [id, initialVideo, initialError]);
 
   if (error)

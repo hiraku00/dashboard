@@ -125,12 +125,25 @@ export function WatchListApp({
   function closeEditor() { setEditing(null); setIsNew(false); }
   function patchDraft(patch: Partial<Draft>) { setDraft((current) => ({ ...current, ...patch })); }
 
+  // Reads an error body defensively rather than through readJson(): an
+  // unhandled exception on the API side comes back as a non-2xx response
+  // with an empty body, and response.json() on that throws "Unexpected end
+  // of JSON input" -- if that lands in a catch block that does
+  // `error instanceof Error ? error.message : ...`, the raw parser message
+  // gets shown to the user verbatim instead of a real fallback. Falling
+  // back to null here (rather than letting that throw) keeps the caller's
+  // own fallback message in charge.
+  async function readErrorMessage(response: Response, fallback: string): Promise<string> {
+    const body = (await response.json().catch(() => null)) as ApiError | null;
+    return body?.error || fallback;
+  }
+
   async function importYouTube() {
     setYouTubeLoading(true); setYouTubeNotice("");
     try {
       const response = await fetch("/api/watch-list/youtube-preview", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ url: youTubeUrl }) });
-      const data = await readJson<ApiError & { item: Partial<Draft> }>(response);
-      if (!response.ok) throw new Error(data.error ?? "YouTubeから情報を取得できませんでした。");
+      if (!response.ok) throw new Error(await readErrorMessage(response, "YouTubeから情報を取得できませんでした。"));
+      const data = await readJson<{ item: Partial<Draft> }>(response);
       patchDraft(data.item);
       setYouTubeNotice("チャンネル名・タイトル・リンクを入力しました。内容を確認して保存してください。");
     } catch (error) { setYouTubeNotice(error instanceof Error ? error.message : "YouTubeから情報を取得できませんでした。"); }
@@ -141,8 +154,7 @@ export function WatchListApp({
     event.preventDefault(); setSaving(true); setNotice("");
     try {
       const response = await fetch(editing ? `/api/items/${editing.id}` : "/api/items", { method: editing ? "PATCH" : "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...draft, version: editing?.version }) });
-      const data = await readJson<ApiError>(response);
-      if (!response.ok) throw new Error(data.error ?? "保存できませんでした。");
+      if (!response.ok) throw new Error(await readErrorMessage(response, "保存できませんでした。"));
       closeEditor(); setNotice(editing ? "変更を保存しました。" : "コンテンツを追加しました。"); await refresh();
     } catch (error) { setNotice(error instanceof Error ? error.message : "保存に失敗しました。"); }
     finally { setSaving(false); }
@@ -150,9 +162,11 @@ export function WatchListApp({
 
   async function updateStatus(item: Item, nextStatus: Status) {
     const watchedOn = nextStatus === "completed" ? item.watchedOn ?? new Date().toISOString().slice(0, 10) : null;
-    const response = await fetch(`/api/items/${item.id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...item, status: nextStatus, watchedOn, version: item.version }) });
-    if (!response.ok) { const data = await readJson<ApiError>(response); setNotice(data.error ?? "更新に失敗しました。"); return; }
-    setNotice(`状態を「${statusLabel[nextStatus]}」に変更しました。`); await refresh();
+    try {
+      const response = await fetch(`/api/items/${item.id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...item, status: nextStatus, watchedOn, version: item.version }) });
+      if (!response.ok) { setNotice(await readErrorMessage(response, "更新に失敗しました。")); return; }
+      setNotice(`状態を「${statusLabel[nextStatus]}」に変更しました。`); await refresh();
+    } catch (error) { setNotice(error instanceof Error ? error.message : "更新に失敗しました。"); }
   }
 
   async function remove(item: Item) {

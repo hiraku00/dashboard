@@ -59,13 +59,27 @@ export function TextTubeStudioApp({
     [videos, sort],
   );
   async function edit(v: Video) {
-    const [detail, doc] = await Promise.all([
-      fetch(`/api/text-tube/videos/${v.id}`).then((r) => readJson<{ video: Video }>(r)),
-      fetch(`/api/text-tube/videos/${v.id}/document`).then((r) =>
-        r.ok ? r.text() : "",
-      ),
-    ]);
-    setEditing({ ...detail.video, detailedScript: doc });
+    try {
+      const [videoResponse, doc] = await Promise.all([
+        fetch(`/api/text-tube/videos/${v.id}`),
+        fetch(`/api/text-tube/videos/${v.id}/document`).then((r) =>
+          r.ok ? r.text() : "",
+        ),
+      ]);
+      // Checked before readJson(), not after: readJson() calls
+      // response.json() unconditionally, and an unhandled exception on the
+      // API side comes back as a non-2xx response with an empty body --
+      // parsing that throws "Unexpected end of JSON input" rather than the
+      // API's own { error } message. Previously this whole function had no
+      // try/catch at all, so that failure (or any other) surfaced only as
+      // an unhandled promise rejection in the console, with the "編集"
+      // button silently doing nothing from the user's point of view.
+      if (!videoResponse.ok) throw new Error("動画を読み込めませんでした。");
+      const detail = await readJson<{ video: Video }>(videoResponse);
+      setEditing({ ...detail.video, detailedScript: doc });
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "動画を読み込めませんでした。");
+    }
   }
   async function save(e: React.FormEvent) {
     e.preventDefault();
