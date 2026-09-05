@@ -1,15 +1,15 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PortalHeader } from "./portal-nav";
 import { ApiError, readJson } from "./lib/json";
 
-type ContentType = "text" | "audio" | "movie" | "other";
-type Status = "backlog" | "in_progress" | "completed" | "dropped";
-type Link = { id?: string; label: string; url: string; linkType?: string };
-type Item = { id: string; contentType: ContentType; creatorName: string; seriesTitle: string; title: string; description: string; priority: number | null; status: Status; addedOn: string | null; watchedOn: string | null; comment: string; version: number; links: Link[] };
+export type ContentType = "text" | "audio" | "movie" | "other";
+export type Status = "backlog" | "in_progress" | "completed" | "dropped";
+export type Link = { id?: string; label: string; url: string; linkType?: string };
+export type Item = { id: string; contentType: ContentType; creatorName: string; seriesTitle: string; title: string; description: string; priority: number | null; status: Status; addedOn: string | null; watchedOn: string | null; comment: string; version: number; links: Link[] };
 type Draft = Omit<Item, "id" | "version">;
-type Stats = { total: number; completed: number; movie: number; audio: number; text: number };
+export type Stats = { total: number; completed: number; movie: number; audio: number; text: number };
 
 const emptyDraft = (): Draft => ({ contentType: "movie", creatorName: "", seriesTitle: "", title: "", description: "", priority: null, status: "backlog", addedOn: new Date().toISOString().slice(0, 10), watchedOn: null, comment: "", links: [{ label: "", url: "", linkType: "reference" }] });
 const typeLabel: Record<ContentType, string> = { movie: "映像", audio: "音声", text: "テキスト", other: "その他" };
@@ -17,14 +17,28 @@ const statusLabel: Record<Status, string> = { backlog: "未着手", in_progress:
 const dateLabel = (value: string | null) => value ? value.replaceAll("-", ".") : "未設定";
 const pageSize = 10;
 
-export function WatchListApp() {
-  const [items, setItems] = useState<Item[]>([]);
-  const [stats, setStats] = useState<Stats>({ total: 0, completed: 0, movie: 0, audio: 0, text: 0 });
+export function WatchListApp({
+  initialItems = null,
+  initialStats = null,
+}: {
+  // Passed by app/watch-list/page.tsx (a Server Component) after fetching
+  // this directly from D1 -- see app/lib/queries/watch-list.ts. It calls
+  // listItems({ limit: pageSize, offset: 0 }) with no filters, i.e. exactly
+  // the default filter state below (query="", type/status/creator="all",
+  // page=1), so skipping this component's own initial fetch when this is
+  // present does not skip past a filtered view the server never rendered.
+  // Both optional so this component still works exactly as before
+  // (client-side fetch on mount) if ever rendered without them.
+  initialItems?: { items: Item[]; pagination?: { total?: number } } | null;
+  initialStats?: Stats | null;
+} = {}) {
+  const [items, setItems] = useState<Item[]>(initialItems?.items ?? []);
+  const [stats, setStats] = useState<Stats>(initialStats ?? { total: 0, completed: 0, movie: 0, audio: 0, text: 0 });
   const [query, setQuery] = useState("");
   const [type, setType] = useState<"all" | ContentType>("all");
   const [status, setStatus] = useState<"all" | Status>("all");
   const [creator, setCreator] = useState("all");
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!initialItems);
   const [notice, setNotice] = useState("");
   const [editing, setEditing] = useState<Item | null>(null);
   const [isNew, setIsNew] = useState(false);
@@ -34,7 +48,13 @@ export function WatchListApp() {
   const [youTubeLoading, setYouTubeLoading] = useState(false);
   const [youTubeNotice, setYouTubeNotice] = useState("");
   const [page, setPage] = useState(1);
-  const [totalResults, setTotalResults] = useState(0);
+  const [totalResults, setTotalResults] = useState(initialItems?.pagination?.total ?? initialItems?.items.length ?? 0);
+  // Guards only the very first run of the effect below: this page has
+  // filters, unlike the portal top page, so only the *initial* mount fetch
+  // can be skipped when the server already rendered the default view --
+  // every later change to query/type/status/creator/page must still fetch
+  // normally. See the comment on the effect itself.
+  const skippedInitialFetch = useRef(false);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -60,7 +80,26 @@ export function WatchListApp() {
     }
   }, [query, type, status, creator, page]);
 
-  useEffect(() => { const timer = setTimeout(refresh, query ? 180 : 0); return () => clearTimeout(timer); }, [query, refresh]);
+  useEffect(() => {
+    // Skip exactly one invocation -- the one that runs on mount -- when the
+    // server already rendered this same default-filter view. Every
+    // subsequent invocation (the user changing query/type/status/creator/
+    // page, which is what actually re-triggers this effect since `refresh`
+    // is recreated on each of those) must still fetch normally; the ref
+    // flips permanently on its first check so a later change is never
+    // mistaken for the initial mount.
+    if (initialItems && !skippedInitialFetch.current) {
+      skippedInitialFetch.current = true;
+      return;
+    }
+    const timer = setTimeout(refresh, query ? 180 : 0);
+    return () => clearTimeout(timer);
+    // `initialItems` is intentionally omitted below: it is a prop from the
+    // server that does not change across this component's lifetime, so
+    // adding it as a dep would never itself re-trigger the effect -- only
+    // the ref actually gates behavior, and that is read, not depended on.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query, refresh]);
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape" && (editing || isNew)) closeEditor();
