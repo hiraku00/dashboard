@@ -1,6 +1,5 @@
 import { env } from "cloudflare:workers";
 import { ensureSchema } from "@/db";
-import { currencyHistory, holdingsFromPositions, historyPoints, stethRewardHistory, walletPositions, exchangePositions } from "@/app/lib/manage-asset-core";
 import { toLegacyExchangeSnapshot, toLegacyWalletSnapshot } from "@/app/lib/manage-asset-legacy";
 
 function newestRecord(current: Record<string, unknown>, previous: Record<string, unknown>): boolean {
@@ -67,20 +66,18 @@ export async function GET() {
   }
   snapshots = [...newestWallets.values()].sort((a, b) => String(a.as_of_date ?? "").localeCompare(String(b.as_of_date ?? "")));
   exchangeSnapshots = [...newestExchanges.values()].sort((a, b) => String(a.as_of_date ?? "").localeCompare(String(b.as_of_date ?? "")));
-  const lidoRewards = (await env.DB.prepare("SELECT payload_json FROM asset_lido_rewards ORDER BY reward_date ASC").all<Record<string, unknown>>()).results?.map(row => JSON.parse(String(row.payload_json))) ?? [];
-  const rates = (await env.DB.prepare("SELECT payload_json FROM asset_fx_rates ORDER BY rate_date ASC").all<Record<string, unknown>>()).results?.map(row => JSON.parse(String(row.payload_json))) ?? [];
-  const positions = [...walletPositions(snapshots), ...exchangePositions(exchangeSnapshots)];
-  const holdings = holdingsFromPositions(positions);
-  const steth = stethRewardHistory(lidoRewards, snapshots, exchangeSnapshots, rates);
-  const symbols = [...new Set([...holdings.map((row) => row.symbol), ...(steth.length ? ["stETH"] : [])])].sort((a, b) => a.localeCompare(b));
+  // Only snapshots and exchange_snapshots are read by the one consumer of this
+  // endpoint (public/manage-asset-original/app-ui.js, which feeds them to
+  // Core.historyPoints / Core.currencyHistory / Core.previousOpeningPoint).
+  //
+  // This used to also return points, holdings, symbols, currencies,
+  // lido_rewards and rates. Nothing read any of them: the page computes
+  // holdings client-side from /state, and takes the Lido and FX rows from
+  // /api/lido-rewards and /api/usd-jpy-rates. Producing them meant two extra
+  // full table reads (asset_lido_rewards + asset_fx_rates, ~1,660 rows) and a
+  // per-symbol currencyHistory pass over every position, on every page view.
   return Response.json({
     snapshots,
     exchange_snapshots: exchangeSnapshots,
-    lido_rewards: lidoRewards,
-    rates,
-    points: historyPoints(snapshots, exchangeSnapshots),
-    holdings,
-    symbols,
-    currencies: Object.fromEntries(symbols.map((symbol) => [symbol, symbol.toLowerCase() === "steth" ? steth : currencyHistory(snapshots, exchangeSnapshots, symbol, rates)])),
   });
 }
