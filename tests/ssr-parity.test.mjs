@@ -14,6 +14,17 @@ import { setTimeout as delay } from "node:timers/promises";
 // `npm run dev` の vite単体サーブでは検証にならない --- 過去にその取り違えで
 // 本番を壊した）を起動し、本物のHTTPリクエストでページとAPIの両方を叩く。
 //
+// CIには含めていない (npm run test:ssr で手動実行する): GitHub Actions の
+// Ubuntu runner でこれを npm test に含めたところ、Lint/Typecheckは通った後
+// このテストのステップだけ15分以上ハングした。ローカル(macOS)では問題なく
+// 動いていたため、Linux特有かCI環境特有の問題と推測している --- wrangler
+// dev が起動する workerd 子プロセスがSIGTERMで終了せず、標準入出力の
+// パイプが閉じないままジョブ全体が終了待ちになる、というのはWrangler/
+// workerdでたびたび報告される既知の症状に近い。原因を実機のCIランナーで
+// 切り分けられていない状態で全PRのCIを塞ぐ必須ステップに残すのは危険が
+// 大きいと判断し、必須テストからは外した。後続でCI環境での原因が特定でき
+// 次第、必須テストに戻す。
+//
 // 現時点（RSC化前）でのこのテストの役割は「ページ/APIが実際に200を返し、
 // 期待する形のJSONを返すこと」の基準線を作ることだけ。ページのHTMLに
 // データが埋め込まれているというアサーションは、各ページをRSC化するPRで
@@ -44,7 +55,22 @@ before(async () => {
   server = spawn(
     "npx",
     ["wrangler", "dev", "--config", "wrangler.jsonc", "--port", String(PORT), "--local"],
-    { cwd: new URL("..", import.meta.url), stdio: "pipe" },
+    {
+      cwd: new URL("..", import.meta.url),
+      stdio: "pipe",
+      // Its own process group so after() can kill wrangler's workerd child
+      // along with it (`kill(-pid)` targets the whole group), not just the
+      // immediate npx process -- a bare server.kill() can leave workerd
+      // running with this test's stdio pipes still open.
+      detached: true,
+      env: {
+        ...process.env,
+        // Skip wrangler's first-run interactive telemetry consent prompt.
+        // stdio is piped (not inherited), so if that prompt ever did appear
+        // here it would block forever waiting for input nothing will send.
+        WRANGLER_SEND_METRICS: "false",
+      },
+    },
   );
   let output = "";
   server.stdout?.on("data", (chunk) => { output += chunk; });
@@ -59,11 +85,18 @@ before(async () => {
 });
 
 after(async () => {
-  if (!server || server.killed) return;
-  server.kill("SIGTERM");
-  // Give wrangler's child processes (workerd) a moment to exit cleanly before
-  // the test process itself exits, or CI can leave orphaned listeners behind.
-  await delay(500);
+  if (!server || server.killed || !server.pid) return;
+  try {
+    process.kill(-server.pid, "SIGTERM");
+  } catch {
+    // Group already gone.
+  }
+  await delay(1_000);
+  try {
+    process.kill(-server.pid, "SIGKILL");
+  } catch {
+    // Already exited after SIGTERM -- this is the expected outcome.
+  }
 });
 
 test("GET / renders the portal shell without erroring", async () => {
