@@ -1,9 +1,38 @@
-"use client";
-import Link from "next/link";
-import Image from "next/image";
-import { useEffect, useState } from "react";
-import { MarkdownRenderer } from "../../markdown-renderer";
-import { TextTubeChrome } from "../../../text-tube-app";
-import { ApiError, readJson } from "../../../lib/json";
-type Video=Record<string,unknown>; const date=(v:unknown)=>v?new Date(String(v)).toLocaleDateString("ja-JP"):"—";
-export default function TextTubeWatchPage({params}:{params:Promise<{id:string}>}){const [video,setVideo]=useState<Video|null>(null),[doc,setDoc]=useState(""),[error,setError]=useState("");useEffect(()=>{params.then(({id})=>Promise.all([fetch(`/api/text-tube/videos/${id}`).then(r=>readJson<ApiError&{video:Video}>(r)),fetch(`/api/text-tube/videos/${id}/document`).then(r=>r.ok?r.text():"")]).then(([d,text])=>{if(d.error)throw Error(d.error);setVideo(d.video);setDoc(text)}).catch(e=>setError(e.message)))},[params]);if(error)return <TextTubeChrome><div className="tt-empty">{error}<Link href="/text-tube">一覧に戻る</Link></div></TextTubeChrome>;if(!video)return <TextTubeChrome><div className="tt-loading">読み込み中…</div></TextTubeChrome>;const readTime=Math.max(1,Math.ceil(String(video.summary??"").length/1000));return <TextTubeChrome><div className="tt-reading-layout"><article className="tt-reading-main"><header className="tt-reading-header"><div className="tt-reading-thumb">{Boolean(video.thumbnail_url)&&<Image src={String(video.thumbnail_url)} alt="" fill sizes="(max-width: 700px) 110px, 180px" unoptimized/>}</div><div><h1>{String(video.title)}</h1><div className="tt-reading-meta"><span>{String(video.channel_name||"チャンネル未設定")}</span><span>•</span><span>{date(video.created_at)}</span><span>•</span><strong>要約読了：約{readTime}分</strong></div>{Boolean(video.original_url)&&<a className="tt-source-link" href={String(video.original_url)} target="_blank" rel="noreferrer">元の動画を見る ↗</a>}</div></header><section className="tt-reading-section"><h2>要約</h2><MarkdownRenderer content={String(video.summary||"")}/></section>{doc&&<section className="tt-reading-section"><h2>詳細スクリプト</h2><MarkdownRenderer content={doc}/></section>}</article><aside className="tt-next"><h2>次の動画</h2><Link href="/text-tube"><small>おすすめ</small><b>もっと動画を探す</b></Link><Link href="/text-tube/studio"><small>Studio</small><b>動画を管理する</b></Link></aside></div></TextTubeChrome>}
+import { TextTubeWatchApp } from "../watch-app";
+import { getVideoDetail } from "@/app/lib/queries/text-tube";
+
+// Server Component: fetches the video (D1) and its document (R2) directly
+// at render time -- see getVideoDetail() in app/lib/queries/text-tube.ts
+// (app/api/text-tube/videos/[id] and .../document call the same underlying
+// helpers, so this cannot drift from what those routes return).
+export default async function TextTubeWatchPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const initial = await fetchInitial(id);
+  return (
+    <TextTubeWatchApp
+      id={id}
+      initialVideo={initial.video}
+      initialDocument={initial.document}
+      initialError={initial.error}
+    />
+  );
+}
+
+async function fetchInitial(id: string): Promise<{ video: Record<string, unknown> | null; document: string; error: string }> {
+  try {
+    const detail = await getVideoDetail(id);
+    // A real 404 (the video does not exist) is surfaced as an error so the
+    // client does not retry a fetch that would just 404 again -- unlike a
+    // thrown exception below, which leaves both video and error empty and
+    // falls through to the client's own fetch, matching the pre-RSC
+    // fallback used throughout this migration (see app/page.tsx).
+    if (!detail) return { video: null, document: "", error: "動画が見つかりません。" };
+    // getVideoDetail() types each column as `unknown` because D1 does not
+    // give back typed rows. The client already trusted this same JSON
+    // blindly via readJson<T>() at the API boundary with no runtime
+    // validation -- see the matching comment in app/watch-list/page.tsx.
+    return { video: detail.video as unknown as Record<string, unknown>, document: detail.document, error: "" };
+  } catch {
+    return { video: null, document: "", error: "" };
+  }
+}

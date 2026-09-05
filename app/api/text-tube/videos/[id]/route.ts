@@ -1,13 +1,14 @@
 import { env } from "cloudflare:workers";
 import { ensureSchema } from "@/db";
 import { clean } from "@/app/lib/portal";
+import { getVideo } from "@/app/lib/queries/text-tube";
 
 type Context = { params: Promise<{ id: string }> };
 
 export async function GET(_request: Request, context: Context) {
-  await ensureSchema({ seed: false }); const { id } = await context.params;
-  const result = await env.DB.prepare("SELECT * FROM text_tube_videos WHERE id=? AND deleted_at IS NULL").bind(id).all<Record<string, unknown>>();
-  const video = result.results?.[0]; if (!video) return Response.json({ error: "動画が見つかりません。" }, { status: 404 });
+  const { id } = await context.params;
+  const video = await getVideo(id);
+  if (!video) return Response.json({ error: "動画が見つかりません。" }, { status: 404 });
   return Response.json({ video });
 }
 
