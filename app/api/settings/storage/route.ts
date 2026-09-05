@@ -2,14 +2,17 @@ import { env } from "cloudflare:workers";
 import { ensureSchema } from "@/db";
 import { currentStorageBytes, R2_SOFT_LIMIT_BYTES } from "@/app/lib/portal";
 
-const D1_DATABASE_ID = "a88eabc6-5b74-48e8-b347-07720d2297d1";
-
 async function d1Usage() {
   const runtime = env as typeof env & {
     CF_ANALYTICS_TOKEN?: string;
     CF_ACCOUNT_ID?: string;
+    D1_DATABASE_ID?: string;
   };
-  if (!runtime.CF_ANALYTICS_TOKEN || !runtime.CF_ACCOUNT_ID)
+  // D1_DATABASE_ID comes from wrangler.jsonc's vars, where it sits next to the
+  // binding's database_id. It used to be a literal in this file, which would
+  // have kept pointing at the old database if it were ever recreated.
+  const D1_DATABASE_ID = runtime.D1_DATABASE_ID ?? "";
+  if (!runtime.CF_ANALYTICS_TOKEN || !runtime.CF_ACCOUNT_ID || !D1_DATABASE_ID)
     return { configured: false };
   const headers = { Authorization: `Bearer ${runtime.CF_ANALYTICS_TOKEN}` };
   const sizeResponse = await fetch(

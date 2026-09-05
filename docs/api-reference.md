@@ -12,11 +12,9 @@
 | `GET /api/items/:id`                   | 項目詳細                                                                                                                          |
 | `PATCH /api/items/:id`                 | 項目更新                                                                                                                          |
 | `DELETE /api/items/:id`                | 論理削除                                                                                                                          |
-| `GET /api/history`                     | 変更/インポート履歴                                                                                                               |
 | `GET /api/stats`                       | 一覧用集計                                                                                                                        |
 | `POST /api/imports`                    | Watch Listデータのインポート                                                                                                      |
 | `GET /api/exports`                     | バックアップ用エクスポート                                                                                                        |
-| `GET /api/state`                       | アプリ状態・移行状態                                                                                                              |
 
 ## TextTube
 
