@@ -27,6 +27,13 @@
       "migrations_dir": "migrations"
     }
   ],
+  "vars": {
+    // The D1 binding does not expose its own id at runtime, but
+    // /api/settings/storage needs it to ask the Cloudflare Analytics API about
+    // this database. Keep it here, next to the database_id it must match,
+    // rather than as a second copy inside application source.
+    "D1_DATABASE_ID": "a88eabc6-5b74-48e8-b347-07720d2297d1"
+  },
   "r2_buckets": [
     {
       "binding": "FILES",
