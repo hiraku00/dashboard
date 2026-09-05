@@ -204,25 +204,36 @@ export function TextTubeApp({
   );
   async function create(e: FormEvent) {
     e.preventDefault();
-    const r = await fetch("/api/text-tube/videos", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(formToPayload(form)),
-    });
-    const d = await readJson<ApiError & { id: string }>(r);
-    if (!r.ok) {
-      setNotice(d.error ?? "保存できませんでした。");
-      return;
-    }
-    if (form.detailedScript)
-      await fetch(`/api/text-tube/videos/${d.id}/document`, {
+    try {
+      const r = await fetch("/api/text-tube/videos", {
         method: "POST",
-        body: form.detailedScript,
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(formToPayload(form)),
       });
-    setForm(blankVideo);
-    setOpen(false);
-    setNotice("動画を追加しました。");
-    load();
+      if (!r.ok) {
+        // Checked before readJson(): an unhandled exception on the API
+        // side comes back with an empty body, and readJson()'s
+        // response.json() on that throws "Unexpected end of JSON input"
+        // rather than a usable message -- this whole function previously
+        // had no try/catch at all, so that (or any other failure) surfaced
+        // only as an unhandled promise rejection in the console.
+        const body = (await r.json().catch(() => null)) as ApiError | null;
+        setNotice(body?.error ?? "保存できませんでした。");
+        return;
+      }
+      const d = await readJson<{ id: string }>(r);
+      if (form.detailedScript)
+        await fetch(`/api/text-tube/videos/${d.id}/document`, {
+          method: "POST",
+          body: form.detailedScript,
+        });
+      setForm(blankVideo);
+      setOpen(false);
+      setNotice("動画を追加しました。");
+      load();
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "保存できませんでした。");
+    }
   }
   return (
     <TextTubeChrome>
@@ -371,8 +382,17 @@ export function VideoEditor({
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ url: value.originalUrl }),
       });
-      const d = await readJson<ApiError & { preview?: Partial<VideoForm>; captionNotice?: string }>(r);
-      if (!r.ok) throw Error(d.error);
+      if (!r.ok) {
+        // Prefer the API's own error message when the response actually
+        // has one; an unhandled exception on the API side comes back with
+        // an empty body instead, and readJson()'s response.json() on that
+        // throws "Unexpected end of JSON input" -- catching that generic
+        // parser message here (rather than letting it fall through to the
+        // catch block below and get shown verbatim) is the fix.
+        const body = (await r.json().catch(() => null)) as ApiError | null;
+        throw new Error(body?.error || "動画情報を取得できませんでした。");
+      }
+      const d = await readJson<{ preview?: Partial<VideoForm>; captionNotice?: string }>(r);
       onChange({ ...value, ...d.preview });
       if (d.captionNotice) setImportError(`字幕: ${d.captionNotice}`);
     } catch (e) {
