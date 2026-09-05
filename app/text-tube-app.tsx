@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import Image from "next/image";
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PortalHeader } from "./portal-nav";
 import { ApiError, readJson } from "./lib/json";
 
@@ -71,10 +71,17 @@ function TextTubeOriginalSidebar({ active }: { active: string }) {
     <aside className="tt-sidebar tt-embedded-sidebar">
       <div className="tt-sidebar-menu">
         {items.map(([href, icon, label]) => (
+          // prefetch={false}: see the comment on the portal nav links in
+          // portal-nav.tsx -- Next.js prefetches a visible Link's target as
+          // soon as it renders, not only on hover or click. Every TextTube
+          // page shows this sidebar, so leaving prefetch on would mean every
+          // TextTube page view silently reads D1 once per sidebar item too,
+          // once those destinations become Server Components reading D1.
           <Link
             key={label}
             className={active === href ? "active" : ""}
             href={href}
+            prefetch={false}
           >
             <TextTubeIcon>{icon}</TextTubeIcon>
             <b>{label}</b>
@@ -114,12 +121,14 @@ export function TextTubeChrome({
           <Link
             className={active === "/text-tube" ? "active" : ""}
             href="/text-tube"
+            prefetch={false}
           >
             ライブラリ
           </Link>
           <Link
             className={active === "/text-tube/studio" ? "active" : ""}
             href="/text-tube/studio"
+            prefetch={false}
           >
             Studio
           </Link>
@@ -134,21 +143,42 @@ export function TextTubeChrome({
     </main>
   );
 }
-export function TextTubeApp() {
-  const [videos, setVideos] = useState<Video[]>([]),
+export function TextTubeApp({
+  initialVideos = null,
+}: {
+  // Passed by app/text-tube/page.tsx (a Server Component) after fetching
+  // this directly from D1 -- see app/lib/queries/text-tube.ts. It calls
+  // listVideos({}) with no query, i.e. exactly the default filter state
+  // below (q=""), so skipping this component's own initial fetch when this
+  // is present does not skip past a filtered view the server never
+  // rendered. Optional so this component still works exactly as before
+  // (client-side fetch on mount) if ever rendered without it.
+  initialVideos?: Video[] | null;
+} = {}) {
+  const [videos, setVideos] = useState<Video[]>(initialVideos ?? []),
     [q, setQ] = useState(""),
     [channel, setChannel] = useState("all"),
     [sort, setSort] = useState("created_at-desc"),
     [open, setOpen] = useState(false),
     [notice, setNotice] = useState(""),
     [form, setForm] = useState<VideoForm>(blankVideo);
+  // Guards only the very first run of the effect below -- see the matching
+  // comment and effect in app/watch-list-app.tsx for the full rationale.
+  const skippedInitialFetch = useRef(false);
   const load = useCallback(async () => {
     const r = await fetch(`/api/text-tube/videos?q=${encodeURIComponent(q)}`);
     if (r.ok) setVideos((await readJson<{ videos: Video[] }>(r)).videos);
   }, [q]);
   useEffect(() => {
+    if (initialVideos && !skippedInitialFetch.current) {
+      skippedInitialFetch.current = true;
+      return;
+    }
     const t = setTimeout(load, q ? 180 : 0);
     return () => clearTimeout(t);
+    // `initialVideos` intentionally omitted -- see the matching comment in
+    // app/watch-list-app.tsx.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [load, q]);
   const channels = useMemo(
     () =>
@@ -230,10 +260,16 @@ export function TextTubeApp() {
       </div>
       <div className="tt-video-grid">
         {shown.map((v) => (
+          // prefetch={false}: this page can render up to 100 of these cards.
+          // Once /text-tube/watch/[id] becomes a Server Component reading
+          // D1+R2, leaving prefetch on would mean simply scrolling this grid
+          // into view reads D1 once per visible card -- see the matching
+          // comment on the sidebar Links above.
           <Link
             className="tt-video-card"
             href={`/text-tube/watch/${v.id}`}
             key={v.id}
+            prefetch={false}
           >
             <div className="tt-thumb">
               {v.thumbnail_url ? (
@@ -272,7 +308,7 @@ export function TextTubeApp() {
         {!shown.length && (
           <div className="tt-empty">
             該当する動画がありません。
-            <Link href="/text-tube/studio">Studioで作成する</Link>
+            <Link href="/text-tube/studio" prefetch={false}>Studioで作成する</Link>
           </div>
         )}
       </div>

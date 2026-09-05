@@ -1,6 +1,7 @@
 import { env } from "cloudflare:workers";
 import { ensureSchema } from "@/db";
 import { clean } from "@/app/lib/portal";
+import { listVideos } from "@/app/lib/queries/text-tube";
 
 function videoInput(body: Record<string, unknown>) {
   const title = clean(body.title, 1000);
@@ -9,13 +10,8 @@ function videoInput(body: Record<string, unknown>) {
 }
 
 export async function GET(request: Request) {
-  await ensureSchema({ seed: false });
-  const params = new URL(request.url).searchParams;
-  const q = clean(params.get("q"), 200);
-  const where = q ? "WHERE deleted_at IS NULL AND (title LIKE ? OR channel_name LIKE ?)" : "WHERE deleted_at IS NULL";
-  const args = q ? [`%${q}%`, `%${q}%`] : [];
-  const rows = (await env.DB.prepare(`SELECT id,title,channel_name,thumbnail_url,original_url,summary,published_at,view_count,channel_thumbnail_url,duration,detailed_script_object_key,created_at,updated_at FROM text_tube_videos ${where} ORDER BY created_at DESC LIMIT 100`).bind(...args).all<Record<string, unknown>>()).results ?? [];
-  return Response.json({ videos: rows });
+  const q = new URL(request.url).searchParams.get("q");
+  return Response.json(await listVideos({ q }));
 }
 
 export async function POST(request: Request) {

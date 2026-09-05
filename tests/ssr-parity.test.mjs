@@ -205,3 +205,30 @@ test("GET /watch-list does not ask the client to fetch what the server already r
   const html = await fetch(`${BASE}/watch-list`).then((response) => response.text());
   assert.doesNotMatch(html, /読み込み中/);
 });
+
+// app/text-tube/page.tsx and app/text-tube/studio/page.tsx are now Server
+// Components the same way (see app/lib/queries/text-tube.ts). Both share
+// the same underlying video list, so both get the same assertion.
+//
+// Unlike the portal and Watch List pages, neither TextTube page ever showed
+// a "読み込み中" placeholder even before this change -- an empty grid/table
+// just rendered with zero rows until the client fetch resolved. So the
+// meaningful check here is that the rendered markup actually links every
+// video (which the pre-RSC page could not do, since it started from an
+// empty array), not the absence of loading text.
+for (const path of ["/text-tube", "/text-tube/studio"]) {
+  test(`GET ${path} embeds the real video list in the server-rendered HTML`, async () => {
+    const [pageResponse, videosPage] = await Promise.all([
+      fetch(`${BASE}${path}`),
+      fetch(`${BASE}/api/text-tube/videos`).then((response) => response.json()),
+    ]);
+    const html = await pageResponse.text();
+    // Both pages render one Link/row per video with the video's own id in
+    // the href, so counting distinct /text-tube/watch/<id> hrefs counts
+    // rendered videos regardless of which markup (grid card vs. table row)
+    // the page uses.
+    const linkedIds = new Set([...html.matchAll(/\/text-tube\/watch\/([^"?]+)/g)].map((match) => match[1]));
+    assert.equal(linkedIds.size, videosPage.videos.length, "expected the server-rendered page to already link every video");
+    assert.ok(videosPage.videos.length > 0, "this assertion is meaningless against an empty D1 -- seed at least one video before running this suite");
+  });
+}
