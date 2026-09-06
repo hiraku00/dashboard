@@ -26,6 +26,16 @@ test("canonicalUrl strips the fragment and tracking params", () => {
   assert.equal(canonicalUrl("not a url"), "");
 });
 
+test("canonicalUrl rejects schemes other than http/https", () => {
+  // new URL() does not throw on these -- it happily parses "javascript:"
+  // and "data:" URIs -- so without an explicit protocol check they used to
+  // pass straight through despite every caller's error message claiming
+  // only http/https URLs are accepted. See Issue #74.
+  assert.equal(canonicalUrl("javascript:alert(1)"), "");
+  assert.equal(canonicalUrl("data:text/html,<script>alert(1)</script>"), "");
+  assert.equal(canonicalUrl("ftp://example.com/file"), "");
+});
+
 test("clean trims, truncates and rejects non-strings", () => {
   assert.equal(clean("  hi  "), "hi");
   assert.equal(clean("abcdef", 3), "abc");

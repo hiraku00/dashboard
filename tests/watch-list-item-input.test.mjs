@@ -70,13 +70,15 @@ test("drops links with no url, keeps ones with a url", () => {
 });
 
 test("rejects a link whose url the URL constructor cannot parse at all", () => {
-  // canonicalUrl() only returns "" (which normalizeItem treats as invalid)
-  // when `new URL(value)` itself throws -- a relative/schemeless string
-  // does; it does NOT reject other schemes the URL constructor accepts
-  // (e.g. "javascript:") despite the error message's wording. That gap is
-  // a separate, pre-existing issue in canonicalUrl() itself, not something
-  // this test asserts against.
   const result = normalizeItem({ contentType: "movie", title: "t", links: [{ url: "not a url" }] });
+  assert.equal(result.error, "リンクには http または https のURLを指定してください。");
+});
+
+test("rejects a link whose url has a non-http(s) scheme", () => {
+  // canonicalUrl()'s protocol check (see Issue #74 and shared-helpers.test.mjs)
+  // is what makes this rejected rather than silently accepted -- the URL
+  // constructor itself does not throw on "javascript:" or "data:" URIs.
+  const result = normalizeItem({ contentType: "movie", title: "t", links: [{ url: "javascript:alert(1)" }] });
   assert.equal(result.error, "リンクには http または https のURLを指定してください。");
 });
 
