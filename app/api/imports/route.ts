@@ -70,7 +70,9 @@ export const POST = route(async (request: Request) => {
     statements.push(env.DB.prepare("INSERT INTO items (id,content_type,creator_name,series_title,title,description,priority,status,added_on,watched_on,comment,source_system,external_id,raw_source,version,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?)").bind(id,item.contentType,item.creatorName ?? "",item.seriesTitle ?? "",item.title,item.description ?? "",item.priority,item.status ?? "backlog",item.addedOn,item.watchedOn,item.comment ?? "",entry.source,item.externalId,item.rawSource,now,now));
     // Same canonicalUrl() the /api/items POST path uses (strips the fragment
     // and utm_*/fbclid params), so an imported link and one entered manually
-    // dedupe against item_links_canonical_idx the same way.
+    // dedupe against item_links_canonical_idx the same way -- that index is
+    // UNIQUE per (item_id, canonical_url), not global (see Issue #76), so
+    // this only matters for links landing on the same item.
     for (const [position, link] of (item.links ?? []).entries()) { statements.push(env.DB.prepare("INSERT INTO item_links (id,item_id,label,url,link_type,position,canonical_url) VALUES (?,?,?,?,?,?,?)").bind(crypto.randomUUID(),id,link.label ?? "",link.url,link.linkType ?? "reference",position,canonicalUrl(link.url))); }
     inserted.push(entry.index);
   }

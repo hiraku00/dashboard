@@ -28,7 +28,7 @@ let schemaReady = false;
  *  than reconciled, since the drizzle ORM was never actually used to query. */
 /** Bump whenever the DDL below changes, so existing databases re-run it once.
  *  A database whose schema_meta row already matches skips the whole batch. */
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 
 /** Reads the recorded schema version. A database that predates schema_meta (or
  *  a brand new one) has no table, and the query fails rather than returning a
@@ -93,6 +93,18 @@ export async function ensureSchema({ seed = true }: { seed?: boolean } = {}) {
     ),
     env.DB.prepare(
       "CREATE INDEX IF NOT EXISTS item_links_item_idx ON item_links(item_id)",
+    ),
+    // Scoped to (item_id, canonical_url), not canonical_url alone: many
+    // different items legitimately share one destination (e.g. every
+    // episode of a series linking to the same series-archive page).
+    // Verified against production data before adding this -- 0 rows would
+    // violate this scope, vs. 159 that would violate a global unique
+    // index on canonical_url alone. See Issue #76 and
+    // app/lib/watch-list-item-input.ts's normalizeItem(), which now
+    // rejects a duplicate within one item's own links before this index
+    // would ever have to.
+    env.DB.prepare(
+      "CREATE UNIQUE INDEX IF NOT EXISTS item_links_canonical_idx ON item_links(item_id, canonical_url)",
     ),
     env.DB.prepare(
       "CREATE UNIQUE INDEX IF NOT EXISTS items_source_external_idx ON items(source_system, external_id)",
@@ -257,7 +269,7 @@ export async function ensureSchema({ seed = true }: { seed?: boolean } = {}) {
       for (const [position, link] of seed.links.entries()) {
         // Same canonicalUrl() the API routes use, so a seeded link and one
         // added later through /api/items dedupe alike on
-        // item_links_canonical_idx.
+        // item_links_canonical_idx (per item_id, not global -- Issue #76).
         statements.push(
           env.DB.prepare(
             "INSERT INTO item_links (id,item_id,label,url,link_type,position,canonical_url) VALUES (?,?,?,?,?,?,?)",
