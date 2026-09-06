@@ -1,5 +1,4 @@
-import assert from "node:assert/strict";
-import test from "node:test";
+import { expect, test } from "vitest";
 import { webcrypto } from "node:crypto";
 
 import {
@@ -63,35 +62,26 @@ globalThis.fetch = async (url) => {
 const config = { teamDomain: TEAM, audience: AUD };
 
 test("readConfig requires both values and normalises the team domain", () => {
-  assert.equal(readConfig({}), null);
-  assert.equal(readConfig({ ACCESS_TEAM_DOMAIN: TEAM }), null);
-  assert.equal(readConfig({ ACCESS_AUD: AUD }), null);
-  assert.deepEqual(readConfig({ ACCESS_TEAM_DOMAIN: `https://${TEAM}/`, ACCESS_AUD: AUD }), config);
-  assert.equal(isAccessConfigured({ ACCESS_TEAM_DOMAIN: TEAM, ACCESS_AUD: AUD }), true);
-  assert.equal(isAccessConfigured({}), false);
+  expect(readConfig({})).toBe(null);
+  expect(readConfig({ ACCESS_TEAM_DOMAIN: TEAM })).toBe(null);
+  expect(readConfig({ ACCESS_AUD: AUD })).toBe(null);
+  expect(readConfig({ ACCESS_TEAM_DOMAIN: `https://${TEAM}/`, ACCESS_AUD: AUD })).toEqual(config);
+  expect(isAccessConfigured({ ACCESS_TEAM_DOMAIN: TEAM, ACCESS_AUD: AUD })).toBe(true);
+  expect(isAccessConfigured({})).toBe(false);
 });
 
 test("readAssertion prefers the header and falls back to the cookie", () => {
-  assert.equal(
-    readAssertion(new Request("https://x/", { headers: { "cf-access-jwt-assertion": " tok " } })),
-    "tok",
-  );
-  assert.equal(
-    readAssertion(new Request("https://x/", { headers: { cookie: "a=1; CF_Authorization=tok2; b=2" } })),
-    "tok2",
-  );
-  assert.equal(readAssertion(new Request("https://x/")), "");
+  expect(readAssertion(new Request("https://x/", { headers: { "cf-access-jwt-assertion": " tok " } }))).toBe("tok");
+  expect(readAssertion(new Request("https://x/", { headers: { cookie: "a=1; CF_Authorization=tok2; b=2" } }))).toBe("tok2");
+  expect(readAssertion(new Request("https://x/"))).toBe("");
   // A cookie whose name merely ends with the same suffix must not match.
-  assert.equal(
-    readAssertion(new Request("https://x/", { headers: { cookie: "NOT_CF_Authorization=nope" } })),
-    "",
-  );
+  expect(readAssertion(new Request("https://x/", { headers: { cookie: "NOT_CF_Authorization=nope" } }))).toBe("");
 });
 
 test("accepts a correctly signed assertion and reports the identity", async () => {
   const identity = await verifyAccessJwt(await makeJwt(validPayload()), config);
-  assert.equal(identity?.email, "someone@example.com");
-  assert.equal(identity?.subject, "user-1");
+  expect(identity?.email).toBe("someone@example.com");
+  expect(identity?.subject).toBe("user-1");
 });
 
 test("accepts a service-token assertion", async () => {
@@ -99,25 +89,22 @@ test("accepts a service-token assertion", async () => {
     await makeJwt(validPayload({ email: undefined, common_name: "collector-token" })),
     config,
   );
-  assert.equal(identity?.commonName, "collector-token");
+  expect(identity?.commonName).toBe("collector-token");
 });
 
 test("rejects an assertion for a different Access application", async () => {
-  assert.equal(await verifyAccessJwt(await makeJwt(validPayload({ aud: ["other-app"] })), config), null);
+  expect(await verifyAccessJwt(await makeJwt(validPayload({ aud: ["other-app"] })), config)).toBe(null);
 });
 
 test("rejects an assertion from a different team domain", async () => {
-  assert.equal(
-    await verifyAccessJwt(await makeJwt(validPayload({ iss: "https://attacker.cloudflareaccess.com" })), config),
-    null,
-  );
+  expect(await verifyAccessJwt(await makeJwt(validPayload({ iss: "https://attacker.cloudflareaccess.com" })), config)).toBe(null);
 });
 
 test("rejects expired and not-yet-valid assertions", async () => {
   const past = Math.floor(Date.now() / 1000) - 10;
-  assert.equal(await verifyAccessJwt(await makeJwt(validPayload({ exp: past })), config), null);
+  expect(await verifyAccessJwt(await makeJwt(validPayload({ exp: past })), config)).toBe(null);
   const future = Math.floor(Date.now() / 1000) + 600;
-  assert.equal(await verifyAccessJwt(await makeJwt(validPayload({ nbf: future })), config), null);
+  expect(await verifyAccessJwt(await makeJwt(validPayload({ nbf: future })), config)).toBe(null);
 });
 
 test("rejects a token signed by a key that is not in the JWKS", async () => {
@@ -127,35 +114,35 @@ test("rejects a token signed by a key that is not in the JWKS", async () => {
     ["sign", "verify"],
   );
   // Same kid, so it resolves a key -- but the signature will not verify.
-  assert.equal(await verifyAccessJwt(await makeJwt(validPayload(), { signer: other.privateKey }), config), null);
+  expect(await verifyAccessJwt(await makeJwt(validPayload(), { signer: other.privateKey }), config)).toBe(null);
   // Unknown kid resolves nothing.
-  assert.equal(await verifyAccessJwt(await makeJwt(validPayload(), { kid: "unknown" }), config), null);
+  expect(await verifyAccessJwt(await makeJwt(validPayload(), { kid: "unknown" }), config)).toBe(null);
 });
 
 test("rejects a tampered payload", async () => {
   const token = await makeJwt(validPayload());
   const [head, , signature] = token.split(".");
   const forged = `${head}.${encodeJson(validPayload({ email: "attacker@example.com" }))}.${signature}`;
-  assert.equal(await verifyAccessJwt(forged, config), null);
+  expect(await verifyAccessJwt(forged, config)).toBe(null);
 });
 
 test("rejects alg=none and malformed tokens", async () => {
-  assert.equal(await verifyAccessJwt(await makeJwt(validPayload(), { alg: "none" }), config), null);
-  assert.equal(await verifyAccessJwt("not.a.jwt", config), null);
-  assert.equal(await verifyAccessJwt("onlyonepart", config), null);
-  assert.equal(await verifyAccessJwt("", config), null);
+  expect(await verifyAccessJwt(await makeJwt(validPayload(), { alg: "none" }), config)).toBe(null);
+  expect(await verifyAccessJwt("not.a.jwt", config)).toBe(null);
+  expect(await verifyAccessJwt("onlyonepart", config)).toBe(null);
+  expect(await verifyAccessJwt("", config)).toBe(null);
 });
 
 test("guardRequest is a no-op until both settings are present", async () => {
   const request = new Request("https://x/api/items");
-  assert.equal(await guardRequest(request, {}), null);
-  assert.equal(await guardRequest(request, { ACCESS_TEAM_DOMAIN: TEAM }), null);
+  expect(await guardRequest(request, {})).toBe(null);
+  expect(await guardRequest(request, { ACCESS_TEAM_DOMAIN: TEAM })).toBe(null);
 });
 
 test("guardRequest denies an unauthenticated request once configured", async () => {
   const env = { ACCESS_TEAM_DOMAIN: TEAM, ACCESS_AUD: AUD };
   const denied = await guardRequest(new Request("https://x/api/manage-asset/state"), env);
-  assert.equal(denied?.status, 403);
+  expect(denied?.status).toBe(403);
 });
 
 test("guardRequest allows a valid assertion once configured", async () => {
@@ -163,7 +150,7 @@ test("guardRequest allows a valid assertion once configured", async () => {
   const request = new Request("https://x/api/manage-asset/state", {
     headers: { "cf-access-jwt-assertion": await makeJwt(validPayload()) },
   });
-  assert.equal(await guardRequest(request, env), null);
+  expect(await guardRequest(request, env)).toBe(null);
 });
 
 test("guardRequest fails closed when the JWKS cannot be fetched", async () => {
@@ -177,7 +164,7 @@ test("guardRequest fails closed when the JWKS cannot be fetched", async () => {
       headers: { "cf-access-jwt-assertion": await makeJwt(validPayload(), { kid: "rotated" }) },
     });
     const response = await guardRequest(request, { ACCESS_TEAM_DOMAIN: TEAM, ACCESS_AUD: AUD });
-    assert.equal(response?.status, 503);
+    expect(response?.status).toBe(503);
   } finally {
     globalThis.fetch = saved;
   }
@@ -189,5 +176,5 @@ test("caches the JWKS instead of fetching it per request", async () => {
   await verifyAccessJwt(token, config);
   await verifyAccessJwt(token, config);
   await verifyAccessJwt(token, config);
-  assert.ok(jwksRequests - before <= 1, `expected at most one JWKS fetch, saw ${jwksRequests - before}`);
+  expect(jwksRequests - before <= 1, `expected at most one JWKS fetch, saw ${jwksRequests - before}`).toBeTruthy();
 });

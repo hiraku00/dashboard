@@ -1,5 +1,4 @@
-import assert from "node:assert/strict";
-import test from "node:test";
+import { expect, test } from "vitest";
 
 import { combineAssetTotals } from "../app/lib/portal-summary.ts";
 
@@ -13,18 +12,18 @@ import { combineAssetTotals } from "../app/lib/portal-summary.ts";
 test("prefers the snapshot's own stored total over summing its positions", () => {
   const snapshots = [{ id: "s1", total_usd: 100, total_jpy: 15000 }];
   const positions = new Map([["s1", { usd: 999, jpy: 999 }]]);
-  assert.deepEqual(combineAssetTotals(snapshots, positions), { usd: 100, jpy: 15000 });
+  expect(combineAssetTotals(snapshots, positions)).toEqual({ usd: 100, jpy: 15000 });
 });
 
 test("falls back to the position sum when the snapshot's own total is zero", () => {
   const snapshots = [{ id: "s1", total_usd: 0, total_jpy: 0 }];
   const positions = new Map([["s1", { usd: 42, jpy: 6300 }]]);
-  assert.deepEqual(combineAssetTotals(snapshots, positions), { usd: 42, jpy: 6300 });
+  expect(combineAssetTotals(snapshots, positions)).toEqual({ usd: 42, jpy: 6300 });
 });
 
 test("falls back to zero when neither the snapshot nor a positions row exists", () => {
   const snapshots = [{ id: "s1", total_usd: 0, total_jpy: 0 }];
-  assert.deepEqual(combineAssetTotals(snapshots, new Map()), { usd: 0, jpy: 0 });
+  expect(combineAssetTotals(snapshots, new Map())).toEqual({ usd: 0, jpy: 0 });
 });
 
 test("sums across multiple sources independently", () => {
@@ -33,15 +32,15 @@ test("sums across multiple sources independently", () => {
     { id: "s2", total_usd: 0, total_jpy: 0 },
   ];
   const positions = new Map([["s2", { usd: 50, jpy: 7500 }]]);
-  assert.deepEqual(combineAssetTotals(snapshots, positions), { usd: 150, jpy: 22500 });
+  expect(combineAssetTotals(snapshots, positions)).toEqual({ usd: 150, jpy: 22500 });
 });
 
 test("treats a null/undefined stored total the same as zero, not as NaN", () => {
   const snapshots = [{ id: "s1", total_usd: null, total_jpy: undefined }];
   const positions = new Map([["s1", { usd: 10, jpy: 1500 }]]);
-  assert.deepEqual(combineAssetTotals(snapshots, positions), { usd: 10, jpy: 1500 });
+  expect(combineAssetTotals(snapshots, positions)).toEqual({ usd: 10, jpy: 1500 });
 });
 
 test("an empty snapshot list totals to zero", () => {
-  assert.deepEqual(combineAssetTotals([], new Map()), { usd: 0, jpy: 0 });
+  expect(combineAssetTotals([], new Map())).toEqual({ usd: 0, jpy: 0 });
 });

@@ -1,5 +1,4 @@
-import assert from "node:assert/strict";
-import test from "node:test";
+import { expect, test } from "vitest";
 
 import { canonicalUrl, clean, validDate } from "../app/lib/text.ts";
 import { youTubeVideoId } from "../app/lib/youtube.ts";
@@ -13,17 +12,11 @@ import {
 // they now share, so a future edit cannot quietly reintroduce a difference.
 
 test("canonicalUrl strips the fragment and tracking params", () => {
-  assert.equal(
-    canonicalUrl("https://example.com/a?utm_source=x&keep=1&fbclid=y#frag"),
-    "https://example.com/a?keep=1",
-  );
+  expect(canonicalUrl("https://example.com/a?utm_source=x&keep=1&fbclid=y#frag")).toBe("https://example.com/a?keep=1");
   // The seed loop and /api/imports used to strip only the fragment, so the
   // same link got a different canonical_url depending on how it arrived.
-  assert.equal(
-    canonicalUrl("https://example.com/a?utm_medium=email"),
-    "https://example.com/a",
-  );
-  assert.equal(canonicalUrl("not a url"), "");
+  expect(canonicalUrl("https://example.com/a?utm_medium=email")).toBe("https://example.com/a");
+  expect(canonicalUrl("not a url")).toBe("");
 });
 
 test("canonicalUrl rejects schemes other than http/https", () => {
@@ -31,50 +24,50 @@ test("canonicalUrl rejects schemes other than http/https", () => {
   // and "data:" URIs -- so without an explicit protocol check they used to
   // pass straight through despite every caller's error message claiming
   // only http/https URLs are accepted. See Issue #74.
-  assert.equal(canonicalUrl("javascript:alert(1)"), "");
-  assert.equal(canonicalUrl("data:text/html,<script>alert(1)</script>"), "");
-  assert.equal(canonicalUrl("ftp://example.com/file"), "");
+  expect(canonicalUrl("javascript:alert(1)")).toBe("");
+  expect(canonicalUrl("data:text/html,<script>alert(1)</script>")).toBe("");
+  expect(canonicalUrl("ftp://example.com/file")).toBe("");
 });
 
 test("clean trims, truncates and rejects non-strings", () => {
-  assert.equal(clean("  hi  "), "hi");
-  assert.equal(clean("abcdef", 3), "abc");
-  assert.equal(clean(42), "");
-  assert.equal(clean(null), "");
+  expect(clean("  hi  ")).toBe("hi");
+  expect(clean("abcdef", 3)).toBe("abc");
+  expect(clean(42)).toBe("");
+  expect(clean(null)).toBe("");
 });
 
 test("validDate accepts empty and YYYY-MM-DD only", () => {
-  assert.equal(validDate(""), true);
-  assert.equal(validDate("2026-09-04"), true);
-  assert.equal(validDate("2026/09/04"), false);
-  assert.equal(validDate("2026-9-4"), false);
+  expect(validDate("")).toBe(true);
+  expect(validDate("2026-09-04")).toBe(true);
+  expect(validDate("2026/09/04")).toBe(false);
+  expect(validDate("2026-9-4")).toBe(false);
 });
 
 test("youTubeVideoId reads every YouTube URL form", () => {
   const id = "dQw4w9WgXcQ";
-  assert.equal(youTubeVideoId(`https://www.youtube.com/watch?v=${id}`), id);
-  assert.equal(youTubeVideoId(`https://m.youtube.com/watch?v=${id}`), id);
-  assert.equal(youTubeVideoId(`https://music.youtube.com/watch?v=${id}`), id);
-  assert.equal(youTubeVideoId(`https://www.youtube.com/shorts/${id}`), id);
-  assert.equal(youTubeVideoId(`https://www.youtube.com/embed/${id}`), id);
-  assert.equal(youTubeVideoId(`https://www.youtube.com/live/${id}`), id);
-  assert.equal(youTubeVideoId(`https://youtu.be/${id}`), id);
+  expect(youTubeVideoId(`https://www.youtube.com/watch?v=${id}`)).toBe(id);
+  expect(youTubeVideoId(`https://m.youtube.com/watch?v=${id}`)).toBe(id);
+  expect(youTubeVideoId(`https://music.youtube.com/watch?v=${id}`)).toBe(id);
+  expect(youTubeVideoId(`https://www.youtube.com/shorts/${id}`)).toBe(id);
+  expect(youTubeVideoId(`https://www.youtube.com/embed/${id}`)).toBe(id);
+  expect(youTubeVideoId(`https://www.youtube.com/live/${id}`)).toBe(id);
+  expect(youTubeVideoId(`https://youtu.be/${id}`)).toBe(id);
   // The looser text-tube copy missed both of these: www.youtu.be, and a
   // trailing slash (it read the id with pathname.slice(1)).
-  assert.equal(youTubeVideoId(`https://www.youtu.be/${id}`), id);
-  assert.equal(youTubeVideoId(`https://youtu.be/${id}/`), id);
+  expect(youTubeVideoId(`https://www.youtu.be/${id}`)).toBe(id);
+  expect(youTubeVideoId(`https://youtu.be/${id}/`)).toBe(id);
 });
 
 test("youTubeVideoId rejects non-YouTube and non-http URLs", () => {
   const id = "dQw4w9WgXcQ";
   // The text-tube copy had no protocol check, so these reached the fetch.
-  assert.equal(youTubeVideoId(`javascript:alert(1)//${id}`), "");
-  assert.equal(youTubeVideoId(`file:///tmp/${id}`), "");
-  assert.equal(youTubeVideoId("https://example.com/watch?v=" + id), "");
-  assert.equal(youTubeVideoId("https://www.youtube.com/watch?v=short"), "");
-  assert.equal(youTubeVideoId(""), "");
-  assert.equal(youTubeVideoId(undefined), "");
-  assert.equal(youTubeVideoId(12345), "");
+  expect(youTubeVideoId(`javascript:alert(1)//${id}`)).toBe("");
+  expect(youTubeVideoId(`file:///tmp/${id}`)).toBe("");
+  expect(youTubeVideoId("https://example.com/watch?v=" + id)).toBe("");
+  expect(youTubeVideoId("https://www.youtube.com/watch?v=short")).toBe("");
+  expect(youTubeVideoId("")).toBe("");
+  expect(youTubeVideoId(undefined)).toBe("");
+  expect(youTubeVideoId(12345)).toBe("");
 });
 
 const snapshotRow = {
@@ -98,24 +91,24 @@ const positionRow = {
 
 test("toLegacyWalletSnapshot emits both usd_value names", () => {
   const result = toLegacyWalletSnapshot(snapshotRow, [positionRow]);
-  assert.equal(result.wallet_id, "w1");
-  assert.equal(result.wallet_name, "Main Wallet");
-  assert.equal(result.address, "0xabc");
-  assert.equal(result.total_usd, 100);
-  assert.equal(result.sync_received_at, "2026-09-04T10:00:05Z");
+  expect(result.wallet_id).toBe("w1");
+  expect(result.wallet_name).toBe("Main Wallet");
+  expect(result.address).toBe("0xabc");
+  expect(result.total_usd).toBe(100);
+  expect(result.sync_received_at).toBe("2026-09-04T10:00:05Z");
   // state's copy emitted only usd_value_display, history's emitted both.
-  assert.deepEqual(result.tokens, [
+  expect(result.tokens).toEqual([
     { symbol: "ETH", amount_value: 2, usd_value_display: 100, usd_value: 100 },
   ]);
 });
 
 test("toLegacyExchangeSnapshot emits net_quantity and nests totals", () => {
   const result = toLegacyExchangeSnapshot(snapshotRow, [positionRow]);
-  assert.equal(result.source_id, "w1");
-  assert.equal(result.account_name, "Main Wallet");
-  assert.deepEqual(result.totals, { net_asset_usd: 100, net_asset_jpy: 15000 });
+  expect(result.source_id).toBe("w1");
+  expect(result.account_name).toBe("Main Wallet");
+  expect(result.totals).toEqual({ net_asset_usd: 100, net_asset_jpy: 15000 });
   // history's copy omitted net_quantity, state's included it.
-  assert.deepEqual(result.positions, [
+  expect(result.positions).toEqual([
     {
       symbol: "ETH",
       quantity: 2,
@@ -131,5 +124,5 @@ test("toLegacyExchangeSnapshot marks debt positions as liabilities", () => {
   const result = toLegacyExchangeSnapshot(snapshotRow, [
     { ...positionRow, is_debt: 1 },
   ]);
-  assert.equal(result.positions[0].is_liability, true);
+  expect(result.positions[0].is_liability).toBe(true);
 });
