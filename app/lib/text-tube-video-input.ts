@@ -3,7 +3,7 @@
  *  does the actual D1 insert) for the same reason as
  *  app/lib/watch-list-item-input.ts: a module that imports
  *  "cloudflare:workers" at the top level cannot be loaded outside the
- *  Workers runtime at all, let alone unit tested under plain `node --test`.
+ *  Workers runtime at all, let alone unit tested under vitest's plain-Node "node" project.
  *
  *  Imports app/lib/text.ts by relative path with an explicit .ts extension
  *  rather than the "@/..." alias -- see the matching comment in

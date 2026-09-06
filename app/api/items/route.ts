@@ -8,7 +8,7 @@ import { route } from "@/app/lib/route";
 // Re-exported for app/api/items/[id]/route.ts and app/api/imports/route.ts,
 // which both import this from here rather than from
 // app/lib/watch-list-item-input.ts directly -- the actual pure logic lives
-// there (see that file for why: it needs to run under plain `node --test`,
+// there (see that file for why: it needs to run under vitest's plain-Node "node" project,
 // which a module importing "cloudflare:workers" like this one cannot).
 export { normalizeItem };
 export type { ItemInput } from "@/app/lib/watch-list-item-input";

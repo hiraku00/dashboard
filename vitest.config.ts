@@ -3,7 +3,8 @@ import { defineConfig } from "vitest/config";
 import { cloudflareTest } from "@cloudflare/vitest-pool-workers";
 import { mockOutboundResponse } from "./tests/workers/fixtures/outbound-mocks";
 
-// Two projects run under this one `vitest run` invocation (Issue #80):
+// Three projects run under this one `vitest run` invocation (Issue #80,
+// Issue #94):
 //
 // - "workers" (tests/workers/**/*.test.ts): imports real app code (route
 //   handlers, ensureSchema()) that reaches `cloudflare:workers` bindings.
@@ -25,6 +26,15 @@ import { mockOutboundResponse } from "./tests/workers/fixtures/outbound-mocks";
 //   plain "node" environment: running these through workerd would work but
 //   would slow them down for no benefit, since none of them touch a
 //   binding.
+//
+// - "dom" (tests/dom/**/*.test.{ts,tsx}): the two remaining pieces of
+//   tests/rendered-html.test.mjs (Issue #94) that genuinely need a DOM --
+//   public/manage-asset-original/compat-fixes.js (reads `document`, uses
+//   MutationObserver) and app/text-tube-app.tsx's VideoEditor (a real React
+//   component's click behavior, tested with @testing-library/react). Every
+//   other rendered-html.test.mjs check either had a stronger equivalent
+//   already elsewhere or turned out not to need a DOM at all once looked at
+//   closely (see tests/portfolio-core.test.mjs's own comment).
 export default defineConfig({
   test: {
     projects: [
@@ -71,6 +81,8 @@ export default defineConfig({
             "tests/history-window.test.mjs",
             "tests/manage-asset-core.test.mjs",
             "tests/portal-summary.test.mjs",
+            "tests/portfolio-core.test.mjs",
+            "tests/schema-parity.test.mjs",
             "tests/shared-helpers.test.mjs",
             "tests/sync-summary.test.mjs",
             "tests/text-tube-query.test.mjs",
@@ -80,6 +92,18 @@ export default defineConfig({
             "tests/watch-list-item-input.test.mjs",
             "tests/watch-list-query.test.mjs",
           ],
+        },
+      },
+      {
+        resolve: {
+          alias: {
+            "@": fileURLToPath(new URL(".", import.meta.url)),
+          },
+        },
+        test: {
+          name: "dom",
+          environment: "jsdom",
+          include: ["tests/dom/**/*.test.{ts,tsx}"],
         },
       },
     ],

@@ -1,6 +1,6 @@
 /** Pure decision logic for the Watch List's read path -- no D1, no I/O.
  *  Kept separate from app/lib/queries/watch-list.ts (which does the actual
- *  D1 calls) so it can run under plain `node --test` the same way
+ *  D1 calls) so it can run under vitest's plain-Node "node" project the same way
  *  manage-asset-core.ts, access.ts and the other app/lib/*.ts modules do;
  *  a module that imports "cloudflare:workers" at the top level cannot be
  *  loaded outside the Workers runtime at all, let alone unit tested. */
@@ -8,7 +8,7 @@
 // logic is identical: a cross-file import (relative or "@/...") cannot be
 // resolved by plain Node without an explicit extension that in turn breaks
 // tsc (`allowImportingTsExtensions` is off), and this module has to load
-// under plain `node --test`. Every other pure app/lib/*.ts module (e.g.
+// under vitest's plain-Node "node" project. Every other pure app/lib/*.ts module (e.g.
 // manage-asset-core.ts, access.ts) has zero imports for the same reason.
 // This one-liner is small enough that duplicating it is safer than fighting
 // module resolution -- keep it in sync with clean() in app/lib/text.ts.
