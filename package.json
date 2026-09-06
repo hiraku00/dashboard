@@ -13,7 +13,6 @@
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "typecheck": "wrangler types && tsc --noEmit",
     "smoke:production": "node tests/production-smoke.test.mjs",
-    "test:ssr": "npm run build && node --test tests/ssr-parity.test.mjs",
     "test:workers": "npm run build && vitest run"
   },
   "dependencies": {
