@@ -1,5 +1,4 @@
-import assert from "node:assert/strict";
-import test from "node:test";
+import { expect, test } from "vitest";
 
 // The history endpoint's ?days= cutoff has to reproduce exactly the window the
 // page used to compute client-side, otherwise a chart silently loses or gains
@@ -45,32 +44,32 @@ test("the server cutoff selects exactly the client's window", () => {
   for (const period of ["7", "30", "90"]) {
     const cutoff = serverCutoff(latest, period);
     const server = dates.filter((date) => date >= cutoff);
-    assert.deepEqual(server, clientWindow(dates, period), `period=${period}`);
-    assert.equal(server.length, Number(period), `period=${period} の日数`);
+    expect(server, `period=${period}`).toEqual(clientWindow(dates, period));
+    expect(server.length, `period=${period} の日数`).toBe(Number(period));
   }
 });
 
 test("a 7 day window includes the latest day, not eight days", () => {
   // Off-by-one here would show a different first point on every chart.
-  assert.equal(serverCutoff("2026-09-06", "7"), "2026-08-31");
-  assert.equal(serverCutoff("2026-09-06", "1"), "2026-09-06");
+  expect(serverCutoff("2026-09-06", "7")).toBe("2026-08-31");
+  expect(serverCutoff("2026-09-06", "1")).toBe("2026-09-06");
 });
 
 test("all, empty and malformed values mean no cutoff", () => {
   for (const value of ["all", "", "0", "-5", "abc", "NaN"]) {
-    assert.equal(serverCutoff("2026-09-06", value), null, `days=${value}`);
+    expect(serverCutoff("2026-09-06", value), `days=${value}`).toBe(null);
   }
 });
 
 test("the cutoff crosses month and year boundaries correctly", () => {
-  assert.equal(serverCutoff("2026-01-03", "7"), "2025-12-28");
-  assert.equal(serverCutoff("2026-03-02", "3"), "2026-02-28");
+  expect(serverCutoff("2026-01-03", "7")).toBe("2025-12-28");
+  expect(serverCutoff("2026-03-02", "3")).toBe("2026-02-28");
 });
 
 test("a window longer than the data keeps everything", () => {
   const dates = days(10);
   const cutoff = serverCutoff(dates[dates.length - 1], "90");
-  assert.deepEqual(dates.filter((date) => date >= cutoff), dates);
+  expect(dates.filter((date) => date >= cutoff)).toEqual(dates);
 });
 
 test("the client's own filter is reproduced for the boundary day", () => {
@@ -78,11 +77,11 @@ test("the client's own filter is reproduced for the boundary day", () => {
   const dates = days(20);
   const latest = dates[dates.length - 1];
   const cutoff = serverCutoff(latest, "7");
-  assert.ok(dates.includes(cutoff));
+  expect(dates.includes(cutoff)).toBeTruthy();
   const before = new Date(`${cutoff}T00:00:00Z`);
   before.setUTCDate(before.getUTCDate() - 1);
   const dropped = before.toISOString().slice(0, 10);
   const kept = dates.filter((date) => date >= cutoff);
-  assert.ok(kept.includes(cutoff), "境界日は含まれる");
-  assert.ok(!kept.includes(dropped), "境界日の前日は含まれない");
+  expect(kept.includes(cutoff), "境界日は含まれる").toBeTruthy();
+  expect(!kept.includes(dropped), "境界日の前日は含まれない").toBeTruthy();
 });

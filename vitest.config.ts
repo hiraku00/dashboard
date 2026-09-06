@@ -2,40 +2,67 @@ import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
 import { cloudflareTest } from "@cloudflare/vitest-pool-workers";
 
-// Two tiers of tests run through this one config:
+// Two projects run under this one `vitest run` invocation (Issue #80):
 //
-// - tests/workers/**/*.test.ts: imports real app code (route handlers,
-//   ensureSchema()) that reaches `cloudflare:workers` bindings. Runs inside
-//   an actual workerd instance via @cloudflare/vitest-pool-workers, with a
-//   real (ephemeral, per-run) D1 and R2 -- not mocks. This is the tier that
-//   replaces the wrangler-dev-as-a-child-process approach in
-//   tests/ssr-parity.test.mjs (see that file's own comment for why that
-//   approach hangs GitHub Actions' Ubuntu runners): the pool manages
-//   workerd's lifecycle itself, so there is no spawned process, no stdio
-//   pipe, and nothing left running after the run exits.
+// - "workers" (tests/workers/**/*.test.ts): imports real app code (route
+//   handlers, ensureSchema()) that reaches `cloudflare:workers` bindings.
+//   Runs inside an actual workerd instance via
+//   @cloudflare/vitest-pool-workers, with a real (ephemeral, per-run) D1 and
+//   R2 -- not mocks. Introduced in Stage 1 to replace the
+//   wrangler-dev-as-a-child-process approach that hung GitHub Actions'
+//   Ubuntu runners (see this project's git history for
+//   tests/ssr-parity.test.mjs, migrated in Stage 2 to
+//   tests/workers/ssr-parity.test.ts).
 //
-// - tests/**/*.test.mjs: the existing plain-Node tests (unchanged, still
-//   run by `node --test` per package.json's "test" script during this
-//   migration's Stage 1). Nothing here touches them; they coexist with the
-//   new tier until a later stage moves them over too.
-//
-// `wrangler.configPath` makes the pool build and load the real worker
-// (dist/server/index.js via worker/auth-wrapper.ts) so tests can exercise
-// either the fast tier (import a route handler directly -- no build
-// required) or SELF.fetch() against the actual built app (requires
-// `npm run build` first, same as tests/ssr-parity.test.mjs already does).
+// - "node" (tests/*.test.mjs): pure-logic tests for app/lib/*.ts modules
+//   that do not import "cloudflare:workers" at all -- no D1, no R2, no
+//   workerd needed. These ran under plain `node --test` before Stage 3
+//   (this project's git history has the node:assert-based originals); they
+//   were moved onto vitest here purely to consolidate on one test runner
+//   (Issue #80's eventual goal), not because they needed anything workerd
+//   provides. Deliberately a *separate* project from "workers", with a
+//   plain "node" environment: running these through workerd would work but
+//   would slow them down for no benefit, since none of them touch a
+//   binding.
 export default defineConfig({
-  plugins: [
-    cloudflareTest({
-      wrangler: { configPath: "./wrangler.jsonc" },
-    }),
-  ],
-  resolve: {
-    alias: {
-      "@": fileURLToPath(new URL(".", import.meta.url)),
-    },
-  },
   test: {
-    include: ["tests/workers/**/*.test.ts"],
+    projects: [
+      {
+        plugins: [
+          cloudflareTest({
+            wrangler: { configPath: "./wrangler.jsonc" },
+          }),
+        ],
+        resolve: {
+          alias: {
+            "@": fileURLToPath(new URL(".", import.meta.url)),
+          },
+        },
+        test: {
+          name: "workers",
+          include: ["tests/workers/**/*.test.ts"],
+        },
+      },
+      {
+        test: {
+          name: "node",
+          environment: "node",
+          include: [
+            "tests/access.test.mjs",
+            "tests/history-window.test.mjs",
+            "tests/manage-asset-core.test.mjs",
+            "tests/portal-summary.test.mjs",
+            "tests/shared-helpers.test.mjs",
+            "tests/sync-summary.test.mjs",
+            "tests/text-tube-query.test.mjs",
+            "tests/text-tube-video-input.test.mjs",
+            "tests/todo-task-input.test.mjs",
+            "tests/usage-window.test.mjs",
+            "tests/watch-list-item-input.test.mjs",
+            "tests/watch-list-query.test.mjs",
+          ],
+        },
+      },
+    ],
   },
 });

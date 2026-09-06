@@ -1,5 +1,4 @@
-import assert from "node:assert/strict";
-import test from "node:test";
+import { expect, test } from "vitest";
 
 import {
   currencyHistory,
@@ -19,10 +18,7 @@ import {
 // flipping a total's sign) were exactly the kind a unit test pins down.
 
 const close = (actual, expected, tolerance = 1e-9) =>
-  assert.ok(
-    Math.abs(actual - expected) <= tolerance,
-    `expected ${actual} to be within ${tolerance} of ${expected}`,
-  );
+  expect(Math.abs(actual - expected) <= tolerance, `expected ${actual} to be within ${tolerance} of ${expected}`).toBeTruthy();
 
 test("walletPositions reads plain wallet tokens", () => {
   const positions = walletPositions([
@@ -33,8 +29,8 @@ test("walletPositions reads plain wallet tokens", () => {
       tokens: [{ symbol: "ETH", amount_value: 2, usd_value_display: 5000 }],
     },
   ]);
-  assert.equal(positions.length, 1);
-  assert.deepEqual(positions[0], {
+  expect(positions.length).toBe(1);
+  expect(positions[0]).toEqual({
     symbol: "ETH",
     quantity: 2,
     valueUsd: 5000,
@@ -64,14 +60,11 @@ test("walletPositions reaches assets nested under protocols[].panels[]", () => {
       ],
     },
   ]);
-  assert.deepEqual(
-    positions.map((position) => [position.symbol, position.quantity, position.valueUsd, position.protocol]),
-    [
-      ["ETH", 1, 2500, ""],
-      ["stETH", 8, 20000, "Lido"],
-    ],
-  );
-  assert.equal(positions[1].locationType, "defi");
+  expect(positions.map((position) => [position.symbol, position.quantity, position.valueUsd, position.protocol])).toEqual([
+    ["ETH", 1, 2500, ""],
+    ["stETH", 8, 20000, "Lido"],
+  ]);
+  expect(positions[1].locationType).toBe("defi");
 });
 
 test("walletPositions keeps only the newest snapshot per wallet", () => {
@@ -91,8 +84,8 @@ test("walletPositions keeps only the newest snapshot per wallet", () => {
       tokens: [{ symbol: "ETH", amount_value: 3, usd_value_display: 7500 }],
     },
   ]);
-  assert.equal(positions.length, 1);
-  assert.equal(positions[0].quantity, 3);
+  expect(positions.length).toBe(1);
+  expect(positions[0].quantity).toBe(3);
 });
 
 test("walletPositions marks a token with no USD value as unpriced", () => {
@@ -103,8 +96,8 @@ test("walletPositions marks a token with no USD value as unpriced", () => {
       tokens: [{ symbol: "SCAM", amount_value: 1000 }],
     },
   ]);
-  assert.equal(position.unpriced, true);
-  assert.equal(position.valueUsd, 0);
+  expect(position.unpriced).toBe(true);
+  expect(position.valueUsd).toBe(0);
 });
 
 test("exchangePositions negates liabilities and tags them as debt", () => {
@@ -121,13 +114,10 @@ test("exchangePositions negates liabilities and tags them as debt", () => {
       ],
     },
   ]);
-  assert.deepEqual(
-    positions.map((position) => [position.symbol, position.valueUsd, position.positionType]),
-    [
-      ["BTC", 30000, "asset"],
-      ["USDT", -1000, "debt"],
-    ],
-  );
+  expect(positions.map((position) => [position.symbol, position.valueUsd, position.positionType])).toEqual([
+    ["BTC", 30000, "asset"],
+    ["USDT", -1000, "debt"],
+  ]);
 });
 
 test("normalizeSyncedPositions routes by source type", () => {
@@ -136,14 +126,14 @@ test("normalizeSyncedPositions routes by source type", () => {
     { capturedAt: "2026-09-05T10:00:00Z", tokens: [{ symbol: "ETH", amount_value: 2, usd_value_display: 5000 }] },
     [],
   );
-  assert.deepEqual(wallet.map((p) => [p.symbol, p.locationType]), [["ETH", "wallet"]]);
+  expect(wallet.map((p) => [p.symbol, p.locationType])).toEqual([["ETH", "wallet"]]);
 
   const exchange = normalizeSyncedPositions(
     { sourceType: "exchange", sourceId: "e1", displayName: "Binance" },
     { capturedAt: "2026-09-05T10:00:00Z" },
     [{ symbol: "BTC", quantity: 1, usd_value: 60000 }],
   );
-  assert.deepEqual(exchange.map((p) => [p.symbol, p.locationType, p.valueUsd]), [["BTC", "exchange", 60000]]);
+  expect(exchange.map((p) => [p.symbol, p.locationType, p.valueUsd])).toEqual([["BTC", "exchange", 60000]]);
 });
 
 test("holdingsFromPositions sums a symbol across locations and derives a unit price", () => {
@@ -154,21 +144,21 @@ test("holdingsFromPositions sums a symbol across locations and derives a unit pr
   ]);
   // Sorted by value, so BTC (6000) comes before ETH (7500)? No -- ETH totals
   // 7500 across two locations, so it leads.
-  assert.deepEqual(holdings.map((h) => h.symbol), ["ETH", "BTC"]);
+  expect(holdings.map((h) => h.symbol)).toEqual(["ETH", "BTC"]);
   const eth = holdings[0];
-  assert.equal(eth.quantity, 3);
-  assert.equal(eth.valueUsd, 7500);
-  assert.equal(eth.unitPriceUsd, 2500);
+  expect(eth.quantity).toBe(3);
+  expect(eth.valueUsd).toBe(7500);
+  expect(eth.unitPriceUsd).toBe(2500);
   // Locations are ordered by how much value each holds.
-  assert.deepEqual(eth.locations, ["Main", "Binance"]);
+  expect(eth.locations).toEqual(["Main", "Binance"]);
 });
 
 test("holdingsFromPositions leaves the unit price null when the quantity is unknown", () => {
   const [holding] = holdingsFromPositions([
     { symbol: "ETH", quantity: null, valueUsd: 5000, location: "Main", locationType: "wallet", protocol: "", positionType: "asset", unpriced: false },
   ]);
-  assert.equal(holding.quantityKnown, false);
-  assert.equal(holding.unitPriceUsd, null);
+  expect(holding.quantityKnown).toBe(false);
+  expect(holding.unitPriceUsd).toBe(null);
 });
 
 test("historyPoints totals each date and keeps the newest record per source", () => {
@@ -184,7 +174,7 @@ test("historyPoints totals each date and keeps the newest record per source", ()
       { source_id: "e1", as_of_date: "2026-09-05", captured_at: "2026-09-05T10:00:00Z", totals: { net_asset_usd: 60 } },
     ],
   );
-  assert.deepEqual(points, [
+  expect(points).toEqual([
     { date: "2026-09-04", value: 160 },
     { date: "2026-09-05", value: 180 },
   ]);
@@ -208,13 +198,13 @@ test("currencyHistory reports the daily delta, price and APR for one symbol", ()
     },
   ];
   const rows = currencyHistory(wallets, [], "ETH", []);
-  assert.equal(rows.length, 2);
-  assert.equal(rows[0].delta, null, "the first day has nothing to compare against");
-  assert.equal(rows[1].quantity, 11);
-  assert.equal(rows[1].delta, 1);
-  assert.equal(rows[1].price, 2500);
-  assert.equal(rows[1].usd, 2500);
-  assert.equal(rows[1].yen, 375000);
+  expect(rows.length).toBe(2);
+  expect(rows[0].delta, "the first day has nothing to compare against").toBe(null);
+  expect(rows[1].quantity).toBe(11);
+  expect(rows[1].delta).toBe(1);
+  expect(rows[1].price).toBe(2500);
+  expect(rows[1].usd).toBe(2500);
+  expect(rows[1].yen).toBe(375000);
   close(rows[1].apr, (1 / 10) * 365 * 100);
 });
 
@@ -238,7 +228,7 @@ test("currencyHistory matches the symbol case-insensitively and skips zero days"
     "STETH",
     [],
   );
-  assert.deepEqual(rows.map((row) => row.date), ["2026-09-05"]);
+  expect(rows.map((row) => row.date)).toEqual(["2026-09-05"]);
 });
 
 test("stethRewardHistory continues the CSV series with snapshot-derived rows", () => {
@@ -261,13 +251,13 @@ test("stethRewardHistory continues the CSV series with snapshot-derived rows", (
   ];
   const rows = stethRewardHistory(rewards, wallets, [], []);
   // The non-reward row is dropped; two CSV rows plus one snapshot row remain.
-  assert.deepEqual(rows.map((row) => [row.date, row.source]), [
+  expect(rows.map((row) => [row.date, row.source])).toEqual([
     ["2026-09-03", "csv"],
     ["2026-09-04", "csv"],
     ["2026-09-05", "snapshot"],
   ]);
   close(rows[2].change, 10.03 - 10.01, 1e-9);
-  assert.equal(rows[2].balance, 10.03);
+  expect(rows[2].balance).toBe(10.03);
 });
 
 test("stethRewardHistory drops snapshot dates the CSV already covers", () => {
@@ -281,19 +271,13 @@ test("stethRewardHistory drops snapshot dates the CSV already covers", () => {
     },
   ];
   const rows = stethRewardHistory(rewards, wallets, [], []);
-  assert.deepEqual(rows.map((row) => [row.date, row.source]), [["2026-09-05", "csv"]]);
+  expect(rows.map((row) => [row.date, row.source])).toEqual([["2026-09-05", "csv"]]);
 });
 
 test("legacyDeFiAsset parses the two display_text shapes it has seen", () => {
-  assert.deepEqual(
-    legacyDeFiAsset({ display_text: "Pool USD Value stETH 1,234.5 stETH ... $ 3,086,250" }),
-    { symbol: "stETH", quantity: 1234.5, valueUsd: 3086250, unpriced: false },
-  );
+  expect(legacyDeFiAsset({ display_text: "Pool USD Value stETH 1,234.5 stETH ... $ 3,086,250" })).toEqual({ symbol: "stETH", quantity: 1234.5, valueUsd: 3086250, unpriced: false });
   // The alternate ordering: symbol, token name, then the amount.
-  assert.deepEqual(
-    legacyDeFiAsset({ display_text: "USD Value ETH ETH 2.5 blah $ 6,250" }),
-    { symbol: "ETH", quantity: 2.5, valueUsd: 6250, unpriced: false },
-  );
-  assert.equal(legacyDeFiAsset({ display_text: "nothing parseable here" }), null);
-  assert.equal(legacyDeFiAsset({}), null);
+  expect(legacyDeFiAsset({ display_text: "USD Value ETH ETH 2.5 blah $ 6,250" })).toEqual({ symbol: "ETH", quantity: 2.5, valueUsd: 6250, unpriced: false });
+  expect(legacyDeFiAsset({ display_text: "nothing parseable here" })).toBe(null);
+  expect(legacyDeFiAsset({})).toBe(null);
 });

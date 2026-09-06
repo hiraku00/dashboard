@@ -1,5 +1,4 @@
-import assert from "node:assert/strict";
-import test from "node:test";
+import { expect, test } from "vitest";
 
 import { normalizeItem } from "../app/lib/watch-list-item-input.ts";
 
@@ -10,33 +9,33 @@ import { normalizeItem } from "../app/lib/watch-list-item-input.ts";
 // edited items validate differently.
 
 test("rejects a non-object body", () => {
-  assert.equal(normalizeItem(null).error, "JSONオブジェクトを指定してください。");
-  assert.equal(normalizeItem("nope").error, "JSONオブジェクトを指定してください。");
+  expect(normalizeItem(null).error).toBe("JSONオブジェクトを指定してください。");
+  expect(normalizeItem("nope").error).toBe("JSONオブジェクトを指定してください。");
 });
 
 test("requires a recognized contentType", () => {
   const result = normalizeItem({ contentType: "podcast", title: "t" });
-  assert.equal(result.error, "種別は text / audio / movie / other のいずれかです。");
+  expect(result.error).toBe("種別は text / audio / movie / other のいずれかです。");
 });
 
 test("defaults status to backlog when omitted", () => {
   const result = normalizeItem({ contentType: "movie", title: "t" });
-  assert.equal(result.value?.status, "backlog");
+  expect(result.value?.status).toBe("backlog");
 });
 
 test("rejects an unrecognized status", () => {
   const result = normalizeItem({ contentType: "movie", title: "t", status: "archived" });
-  assert.equal(result.error, "ステータスが不正です。");
+  expect(result.error).toBe("ステータスが不正です。");
 });
 
 test("requires a non-empty title", () => {
   const result = normalizeItem({ contentType: "movie", title: "  " });
-  assert.equal(result.error, "タイトルは必須です。");
+  expect(result.error).toBe("タイトルは必須です。");
 });
 
 test("rejects a malformed addedOn/watchedOn date", () => {
   const result = normalizeItem({ contentType: "movie", title: "t", addedOn: "2026/01/01" });
-  assert.equal(result.error, "日付は YYYY-MM-DD 形式で指定してください。");
+  expect(result.error).toBe("日付は YYYY-MM-DD 形式で指定してください。");
 });
 
 test("only validates watchedOn when status is completed", () => {
@@ -44,19 +43,19 @@ test("only validates watchedOn when status is completed", () => {
   // cleared to "" before the date check, mirroring the pre-existing
   // behaviour of app/api/items/route.ts's original normalizeItem().
   const result = normalizeItem({ contentType: "movie", title: "t", status: "backlog", watchedOn: "not-a-date" });
-  assert.equal(result.value?.watchedOn, null);
+  expect(result.value?.watchedOn).toBe(null);
 });
 
 test("rejects a priority outside 1-5", () => {
-  assert.equal(normalizeItem({ contentType: "movie", title: "t", priority: 0 }).error, "優先度は1〜5で指定してください。");
-  assert.equal(normalizeItem({ contentType: "movie", title: "t", priority: 6 }).error, "優先度は1〜5で指定してください。");
-  assert.equal(normalizeItem({ contentType: "movie", title: "t", priority: 2.5 }).error, "優先度は1〜5で指定してください。");
+  expect(normalizeItem({ contentType: "movie", title: "t", priority: 0 }).error).toBe("優先度は1〜5で指定してください。");
+  expect(normalizeItem({ contentType: "movie", title: "t", priority: 6 }).error).toBe("優先度は1〜5で指定してください。");
+  expect(normalizeItem({ contentType: "movie", title: "t", priority: 2.5 }).error).toBe("優先度は1〜5で指定してください。");
 });
 
 test("priority null/undefined/empty-string all normalize to null", () => {
-  assert.equal(normalizeItem({ contentType: "movie", title: "t", priority: null }).value?.priority, null);
-  assert.equal(normalizeItem({ contentType: "movie", title: "t", priority: undefined }).value?.priority, null);
-  assert.equal(normalizeItem({ contentType: "movie", title: "t", priority: "" }).value?.priority, null);
+  expect(normalizeItem({ contentType: "movie", title: "t", priority: null }).value?.priority).toBe(null);
+  expect(normalizeItem({ contentType: "movie", title: "t", priority: undefined }).value?.priority).toBe(null);
+  expect(normalizeItem({ contentType: "movie", title: "t", priority: "" }).value?.priority).toBe(null);
 });
 
 test("drops links with no url, keeps ones with a url", () => {
@@ -65,13 +64,13 @@ test("drops links with no url, keeps ones with a url", () => {
     title: "t",
     links: [{ label: "empty" }, { label: "ok", url: "https://example.com" }],
   });
-  assert.equal(result.value?.links.length, 1);
-  assert.equal(result.value?.links[0].url, "https://example.com");
+  expect(result.value?.links.length).toBe(1);
+  expect(result.value?.links[0].url).toBe("https://example.com");
 });
 
 test("rejects a link whose url the URL constructor cannot parse at all", () => {
   const result = normalizeItem({ contentType: "movie", title: "t", links: [{ url: "not a url" }] });
-  assert.equal(result.error, "リンクには http または https のURLを指定してください。");
+  expect(result.error).toBe("リンクには http または https のURLを指定してください。");
 });
 
 test("rejects a link whose url has a non-http(s) scheme", () => {
@@ -79,7 +78,7 @@ test("rejects a link whose url has a non-http(s) scheme", () => {
   // is what makes this rejected rather than silently accepted -- the URL
   // constructor itself does not throw on "javascript:" or "data:" URIs.
   const result = normalizeItem({ contentType: "movie", title: "t", links: [{ url: "javascript:alert(1)" }] });
-  assert.equal(result.error, "リンクには http または https のURLを指定してください。");
+  expect(result.error).toBe("リンクには http または https のURLを指定してください。");
 });
 
 test("rejects two links on the same item that canonicalize to the same destination", () => {
@@ -96,7 +95,7 @@ test("rejects two links on the same item that canonicalize to the same destinati
       { label: "B", url: "https://example.com/x" },
     ],
   });
-  assert.equal(result.error, "同じリンクが重複しています。");
+  expect(result.error).toBe("同じリンクが重複しています。");
 });
 
 test("does not reject the same canonical destination reused across separately-normalized items", () => {
@@ -109,18 +108,18 @@ test("does not reject the same canonical destination reused across separately-no
   // evidence behind this).
   const first = normalizeItem({ contentType: "movie", title: "t1", links: [{ url: "https://example.com/series" }] });
   const second = normalizeItem({ contentType: "movie", title: "t2", links: [{ url: "https://example.com/series" }] });
-  assert.equal(first.error, undefined);
-  assert.equal(second.error, undefined);
+  expect(first.error).toBe(undefined);
+  expect(second.error).toBe(undefined);
 });
 
 test("a missing linkType defaults to 'reference'", () => {
   const result = normalizeItem({ contentType: "movie", title: "t", links: [{ url: "https://example.com" }] });
-  assert.equal(result.value?.links[0].linkType, "reference");
+  expect(result.value?.links[0].linkType).toBe("reference");
 });
 
 test("sourceSystem defaults to 'manual' when omitted or blank", () => {
-  assert.equal(normalizeItem({ contentType: "movie", title: "t" }).value?.sourceSystem, "manual");
-  assert.equal(normalizeItem({ contentType: "movie", title: "t", sourceSystem: "" }).value?.sourceSystem, "manual");
+  expect(normalizeItem({ contentType: "movie", title: "t" }).value?.sourceSystem).toBe("manual");
+  expect(normalizeItem({ contentType: "movie", title: "t", sourceSystem: "" }).value?.sourceSystem).toBe("manual");
 });
 
 test("returns a full normalized value for a valid item", () => {
@@ -132,7 +131,7 @@ test("returns a full normalized value for a valid item", () => {
     watchedOn: "2026-01-05",
     priority: 3,
   });
-  assert.deepEqual(result.value, {
+  expect(result.value).toEqual({
     contentType: "text",
     creatorName: "NHK",
     seriesTitle: "",
