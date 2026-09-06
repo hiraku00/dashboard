@@ -1,14 +1,22 @@
 import { env } from "cloudflare:workers";
 import { ensureSchema } from "@/db";
 import { canonicalUrl } from "@/app/lib/text";
+import { attachLinks } from "@/app/lib/queries/watch-list";
 import { normalizeItem } from "../route";
 
+// Delegates the row->API-shape mapping to attachLinks()/toItem() in
+// app/lib/queries/watch-list.ts -- the same functions listItems() (used by
+// GET /api/items and the Watch List page's Server Component) goes through.
+// This used to have its own inline mapping and its own separate
+// `SELECT * FROM item_links` query, duplicating toItem()'s field-by-field
+// camelCase mapping exactly; a future change to that mapping would have
+// silently stopped applying to a single item's GET/PATCH response while
+// still applying everywhere else.
 async function itemResponse(id: string) {
   const itemResult = await env.DB.prepare("SELECT * FROM items WHERE id = ?").bind(id).all<Record<string, unknown>>();
-  const item = itemResult.results?.[0];
-  if (!item) return null;
-  const links = await env.DB.prepare("SELECT * FROM item_links WHERE item_id = ? ORDER BY position").bind(id).all<Record<string, unknown>>();
-  return { id: item.id, contentType: item.content_type, creatorName: item.creator_name, seriesTitle: item.series_title, title: item.title, description: item.description, priority: item.priority, status: item.status, addedOn: item.added_on, watchedOn: item.watched_on, comment: item.comment, sourceSystem: item.source_system, externalId: item.external_id, version: item.version, createdAt: item.created_at, updatedAt: item.updated_at, links: (links.results ?? []).map((link) => ({ id: link.id, label: link.label, url: link.url, linkType: link.link_type, position: link.position })) };
+  const row = itemResult.results?.[0];
+  if (!row) return null;
+  return (await attachLinks([row]))[0];
 }
 
 export async function GET(_: Request, { params }: { params: Promise<{ id: string }> }) {
