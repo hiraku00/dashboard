@@ -25,13 +25,36 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   const normalized = normalizeItem(body);
   if (!normalized.value) return Response.json({ error: normalized.error }, { status: 400 });
   const expectedVersion = Number((body as Record<string, unknown>)?.version);
-  const current = await itemResponse(id);
-  if (!current) return Response.json({ error: "見つかりません。" }, { status: 404 });
-  if (!Number.isInteger(expectedVersion) || expectedVersion !== current.version) return Response.json({ error: "ほかの画面で更新されています。再読み込みしてください。" }, { status: 409 });
+  // A non-integer version can never match a real row's version (which is
+  // always a positive integer), so this is rejected before touching D1 --
+  // passing NaN as a bound parameter below would be meaningless anyway.
+  if (!Number.isInteger(expectedVersion)) return Response.json({ error: "ほかの画面で更新されています。再読み込みしてください。" }, { status: 409 });
   const item = normalized.value;
   const now = new Date().toISOString();
-  const statements = [env.DB.prepare(`UPDATE items SET content_type=?, creator_name=?, series_title=?, title=?, description=?, priority=?, status=?, added_on=?, watched_on=?, comment=?, source_system=?, external_id=?, raw_source=?, version=version+1, updated_at=? WHERE id=?`)
-    .bind(item.contentType, item.creatorName ?? "", item.seriesTitle ?? "", item.title, item.description ?? "", item.priority, item.status ?? "backlog", item.addedOn, item.watchedOn, item.comment ?? "", item.sourceSystem ?? "manual", item.externalId, item.rawSource, now, id), env.DB.prepare("DELETE FROM item_links WHERE item_id = ?").bind(id)];
+  // The version check lives in this UPDATE's WHERE clause (AND version=?),
+  // not in a separate SELECT-then-compare beforehand: a prior version of
+  // this handler read the current row, compared versions in application
+  // code, and only then ran an UPDATE whose WHERE clause did not itself
+  // reference version -- leaving a window between the read and the write
+  // where a concurrent request could pass the same check and both writes
+  // land. Checking result.meta.changes here is the only point that can
+  // actually tell whether this request's version was the one still current
+  // at write time.
+  const updateResult = await env.DB.prepare(`UPDATE items SET content_type=?, creator_name=?, series_title=?, title=?, description=?, priority=?, status=?, added_on=?, watched_on=?, comment=?, source_system=?, external_id=?, raw_source=?, version=version+1, updated_at=? WHERE id=? AND version=?`)
+    .bind(item.contentType, item.creatorName ?? "", item.seriesTitle ?? "", item.title, item.description ?? "", item.priority, item.status ?? "backlog", item.addedOn, item.watchedOn, item.comment ?? "", item.sourceSystem ?? "manual", item.externalId, item.rawSource, now, id, expectedVersion).run();
+  if (!updateResult.meta.changes) {
+    // meta.changes === 0 means either the id doesn't exist, or it exists but
+    // its version has already moved on -- distinguish them with one cheap
+    // existence check rather than guessing.
+    const exists = await env.DB.prepare("SELECT 1 FROM items WHERE id = ?").bind(id).first();
+    return exists
+      ? Response.json({ error: "ほかの画面で更新されています。再読み込みしてください。" }, { status: 409 })
+      : Response.json({ error: "見つかりません。" }, { status: 404 });
+  }
+  // Only reached once the versioned UPDATE above actually matched a row --
+  // otherwise this DELETE would silently wipe an existing item's links even
+  // when the version check failed and nothing else about it was touched.
+  const statements: D1PreparedStatement[] = [env.DB.prepare("DELETE FROM item_links WHERE item_id = ?").bind(id)];
   for (const [position, link] of (item.links ?? []).entries()) {
     // Same canonicalUrl() the POST path (app/api/items/route.ts) and
     // /api/imports use -- strips the fragment and utm_*/fbclid params, not
