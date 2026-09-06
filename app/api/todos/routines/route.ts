@@ -1,15 +1,11 @@
 import { env } from "cloudflare:workers";
-import { BOARD_ID, boardColumns, clean, now, validTime } from "../_lib";
+import { BOARD_ID, boardColumns, clean, now } from "../_lib";
+import { routineInput } from "@/app/lib/todo-task-input";
 
-export function routineInput(body: Record<string, unknown>) {
-  const title = clean(body.title, 240); const description = clean(body.description, 6000); const scheduleType = clean(body.scheduleType, 20); const dueTime = clean(body.dueTime, 5);
-  const weekdays = Array.isArray(body.weekdays) ? body.weekdays.map(Number).filter((day) => Number.isInteger(day) && day >= 0 && day <= 6).sort().join(",") : "";
-  const priority = body.priority === "" || body.priority === null || body.priority === undefined ? null : Number(body.priority);
-  if (!title) return { error: "繰り返しタスク名を入力してください。" }; if (scheduleType !== "daily" && scheduleType !== "weekdays") return { error: "繰り返し設定が不正です。" };
-  if (scheduleType === "weekdays" && !weekdays) return { error: "曜日を1つ以上選択してください。" }; if (priority !== null && (!Number.isInteger(priority) || priority < 1 || priority > 5)) return { error: "優先度は1〜5で指定してください。" };
-  if (!validTime(dueTime)) return { error: "時刻は HH:MM 形式で指定してください。" };
-  return { value: { title, description, scheduleType, weekdays, priority, dueTime: dueTime || null } };
-}
+// Re-exported for app/api/todos/routines/[id]/route.ts, which imports this
+// from here rather than from app/lib/todo-task-input.ts directly -- the
+// actual pure logic lives there (see that file for why).
+export { routineInput };
 
 export async function GET() { await boardColumns(); const routines = (await env.DB.prepare("SELECT * FROM todo_routines WHERE board_id=? AND deleted_at IS NULL ORDER BY active DESC,created_at DESC").bind(BOARD_ID).all()).results ?? []; return Response.json({ routines }); }
 export async function POST(request: Request) {

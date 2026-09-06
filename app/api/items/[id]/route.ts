@@ -1,5 +1,6 @@
 import { env } from "cloudflare:workers";
 import { ensureSchema } from "@/db";
+import { canonicalUrl } from "@/app/lib/text";
 import { normalizeItem } from "../route";
 
 async function itemResponse(id: string) {
@@ -32,9 +33,16 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   const statements = [env.DB.prepare(`UPDATE items SET content_type=?, creator_name=?, series_title=?, title=?, description=?, priority=?, status=?, added_on=?, watched_on=?, comment=?, source_system=?, external_id=?, raw_source=?, version=version+1, updated_at=? WHERE id=?`)
     .bind(item.contentType, item.creatorName ?? "", item.seriesTitle ?? "", item.title, item.description ?? "", item.priority, item.status ?? "backlog", item.addedOn, item.watchedOn, item.comment ?? "", item.sourceSystem ?? "manual", item.externalId, item.rawSource, now, id), env.DB.prepare("DELETE FROM item_links WHERE item_id = ?").bind(id)];
   for (const [position, link] of (item.links ?? []).entries()) {
-    let canonical = "";
-    try { const url = new URL(link.url); url.hash = ""; canonical = url.toString(); } catch { /* validated before */ }
-    statements.push(env.DB.prepare("INSERT INTO item_links (id, item_id, label, url, link_type, position, canonical_url) VALUES (?, ?, ?, ?, ?, ?, ?)").bind(crypto.randomUUID(), id, link.label ?? "", link.url, link.linkType ?? "reference", position, canonical));
+    // Same canonicalUrl() the POST path (app/api/items/route.ts) and
+    // /api/imports use -- strips the fragment and utm_*/fbclid params, not
+    // just the fragment. This handler used to compute its own canonical_url
+    // inline with only the fragment stripped, so the same URL could get a
+    // different canonical_url depending on whether it arrived via POST or
+    // PATCH. normalizeItem() already validated every link.url through
+    // canonicalUrl() above (see the `links.some((link) => !canonicalUrl(...))`
+    // check in app/api/items/route.ts), so this cannot produce an empty string
+    // here.
+    statements.push(env.DB.prepare("INSERT INTO item_links (id, item_id, label, url, link_type, position, canonical_url) VALUES (?, ?, ?, ?, ?, ?, ?)").bind(crypto.randomUUID(), id, link.label ?? "", link.url, link.linkType ?? "reference", position, canonicalUrl(link.url)));
   }
   await env.DB.batch(statements);
   return Response.json({ item: await itemResponse(id) });
