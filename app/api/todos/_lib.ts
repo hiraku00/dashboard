@@ -36,16 +36,33 @@ export async function boardColumns() {
 export async function materializeRoutines(date: string) {
   const weekday = new Date(`${date}T12:00:00Z`).getUTCDay();
   const routines = (await env.DB.prepare("SELECT * FROM todo_routines WHERE board_id=? AND active=1 AND deleted_at IS NULL").bind(BOARD_ID).all<Record<string, unknown>>()).results ?? [];
+  const matching = routines.filter((routine) => {
+    if (date < todoDate(new Date(String(routine.created_at)))) return false;
+    return routine.schedule_type === "daily" || String(routine.weekdays).split(",").includes(String(weekday));
+  });
+  if (!matching.length) return;
+  // position is a per-(column, date) sequence -- the same rule
+  // app/api/todos/tasks/route.ts's POST and .../move/route.ts use -- not a
+  // timestamp. This used to bind Date.now() here, so a materialized
+  // routine task's position (a 13-digit millisecond epoch) always sorted
+  // after every manually created task's (a small integer), no matter when
+  // either was actually added. Reading each column's current row count for
+  // this date once, then incrementing locally as routines below are
+  // assigned to their columns, keeps multiple routines landing in the same
+  // column on the same date sequenced correctly relative to each other and
+  // to whatever is already there.
   const createdAt = now();
+  const existing = (await env.DB.prepare("SELECT column_id, COUNT(*) AS count FROM todo_tasks WHERE board_id=? AND occurrence_date=? AND deleted_at IS NULL GROUP BY column_id").bind(BOARD_ID, date).all<{ column_id: string; count: number }>()).results ?? [];
+  const nextPosition = new Map(existing.map((row) => [row.column_id, Number(row.count)]));
   const statements: D1PreparedStatement[] = [];
-  for (const routine of routines) {
-    if (date < todoDate(new Date(String(routine.created_at)))) continue;
-    const matches = routine.schedule_type === "daily" || String(routine.weekdays).split(",").includes(String(weekday));
-    if (!matches) continue;
+  for (const routine of matching) {
+    const columnId = String(routine.default_column_id);
+    const position = (nextPosition.get(columnId) ?? 0) + 1;
+    nextPosition.set(columnId, position);
     statements.push(env.DB.prepare("INSERT OR IGNORE INTO todo_tasks (id,board_id,column_id,routine_id,occurrence_date,title,description,priority,due_time,position,version,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,1,?,?)")
-      .bind(crypto.randomUUID(), BOARD_ID, routine.default_column_id, routine.id, date, routine.title, routine.description, routine.priority, routine.default_due_time ?? null, Date.now(), createdAt, createdAt));
+      .bind(crypto.randomUUID(), BOARD_ID, columnId, routine.id, date, routine.title, routine.description, routine.priority, routine.default_due_time ?? null, position, createdAt, createdAt));
   }
-  if (statements.length) await env.DB.batch(statements);
+  await env.DB.batch(statements);
 }
 
 export function taskShape(row: Record<string, unknown>) {
