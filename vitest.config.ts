@@ -1,6 +1,7 @@
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
 import { cloudflareTest } from "@cloudflare/vitest-pool-workers";
+import { mockOutboundResponse } from "./tests/workers/fixtures/outbound-mocks";
 
 // Two projects run under this one `vitest run` invocation (Issue #80):
 //
@@ -31,6 +32,24 @@ export default defineConfig({
         plugins: [
           cloudflareTest({
             wrangler: { configPath: "./wrangler.jsonc" },
+            miniflare: {
+              // Test-only keys so app/api/watch-list/youtube-preview and
+              // app/api/text-tube/youtube-preview's own `if (!key) return
+              // ...not configured...` guards don't short-circuit before
+              // reaching the outboundService mock below. Not real secrets --
+              // this project has no .dev.vars checked in and these routes
+              // never see real credentials outside of production.
+              bindings: {
+                YOUTUBE_DATA_API_KEY: "test-only-fake-key",
+                SUPADATA_API_KEY: "test-only-fake-key",
+              },
+              // Not documented by @cloudflare/vitest-pool-workers itself, but
+              // it is Miniflare's own WorkerOptions field and is honored --
+              // see tests/workers/fixtures/outbound-mocks.ts for what it
+              // returns and why per-test dynamic responses are not available
+              // under it.
+              outboundService: mockOutboundResponse,
+            },
           }),
         ],
         resolve: {
