@@ -82,6 +82,37 @@ test("rejects a link whose url has a non-http(s) scheme", () => {
   assert.equal(result.error, "リンクには http または https のURLを指定してください。");
 });
 
+test("rejects two links on the same item that canonicalize to the same destination", () => {
+  // Same scope as item_links_canonical_idx (UNIQUE on (item_id,
+  // canonical_url), not global -- see Issue #76 and db/index.ts). A link
+  // with a tracking param and the "same" link without one both canonicalize
+  // to the same URL, so this must be caught before either the DB or that
+  // index sees it as duplicate INSERTs within one item's own batch.
+  const result = normalizeItem({
+    contentType: "movie",
+    title: "t",
+    links: [
+      { label: "A", url: "https://example.com/x?utm_source=a" },
+      { label: "B", url: "https://example.com/x" },
+    ],
+  });
+  assert.equal(result.error, "同じリンクが重複しています。");
+});
+
+test("does not reject the same canonical destination reused across separately-normalized items", () => {
+  // The dedup check is per-call (i.e. per-item): normalizeItem() has no
+  // memory of other items' links, matching item_links_canonical_idx's
+  // per-item_id scope -- many different items are allowed to legitimately
+  // share one destination (e.g. a series-archive page linked from every
+  // episode's item; see the migration comment in
+  // migrations/0007_item_links_canonical_idx.sql for the production
+  // evidence behind this).
+  const first = normalizeItem({ contentType: "movie", title: "t1", links: [{ url: "https://example.com/series" }] });
+  const second = normalizeItem({ contentType: "movie", title: "t2", links: [{ url: "https://example.com/series" }] });
+  assert.equal(first.error, undefined);
+  assert.equal(second.error, undefined);
+});
+
 test("a missing linkType defaults to 'reference'", () => {
   const result = normalizeItem({ contentType: "movie", title: "t", links: [{ url: "https://example.com" }] });
   assert.equal(result.value?.links[0].linkType, "reference");

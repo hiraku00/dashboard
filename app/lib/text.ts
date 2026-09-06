@@ -6,7 +6,8 @@
  *  db/index.ts seed loop stripped only the hash) -- so a URL imported or seeded
  *  could get a different canonical_url than the same URL posted through
  *  /api/items, silently breaking the item_links_canonical_idx dedup between
- *  those paths. */
+ *  those paths (that index is UNIQUE on (item_id, canonical_url) -- per
+ *  item, not global; see Issue #76 for why). */
 
 export function clean(value: unknown, max = 4000) {
   return typeof value === "string" ? value.trim().slice(0, max) : "";

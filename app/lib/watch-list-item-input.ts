@@ -62,7 +62,21 @@ export function normalizeItem(input: unknown): { value?: ItemInput; error?: stri
         return { label: cleanText(data.label, 120), url: cleanText(data.url, 2000), linkType: cleanText(data.linkType, 60) || "reference" };
       }).filter((link) => link.url)
     : [];
-  if (links.some((link) => !canonicalUrl(link.url))) return { error: "リンクには http または https のURLを指定してください。" };
+  // Rejects a link canonicalUrl() cannot parse into http/https, and also
+  // two links on the SAME item that canonicalize to the same destination
+  // (e.g. the same URL with and without a utm_ param). The second check
+  // matches item_links_canonical_idx's scope: that index is UNIQUE on
+  // (item_id, canonical_url), not on canonical_url alone -- production data
+  // has many *different* items legitimately sharing one canonical_url (a
+  // shared series-archive page linked from every episode's item), so a
+  // global unique index would have been wrong. See Issue #76.
+  const seenCanonicalUrls = new Set<string>();
+  for (const link of links) {
+    const canonical = canonicalUrl(link.url);
+    if (!canonical) return { error: "リンクには http または https のURLを指定してください。" };
+    if (seenCanonicalUrls.has(canonical)) return { error: "同じリンクが重複しています。" };
+    seenCanonicalUrls.add(canonical);
+  }
 
   return {
     value: {

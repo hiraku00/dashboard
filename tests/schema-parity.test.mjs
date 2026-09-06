@@ -28,12 +28,13 @@ import { readFile, readdir } from "node:fs/promises";
  *  alongside a standalone `ALTER TABLE todo_routines ADD COLUMN
  *  default_due_time TEXT` that ensureSchema() runs outside its DDL batch
  *  (see db/index.ts) -- but no matching migration file was ever written.
- *  Backfilling one now is riskier than leaving this documented: SQLite has
- *  no `ADD COLUMN IF NOT EXISTS`, and whether the production database
- *  already has this column (via that runtime ALTER, which only actually
- *  ran the one time recordedSchemaVersion() didn't match SCHEMA_VERSION)
- *  is not something this test, or the person writing it, can verify
- *  without direct production D1 access. See Issue #78. */
+ *  Confirmed via a direct read against production D1
+ *  (`wrangler d1 execute DB --remote`) that the column already exists
+ *  there, so this is a documentation gap only, not a live data-integrity
+ *  risk -- backfilling a migration for it now would still need SQLite's
+ *  missing `ADD COLUMN IF NOT EXISTS` worked around (e.g. checking
+ *  pragma_table_info first), which isn't worth the risk for a column
+ *  every database already has. See Issue #78. */
 const KNOWN_GAPS = new Set(["todo_routines.default_due_time"]);
 
 /** Finds the index of the `)` that closes the `(` at `openIndex`, honoring
