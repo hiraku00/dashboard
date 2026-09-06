@@ -1,14 +1,14 @@
 import { env } from "cloudflare:workers";
 import { ensureSchema } from "@/db";
 import { clean, validDate } from "@/app/lib/text";
+import { normalizeTask, validTime, type TaskInput } from "@/app/lib/todo-task-input";
 
-export { clean, validDate };
+export { clean, validDate, normalizeTask, validTime };
+export type { TaskInput };
 export const BOARD_ID = "todo-default";
 export const columnKinds = ["inbox", "today", "doing", "done"] as const;
 export type ColumnKind = (typeof columnKinds)[number];
-export type TaskInput = { title?: unknown; description?: unknown; priority?: unknown; occurrenceDate?: unknown; dueTime?: unknown; columnId?: unknown; version?: unknown };
 
-export const validTime = (value: string) => !value || /^([01]\d|2[0-3]):[0-5]\d$/.test(value);
 export const now = () => new Date().toISOString();
 
 export function todoDate(date = new Date()) {
@@ -26,17 +26,6 @@ export async function initTodo() {
     env.DB.prepare("INSERT OR IGNORE INTO todo_boards (id,name,timezone,created_at) VALUES (?,?,?,?)").bind(BOARD_ID, "To Do", "Asia/Bangkok", createdAt),
     ...[["todo-inbox", "受信箱", "inbox"], ["todo-today", "今日", "today"], ["todo-doing", "進行中", "doing"], ["todo-done", "完了", "done"]].map(([id, name, kind], position) => env.DB.prepare("INSERT OR IGNORE INTO todo_columns (id,board_id,name,kind,position,created_at) VALUES (?,?,?,?,?,?)").bind(id, BOARD_ID, name, kind, position, createdAt)),
   ]);
-}
-
-export function normalizeTask(input: TaskInput) {
-  const title = clean(input.title, 240); const description = clean(input.description, 6000);
-  const occurrenceDate = clean(input.occurrenceDate, 10); const dueTime = clean(input.dueTime, 5);
-  const priorityRaw = input.priority === "" || input.priority === null || input.priority === undefined ? null : Number(input.priority);
-  if (!title) return { error: "タスク名を入力してください。" };
-  if (!validDate(occurrenceDate)) return { error: "実施日は YYYY-MM-DD 形式で指定してください。" };
-  if (!validTime(dueTime)) return { error: "時刻は HH:MM 形式で指定してください。" };
-  if (priorityRaw !== null && (!Number.isInteger(priorityRaw) || priorityRaw < 1 || priorityRaw > 5)) return { error: "優先度は1〜5で指定してください。" };
-  return { value: { title, description, occurrenceDate: occurrenceDate || null, dueTime: dueTime || null, priority: priorityRaw } };
 }
 
 export async function boardColumns() {

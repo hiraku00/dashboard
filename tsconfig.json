@@ -11,6 +11,15 @@
     "moduleResolution": "bundler",
     "resolveJsonModule": true,
     "isolatedModules": true,
+    // Lets a pure app/lib/*.ts module import another pure app/lib/*.ts
+    // module by relative path with an explicit .ts extension, which plain
+    // `node --test` (used by tests/*.test.mjs) requires for ESM resolution
+    // but tsc rejects by default. Safe only because noEmit above is already
+    // true -- this flag requires that or emitDeclarationOnly. See
+    // app/lib/watch-list-item-input.ts and app/lib/text-tube-video-input.ts
+    // for the modules that rely on this to import app/lib/text.ts without
+    // duplicating clean()/validDate()/canonicalUrl().
+    "allowImportingTsExtensions": true,
     "jsx": "react-jsx",
     "incremental": true,
     "plugins": [

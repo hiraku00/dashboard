@@ -39,8 +39,15 @@ export default function StoragePage() {
   useEffect(() => {
     fetch("/api/settings/storage")
       .then(async (response) => {
-        if (!response.ok) throw new Error("使用量を読み込めませんでした。");
-        setData(await response.json());
+        // Parsed with .catch(() => null) rather than a bare response.json()
+        // await: a 200 with an unexpectedly empty body (or any other
+        // malformed body) would otherwise throw "Unexpected end of JSON
+        // input" here, and that raw parser message -- not this function's
+        // own fallback -- is what the catch() below would then show the
+        // user. See PR #70 for the original incident this guards against.
+        const body = !response.ok ? null : ((await response.json().catch(() => null)) as StorageData | null);
+        if (!body) throw new Error("使用量を読み込めませんでした。");
+        setData(body);
       })
       .catch((reason) => setError(reason instanceof Error ? reason.message : "読み込みに失敗しました。"));
   }, []);

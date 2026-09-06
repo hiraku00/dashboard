@@ -1,6 +1,7 @@
 import { env } from "cloudflare:workers";
 import { ensureSchema } from "@/db";
-import { clean, currentStorageBytes, putPortalObject } from "@/app/lib/portal";
+import { currentStorageBytes, putPortalObject } from "@/app/lib/portal";
+import { clean } from "@/app/lib/text";
 import { normalizeSyncedPositions } from "@/app/lib/manage-asset-core";
 import { summarizeRun } from "@/app/lib/sync-summary";
 

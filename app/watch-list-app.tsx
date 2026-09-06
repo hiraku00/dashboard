@@ -2,7 +2,7 @@
 
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PortalHeader } from "./portal-nav";
-import { ApiError, readJson } from "./lib/json";
+import { readErrorMessage, readJson } from "./lib/json";
 
 export type ContentType = "text" | "audio" | "movie" | "other";
 export type Status = "backlog" | "in_progress" | "completed" | "dropped";
@@ -124,19 +124,6 @@ export function WatchListApp({
   function openEdit(item: Item) { setDraft({ ...item, links: item.links.map((link) => ({ ...link })) }); setYouTubeUrl(""); setYouTubeNotice(""); setEditing(item); setIsNew(false); setNotice(""); }
   function closeEditor() { setEditing(null); setIsNew(false); }
   function patchDraft(patch: Partial<Draft>) { setDraft((current) => ({ ...current, ...patch })); }
-
-  // Reads an error body defensively rather than through readJson(): an
-  // unhandled exception on the API side comes back as a non-2xx response
-  // with an empty body, and response.json() on that throws "Unexpected end
-  // of JSON input" -- if that lands in a catch block that does
-  // `error instanceof Error ? error.message : ...`, the raw parser message
-  // gets shown to the user verbatim instead of a real fallback. Falling
-  // back to null here (rather than letting that throw) keeps the caller's
-  // own fallback message in charge.
-  async function readErrorMessage(response: Response, fallback: string): Promise<string> {
-    const body = (await response.json().catch(() => null)) as ApiError | null;
-    return body?.error || fallback;
-  }
 
   async function importYouTube() {
     setYouTubeLoading(true); setYouTubeNotice("");

@@ -1,6 +1,6 @@
 import { env } from "cloudflare:workers";
 import { ensureSchema } from "@/db";
-import { clean } from "@/app/lib/portal";
+import { clean } from "@/app/lib/text";
 import { getVideo } from "@/app/lib/queries/text-tube";
 
 type Context = { params: Promise<{ id: string }> };
