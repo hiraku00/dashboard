@@ -1,5 +1,4 @@
-import assert from "node:assert/strict";
-import test from "node:test";
+import { expect, test } from "vitest";
 import { readFile, readdir } from "node:fs/promises";
 
 // db/index.ts's ensureSchema() is the working source of truth for the
@@ -130,11 +129,11 @@ function stripLineComments(sql) {
 test("every column db/index.ts's DDL declares also appears in migrations/*.sql, apart from documented gaps", async () => {
   const dbIndexSql = await readFile(new URL("../db/index.ts", import.meta.url), "utf8");
   const dbIndexTables = extractTableColumns(dbIndexSql);
-  assert.ok(dbIndexTables.size > 10, "sanity check: expected many tables to be parsed out of db/index.ts");
+  expect(dbIndexTables.size > 10, "sanity check: expected many tables to be parsed out of db/index.ts").toBeTruthy();
 
   const migrationsDir = new URL("../migrations/", import.meta.url);
   const migrationFiles = (await readdir(migrationsDir)).filter((name) => name.endsWith(".sql"));
-  assert.ok(migrationFiles.length > 0, "sanity check: expected at least one migration file");
+  expect(migrationFiles.length > 0, "sanity check: expected at least one migration file").toBeTruthy();
 
   const migrationsTables = new Map();
   for (const file of migrationFiles) {
@@ -154,13 +153,11 @@ test("every column db/index.ts's DDL declares also appears in migrations/*.sql, 
       if (!migrationColumns.has(column) && !KNOWN_GAPS.has(key)) missing.push(key);
     }
   }
-  assert.deepEqual(
-    missing,
-    [],
+  const message =
     "db/index.ts declares columns with no matching migrations/*.sql entry -- add a migration, " +
-      "or if this is an intentional pre-existing gap, add it to KNOWN_GAPS with the same " +
-      "justification a code comment would need",
-  );
+    "or if this is an intentional pre-existing gap, add it to KNOWN_GAPS with the same " +
+    "justification a code comment would need";
+  expect(missing, message).toEqual([]);
 });
 
 test("extractTableColumns correctly separates columns from table-level constraints", () => {
@@ -172,17 +169,17 @@ test("extractTableColumns correctly separates columns from table-level constrain
     CHECK(status IN ('open', 'closed'))
   );`;
   const tables = extractTableColumns(sql);
-  assert.deepEqual([...tables.get("widgets")].sort(), ["id", "owner_id", "status"]);
+  expect([...tables.get("widgets")].sort()).toEqual(["id", "owner_id", "status"]);
 });
 
 test("extractTableColumns handles a single-line CREATE TABLE with nested commas in CHECK/IN", () => {
   const sql = "CREATE TABLE IF NOT EXISTS items (id TEXT PRIMARY KEY, content_type TEXT NOT NULL, CHECK(content_type IN ('text','audio','movie','other')));";
   const tables = extractTableColumns(sql);
-  assert.deepEqual([...tables.get("items")].sort(), ["content_type", "id"]);
+  expect([...tables.get("items")].sort()).toEqual(["content_type", "id"]);
 });
 
 test("extractTableColumns picks up ALTER TABLE ADD COLUMN", () => {
   const sql = "ALTER TABLE todo_routines ADD COLUMN default_due_time TEXT";
   const tables = extractTableColumns(sql);
-  assert.ok(tables.get("todo_routines").has("default_due_time"));
+  expect(tables.get("todo_routines").has("default_due_time")).toBeTruthy();
 });

@@ -5,7 +5,7 @@
  *
  *  純粋な決定ロジック（WHERE句の組み立て、行のマッピング）は
  *  app/lib/watch-list-query.ts に分離してある。ここで cloudflare:workers を
- *  importすると、その関数群を plain Node (`node --test`) でユニットテスト
+ *  importすると、その関数群を plain Node (vitest's "node" project) でユニットテスト
  *  できなくなるため。
  *
  *  書き込み系 (POST/PATCH/DELETE や normalizeItem) はここには置かない。

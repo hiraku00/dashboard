@@ -1,8 +1,8 @@
 /** Pure decision logic for the portal summary's asset totals -- no D1, no
  *  I/O. Kept separate from app/lib/queries/portal.ts (which does the actual
  *  D1 calls) for the same reason as app/lib/watch-list-query.ts: a module
- *  that imports "cloudflare:workers" cannot be loaded under plain
- *  `node --test` at all, let alone unit tested. */
+ *  that imports "cloudflare:workers" cannot be loaded under vitest's
+ *  plain-Node "node" project at all, let alone unit tested. */
 
 export type PortalSummary = {
   watch: { total: number; completed: number };

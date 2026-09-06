@@ -4,11 +4,11 @@
  *  app/api/imports/route.ts) for the same reason as app/lib/watch-list-query.ts:
  *  a module that imports "cloudflare:workers" at the top level cannot be
  *  loaded outside the Workers runtime at all, let alone unit tested under
- *  plain `node --test`.
+ *  vitest's plain-Node "node" project.
  *
  *  Imports app/lib/text.ts by relative path with an explicit .ts extension
  *  (rather than the "@/..." alias, which plain Node's ESM resolver cannot
- *  follow) so this stays loadable under `node --test` -- see
+ *  follow) so this stays loadable under vitest's plain-Node "node" project -- see
  *  allowImportingTsExtensions in tsconfig.json for why tsc also accepts
  *  this. */
 import { canonicalUrl, clean as cleanText, validDate } from "./text.ts";

@@ -3,7 +3,7 @@
  *  actual D1 calls) for the same reason as app/lib/watch-list-query.ts: a
  *  module that imports "cloudflare:workers" at the top level cannot be
  *  loaded outside the Workers runtime at all, let alone unit tested under
- *  plain `node --test`. */
+ *  vitest's plain-Node "node" project. */
 
 // Deliberately not importing app/lib/text.ts's clean() here -- see the
 // matching comment in app/lib/watch-list-query.ts for why. Keep in sync with
