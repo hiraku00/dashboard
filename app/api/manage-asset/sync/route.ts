@@ -4,6 +4,7 @@ import { currentStorageBytes, putPortalObject } from "@/app/lib/portal";
 import { clean } from "@/app/lib/text";
 import { normalizeSyncedPositions } from "@/app/lib/manage-asset-core";
 import { summarizeRun } from "@/app/lib/sync-summary";
+import { route } from "@/app/lib/route";
 
 // One request carries every source of a run, so cap it: the Workers Free plan
 // allows 10ms of CPU per invocation, and the collector chunks well below this.
@@ -102,13 +103,13 @@ async function storeEntry(runId: string, entry: Entry, now: string, knownUsedByt
   return { sourceId, snapshotId, rawStorageStatus: storageStatus, rawStorageError, usedBytes: usedBytesResult ?? knownUsedBytes };
 }
 
-export async function GET() {
+export const GET = route(async () => {
   await ensureSchema({ seed: false });
   const latest = (await env.DB.prepare("SELECT * FROM asset_sync_runs ORDER BY received_at DESC LIMIT 1").all<Record<string, unknown>>()).results?.[0] ?? null;
   return Response.json({ ok: true, latest });
-}
+});
 
-export async function POST(request: Request) {
+export const POST = route(async (request: Request) => {
   // Cloudflare Access validates the Service Token at the edge. Its client-secret
   // headers are intentionally not forwarded to the Worker, so do not repeat the
   // header check here. This route must remain covered by the Access application.
@@ -175,4 +176,4 @@ export async function POST(request: Request) {
     if (error instanceof SyncEntryError) return Response.json({ error: error.message }, { status: 400 });
     throw error;
   }
-}
+});

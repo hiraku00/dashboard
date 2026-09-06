@@ -1,8 +1,9 @@
 import { env } from "cloudflare:workers";
 import { BOARD_ID, now } from "../../_lib";
 import { routineInput } from "../route";
+import { route } from "@/app/lib/route";
 
-export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
+export const PATCH = route(async (request: Request, { params }: { params: Promise<{ id: string }> }) => {
   const { id } = await params; const body = await request.json().catch(() => null) as Record<string, unknown> | null;
   const current = await env.DB.prepare("SELECT * FROM todo_routines WHERE id=? AND board_id=? AND deleted_at IS NULL").bind(id, BOARD_ID).first<Record<string, unknown>>(); if (!current) return Response.json({ error: "繰り返しタスクが見つかりません。" }, { status: 404 });
   // `current` is still fetched above for the 404 check, but the version
@@ -24,5 +25,5 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     .bind(normalized.value.title, normalized.value.description, normalized.value.priority, normalized.value.scheduleType, normalized.value.weekdays, normalized.value.dueTime, now(), id, expectedVersion).run();
   if (!result.meta.changes) return Response.json({ error: "ほかの画面で更新されています。再読み込みしてください。" }, { status: 409 });
   return Response.json({ routine: await env.DB.prepare("SELECT * FROM todo_routines WHERE id=?").bind(id).first() });
-}
-export async function DELETE(_: Request, { params }: { params: Promise<{ id: string }> }) { const { id } = await params; const result = await env.DB.prepare("UPDATE todo_routines SET deleted_at=?,updated_at=? WHERE id=? AND board_id=? AND deleted_at IS NULL").bind(now(), now(), id, BOARD_ID).run(); return result.meta.changes ? Response.json({ ok: true }) : Response.json({ error: "繰り返しタスクが見つかりません。" }, { status: 404 }); }
+});
+export const DELETE = route(async (_: Request, { params }: { params: Promise<{ id: string }> }) => { const { id } = await params; const result = await env.DB.prepare("UPDATE todo_routines SET deleted_at=?,updated_at=? WHERE id=? AND board_id=? AND deleted_at IS NULL").bind(now(), now(), id, BOARD_ID).run(); return result.meta.changes ? Response.json({ ok: true }) : Response.json({ error: "繰り返しタスクが見つかりません。" }, { status: 404 }); });

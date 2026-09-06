@@ -1,8 +1,9 @@
 import { env } from "cloudflare:workers";
 import { ensureSchema } from "@/db";
 import { toLegacyExchangeSnapshot, toLegacyWalletSnapshot } from "@/app/lib/manage-asset-legacy";
+import { route } from "@/app/lib/route";
 
-export async function GET() {
+export const GET = route(async () => {
   await ensureSchema({ seed: false });
   const sources = (await env.DB.prepare("SELECT * FROM asset_sources WHERE enabled=1 ORDER BY display_name").all<Record<string, unknown>>()).results ?? [];
   // "Latest snapshot per source". This was a ROW_NUMBER() pass, which had to
@@ -69,4 +70,4 @@ export async function GET() {
     exchange_snapshots: exchangeSnapshots,
     daily_update: { errors: {} },
   });
-}
+});

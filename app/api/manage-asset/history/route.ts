@@ -1,6 +1,7 @@
 import { env } from "cloudflare:workers";
 import { ensureSchema } from "@/db";
 import { toLegacyExchangeSnapshot, toLegacyWalletSnapshot } from "@/app/lib/manage-asset-legacy";
+import { route } from "@/app/lib/route";
 
 function newestRecord(current: Record<string, unknown>, previous: Record<string, unknown>): boolean {
   const currentSync = String(current.sync_received_at ?? "");
@@ -42,7 +43,7 @@ async function cutoffDate(days: string): Promise<string | null> {
   return date.toISOString().slice(0, 10);
 }
 
-export async function GET(request: Request) {
+export const GET = route(async (request: Request) => {
   await ensureSchema({ seed: false });
   const cutoff = await cutoffDate(new URL(request.url).searchParams.get("days") ?? "");
   const since = cutoff ?? "";
@@ -116,4 +117,4 @@ export async function GET(request: Request) {
     snapshots,
     exchange_snapshots: exchangeSnapshots,
   });
-}
+});

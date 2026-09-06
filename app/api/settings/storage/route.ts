@@ -1,6 +1,7 @@
 import { env } from "cloudflare:workers";
 import { ensureSchema } from "@/db";
 import { currentStorageBytes, R2_SOFT_LIMIT_BYTES } from "@/app/lib/portal";
+import { route } from "@/app/lib/route";
 
 async function d1Usage() {
   const runtime = env as typeof env & {
@@ -149,7 +150,7 @@ async function d1QueryBackedFields(month: string) {
   }
 }
 
-export async function GET() {
+export const GET = route(async () => {
   const month = new Date().toISOString().slice(0, 7);
   const [d1Query, d1] = await Promise.all([
     d1QueryBackedFields(month),
@@ -166,4 +167,4 @@ export async function GET() {
     d1QueryOk: d1Query.ok,
     d1QueryError: d1Query.ok ? null : d1Query.error,
   });
-}
+});

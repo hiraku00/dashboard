@@ -2,10 +2,11 @@ import { env } from "cloudflare:workers";
 import { ensureSchema } from "@/db";
 import { getPortalObject } from "@/app/lib/portal";
 import { putPortalObject, sha256 } from "@/app/lib/portal";
+import { route } from "@/app/lib/route";
 
 type Context = { params: Promise<{ id: string }> };
 
-export async function GET(_request: Request, context: Context) {
+export const GET = route(async (_request: Request, context: Context) => {
   await ensureSchema({ seed: false }); const { id } = await context.params;
   // Deliberately not routed through getVideoDocument() in
   // app/lib/queries/text-tube.ts: that helper folds a missing R2 object into
@@ -17,9 +18,9 @@ export async function GET(_request: Request, context: Context) {
   if (!video?.detailed_script_object_key) return new Response("", { headers: { "content-type": "text/markdown; charset=utf-8" } });
   const object = await getPortalObject(video.detailed_script_object_key); if (!object) return Response.json({ error: "本文ファイルが見つかりません。" }, { status: 404 });
   return new Response(object.body, { headers: { "content-type": "text/markdown; charset=utf-8", "cache-control": "private, max-age=300" } });
-}
+});
 
-export async function POST(request: Request, context: Context) {
+export const POST = route(async (request: Request, context: Context) => {
   await ensureSchema({ seed: false }); const { id } = await context.params;
   const video = (await env.DB.prepare("SELECT id FROM text_tube_videos WHERE id=? AND deleted_at IS NULL").bind(id).all()).results?.[0];
   if (!video) return Response.json({ error: "動画が見つかりません。" }, { status: 404 });
@@ -31,4 +32,4 @@ export async function POST(request: Request, context: Context) {
     env.DB.prepare("INSERT INTO text_tube_video_revisions (id,video_id,revision_number,document_object_key,document_sha256,document_size,created_at) VALUES (?,?,?,?,?,?,?)").bind(crypto.randomUUID(),id,revision,key,hash,stored.size,now),
   ]);
   return Response.json({ ok: true, key, sha256: hash, size: body.byteLength });
-}
+});

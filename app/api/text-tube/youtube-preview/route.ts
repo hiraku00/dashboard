@@ -1,6 +1,7 @@
 import { env } from "cloudflare:workers";
 import { ensureSchema } from "@/db";
 import { youTubeVideoId } from "@/app/lib/youtube";
+import { route } from "@/app/lib/route";
 
 function pick(value: Record<string, { url?: string }> | undefined) {
   return (
@@ -122,7 +123,7 @@ async function transcript(url: string, key: string | undefined) {
   };
 }
 
-export async function POST(request: Request) {
+export const POST = route(async (request: Request) => {
   await ensureSchema({ seed: false });
   const id = youTubeVideoId(
     ((await request.json().catch(() => ({}))) as { url?: unknown }).url,
@@ -207,4 +208,4 @@ export async function POST(request: Request) {
       { status: 502 },
     );
   }
-}
+});

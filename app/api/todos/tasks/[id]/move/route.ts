@@ -1,7 +1,8 @@
 import { env } from "cloudflare:workers";
 import { BOARD_ID, boardColumns, clean, now, taskShape } from "../../../_lib";
+import { route } from "@/app/lib/route";
 
-export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
+export const POST = route(async (request: Request, { params }: { params: Promise<{ id: string }> }) => {
   const { id } = await params; const body = await request.json().catch(() => null) as Record<string, unknown> | null;
   const columnId = clean(body?.columnId, 100); const beforeId = clean(body?.beforeId, 100) || null;
   const current = await env.DB.prepare("SELECT * FROM todo_tasks WHERE id=? AND board_id=? AND deleted_at IS NULL").bind(id, BOARD_ID).first<Record<string, unknown>>();
@@ -34,4 +35,4 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     env.DB.prepare("INSERT INTO todo_task_events (id,task_id,event_type,from_column_id,to_column_id,occurred_at) VALUES (?,?,?,?,?,?)").bind(crypto.randomUUID(), id, "moved", current.column_id, columnId, timestamp),
   ]);
   const task = await env.DB.prepare("SELECT * FROM todo_tasks WHERE id=?").bind(id).first<Record<string, unknown>>(); return Response.json({ task: task && taskShape(task) });
-}
+});

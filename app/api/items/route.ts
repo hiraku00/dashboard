@@ -3,6 +3,7 @@ import { ensureSchema } from "@/db";
 import { canonicalUrl } from "@/app/lib/text";
 import { attachLinks, listItems } from "@/app/lib/queries/watch-list";
 import { normalizeItem } from "@/app/lib/watch-list-item-input";
+import { route } from "@/app/lib/route";
 
 // Re-exported for app/api/items/[id]/route.ts and app/api/imports/route.ts,
 // which both import this from here rather than from
@@ -12,7 +13,7 @@ import { normalizeItem } from "@/app/lib/watch-list-item-input";
 export { normalizeItem };
 export type { ItemInput } from "@/app/lib/watch-list-item-input";
 
-export async function GET(request: Request) {
+export const GET = route(async (request: Request) => {
   const { searchParams } = new URL(request.url);
   const result = await listItems({
     q: searchParams.get("q"),
@@ -24,9 +25,9 @@ export async function GET(request: Request) {
     offset: Number(searchParams.get("offset")) || undefined,
   });
   return Response.json(result);
-}
+});
 
-export async function POST(request: Request) {
+export const POST = route(async (request: Request) => {
   await ensureSchema();
   const normalized = normalizeItem(await request.json().catch(() => null));
   if (!normalized.value) return Response.json({ error: normalized.error }, { status: 400 });
@@ -43,4 +44,4 @@ export async function POST(request: Request) {
   await env.DB.batch(statements);
   const { results } = await env.DB.prepare("SELECT * FROM items WHERE id = ?").bind(id).all<Record<string, unknown>>();
   return Response.json({ item: (await attachLinks(results ?? []))[0] }, { status: 201 });
-}
+});

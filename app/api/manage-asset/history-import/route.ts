@@ -1,11 +1,12 @@
 import { env } from "cloudflare:workers";
 import { ensureSchema } from "@/db";
+import { route } from "@/app/lib/route";
 
 type HistoryRow = Record<string, unknown>;
 const number = (value: unknown) => { const result = Number(value); return Number.isFinite(result) ? result : 0; };
 const text = (value: unknown) => String(value ?? "");
 
-export async function POST(request: Request) {
+export const POST = route(async (request: Request) => {
   await ensureSchema({ seed: false });
   const body = await request.json().catch(() => null) as { snapshots?: HistoryRow[]; exchangeSnapshots?: HistoryRow[]; lidoRewards?: HistoryRow[]; rates?: HistoryRow[] } | null;
   if (!body) return Response.json({ error: "履歴データが不正です。" }, { status: 400 });
@@ -32,4 +33,4 @@ export async function POST(request: Request) {
   }
   for (let start = 0; start < rows.length; start += 50) await env.DB.batch(rows.slice(start, start + 50));
   return Response.json({ ok: true, imported: rows.length });
-}
+});
