@@ -3,6 +3,7 @@ import { ensureSchema } from "@/db";
 import { canonicalUrl } from "@/app/lib/text";
 import { attachLinks } from "@/app/lib/queries/watch-list";
 import { normalizeItem } from "../route";
+import { route } from "@/app/lib/route";
 
 // Delegates the row->API-shape mapping to attachLinks()/toItem() in
 // app/lib/queries/watch-list.ts -- the same functions listItems() (used by
@@ -19,14 +20,14 @@ async function itemResponse(id: string) {
   return (await attachLinks([row]))[0];
 }
 
-export async function GET(_: Request, { params }: { params: Promise<{ id: string }> }) {
+export const GET = route(async (_: Request, { params }: { params: Promise<{ id: string }> }) => {
   await ensureSchema();
   const { id } = await params;
   const item = await itemResponse(id);
   return item ? Response.json({ item }) : Response.json({ error: "見つかりません。" }, { status: 404 });
-}
+});
 
-export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
+export const PATCH = route(async (request: Request, { params }: { params: Promise<{ id: string }> }) => {
   await ensureSchema();
   const { id } = await params;
   const body = await request.json().catch(() => null);
@@ -77,11 +78,11 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   }
   await env.DB.batch(statements);
   return Response.json({ item: await itemResponse(id) });
-}
+});
 
-export async function DELETE(_: Request, { params }: { params: Promise<{ id: string }> }) {
+export const DELETE = route(async (_: Request, { params }: { params: Promise<{ id: string }> }) => {
   await ensureSchema();
   const { id } = await params;
   const result = await env.DB.prepare("UPDATE items SET deleted_at=?, updated_at=? WHERE id=? AND deleted_at IS NULL").bind(new Date().toISOString(), new Date().toISOString(), id).run();
   return result.meta.changes ? Response.json({ ok: true }) : Response.json({ error: "見つかりません。" }, { status: 404 });
-}
+});

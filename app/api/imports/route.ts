@@ -2,6 +2,7 @@ import { env } from "cloudflare:workers";
 import { ensureSchema } from "@/db";
 import { normalizeItem, type ItemInput } from "../items/route";
 import { canonicalUrl } from "@/app/lib/text";
+import { route } from "@/app/lib/route";
 
 /** D1 rejects very large statement batches, and the rest of this codebase
  *  chunks at the same size (see db/index.ts and the Manage Asset history
@@ -20,7 +21,7 @@ const importKey = (source: string, externalId: string) => JSON.stringify([source
 
 type Prepared = { index: number; item: ItemInput; source: string };
 
-export async function POST(request: Request) {
+export const POST = route(async (request: Request) => {
   await ensureSchema();
   const body = await request.json().catch(() => null) as { sourceName?: unknown; items?: unknown } | null;
   if (!body || !Array.isArray(body.items)) return Response.json({ error: "items配列を含むJSONを指定してください。" }, { status: 400 });
@@ -106,4 +107,4 @@ export async function POST(request: Request) {
 
   await env.DB.prepare("INSERT INTO import_runs (id,source_name,total_count,created_count,updated_count,error_count) VALUES (?,?,?,?,?,?)").bind(runId,sourceName,body.items.length,created,0,errors).run();
   return Response.json({ runId, total: body.items.length, created, errors, messages }, { status: errors ? 207 : 201 });
-}
+});

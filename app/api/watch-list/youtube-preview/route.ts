@@ -1,4 +1,5 @@
 import { youTubeVideoId } from "@/app/lib/youtube";
+import { route } from "@/app/lib/route";
 
 type YouTubePreview = {
   item: {
@@ -38,7 +39,7 @@ function channelName(html: string) {
   return decodeHtml(tagContent(html, (tag) => attribute(tag, "itemprop").toLowerCase() === "name")).trim();
 }
 
-export async function POST(request: Request) {
+export const POST = route(async (request: Request) => {
   const body = await request.json().catch(() => null) as { url?: unknown } | null;
   const videoId = youTubeVideoId(body?.url);
   if (!videoId) return Response.json({ error: "YouTube動画のURLを入力してください。" }, { status: 400 });
@@ -60,4 +61,4 @@ export async function POST(request: Request) {
 
   const preview: YouTubePreview = { item: { contentType: "movie", creatorName: "", seriesTitle, title, links: [{ label: "YouTube", url, linkType: "reference" }] } };
   return Response.json(preview);
-}
+});
