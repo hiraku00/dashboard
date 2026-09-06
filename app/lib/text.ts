@@ -18,10 +18,20 @@ export function validDate(value: string) {
 
 /** Strips the fragment and known tracking params (utm_*, fbclid) so the same
  *  destination canonicalizes the same way regardless of how a link arrived
- *  (manual entry, YouTube import, or the initial seed). */
+ *  (manual entry, YouTube import, or the initial seed).
+ *
+ *  Returns "" -- which every caller treats as "not a valid link" -- for
+ *  anything the URL constructor cannot parse AND for any scheme other than
+ *  http/https. That second check used to be missing: `new URL()` happily
+ *  accepts "javascript:alert(1)" or "data:..." without throwing, so a link
+ *  with such a scheme passed straight through despite
+ *  app/lib/watch-list-item-input.ts's error message claiming "http または
+ *  https のURLを指定してください". See tests/watch-list-item-input.test.mjs
+ *  for the case this guards against. */
 export function canonicalUrl(value: string) {
   try {
     const url = new URL(value);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return "";
     url.hash = "";
     for (const key of [...url.searchParams.keys()]) {
       if (key.startsWith("utm_") || key === "fbclid") url.searchParams.delete(key);
