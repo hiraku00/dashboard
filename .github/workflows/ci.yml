@@ -37,3 +37,6 @@ jobs:
 
       - name: Test and build
         run: npm test
+
+      - name: Workers integration tests
+        run: npm run test:workers

@@ -13,7 +13,8 @@
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "typecheck": "wrangler types && tsc --noEmit",
     "smoke:production": "node tests/production-smoke.test.mjs",
-    "test:ssr": "npm run build && node --test tests/ssr-parity.test.mjs"
+    "test:ssr": "npm run build && node --test tests/ssr-parity.test.mjs",
+    "test:workers": "npm run build && vitest run"
   },
   "dependencies": {
     "mermaid": "^11.16.0",
@@ -25,6 +26,7 @@
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "1.37.1",
+    "@cloudflare/vitest-pool-workers": "^0.22.0",
     "@tailwindcss/postcss": "4.2.1",
     "@types/node": "22.19.19",
     "@types/react": "19.2.14",
@@ -39,7 +41,18 @@
     "typescript": "5.9.3",
     "vinext": "0.0.50",
     "vite": "8.0.13",
+    "vitest": "^4.1.11",
     "wrangler": "4.92.0"
   },
-  "type": "module"
+  "type": "module",
+  "allowScripts": {
+    "fsevents@2.3.3": true,
+    "sharp@0.35.2": true,
+    "sharp@0.34.5": true,
+    "unrs-resolver@1.11.1": true,
+    "workerd@1.20260815.1": true,
+    "workerd@1.20260515.1": true,
+    "esbuild@0.28.1": true,
+    "esbuild@0.27.3": true
+  }
 }
