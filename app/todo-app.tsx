@@ -21,7 +21,18 @@ export function TodoApp() {
   const [routineDraft, setRoutineDraft] = useState({ title: "", description: "", priority: "", dueTime: "", scheduleType: "daily", weekdays: [1, 2, 3, 4, 5] as number[] });
   const [editingRoutine, setEditingRoutine] = useState<Routine | null>(null);
   const refresh = useCallback(async () => { setLoading(true); try { const [board, routine] = await Promise.all([fetch(`/api/todos/board?date=${date}`), fetch("/api/todos/routines")]); if (!board.ok) throw new Error("To Doを読み込めませんでした。再読み込みしてください。"); const payload = await readJson<{ columns: Column[]; tasks: Task[] }>(board); setColumns(payload.columns); setTasks(payload.tasks); if (routine.ok) setRoutines((await readJson<{ routines: Routine[] }>(routine)).routines); } catch (error) { setNotice(error instanceof Error ? error.message : "読み込みに失敗しました。"); } finally { setLoading(false); } }, [date]);
-  useEffect(() => { void refresh(); }, [refresh]);
+  // Deferred with setTimeout(fn, 0) rather than calling refresh() (and so
+  // setState) directly in the effect body -- the same pattern
+  // watch-list-app.tsx and text-tube-app.tsx already use for their own
+  // mount-time fetches, for the same reason: react-hooks/set-state-in-effect
+  // flags a synchronous setState call inside an effect because it can
+  // trigger a cascading render in the same commit. Pushing the call to a
+  // macrotask avoids that without changing when the fetch actually starts
+  // (still effectively on mount / whenever `refresh` changes).
+  useEffect(() => {
+    const timer = setTimeout(() => { void refresh(); }, 0);
+    return () => clearTimeout(timer);
+  }, [refresh]);
   const openNew = useCallback((columnId = "todo-today") => { setEditing(null); setDraft({ ...emptyDraft(date), columnId }); setShowEditor(true); }, [date]);
   // Depends on openNew, which closes over `date`: an empty dep array would
   // pin the shortcut to the date the board first rendered, and no dep array

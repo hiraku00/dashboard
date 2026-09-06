@@ -53,16 +53,25 @@ function ResponsiveTable({ children }: { children?: React.ReactNode }) {
 
 export function MarkdownRenderer({ content }: { content: string }) {
   const headingCounts = new Map<string, number>();
-  const heading = (level: 1 | 2 | 3) => ({ children }: { children?: React.ReactNode }) => {
-    const label = plainText(children);
-    const base = markdownSlug(label);
-    const count = headingCounts.get(base) ?? 0;
-    headingCounts.set(base, count + 1);
-    const id = count === 0 ? base : `${base}-${count + 1}`;
-    const props = { id, tabIndex: -1, className: `markdown-heading markdown-h${level}` };
-    if (level === 1) return <h1 {...props}>{children}</h1>;
-    if (level === 2) return <h2 {...props}>{children}</h2>;
-    return <h3 {...props}>{children}</h3>;
+  const heading = (level: 1 | 2 | 3) => {
+    // Named and given an explicit displayName rather than returned as a bare
+    // arrow function: react/display-name's static analysis can attribute a
+    // name to a function assigned directly to an object property (like the
+    // other entries in `components` below), but not to one returned from
+    // another function, so this particular shape needs to say its own name.
+    function MarkdownHeading({ children }: { children?: React.ReactNode }) {
+      const label = plainText(children);
+      const base = markdownSlug(label);
+      const count = headingCounts.get(base) ?? 0;
+      headingCounts.set(base, count + 1);
+      const id = count === 0 ? base : `${base}-${count + 1}`;
+      const props = { id, tabIndex: -1, className: `markdown-heading markdown-h${level}` };
+      if (level === 1) return <h1 {...props}>{children}</h1>;
+      if (level === 2) return <h2 {...props}>{children}</h2>;
+      return <h3 {...props}>{children}</h3>;
+    }
+    MarkdownHeading.displayName = `MarkdownHeading${level}`;
+    return MarkdownHeading;
   };
 
   const components: Components = {
