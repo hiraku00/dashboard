@@ -43,6 +43,9 @@ jobs:
       - name: Test and build
         run: npm test
 
+      - name: Workers integration tests
+        run: npm run test:workers
+
       - name: Deploy Worker
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
