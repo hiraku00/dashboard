@@ -263,17 +263,28 @@ describe("Storage usage page", () => {
     expect(html).toMatch(/2\.00[^0-9]*MB/);
   });
 
-  // "主な保存データ" (Watch List/Manage Asset/TextTube record counts) is
-  // gated behind Analytics being configured -- a pre-existing behavior from
-  // before this page was RSC'd (the client version nested it in the same
-  // `d1?.configured ? (...)` branch as the Analytics meters), deliberately
-  // preserved by this conversion rather than changed. Since no
-  // CF_ANALYTICS_TOKEN is set in this test environment, it must not appear,
-  // even though the underlying data (d1BackedUsage()) has it ready.
-  test("GET /settings/storage does not show record counts that are gated behind unconfigured Analytics", async () => {
+  // Issue #100: "主な保存データ" (Watch List/Manage Asset/TextTube record
+  // counts) used to be nested inside the same `d1?.configured ? (...)`
+  // branch as the Analytics meters, even though it is pure D1 data
+  // (d1BackedUsage()) with no relation to whether Analytics is configured --
+  // so it silently disappeared whenever Analytics wasn't (as in this test
+  // environment, and any local/dev setup without CF_ANALYTICS_TOKEN). It
+  // must now render regardless.
+  test("GET /settings/storage shows record counts even when Analytics is unconfigured", async () => {
     await seedOneItem();
-    const html = await SELF.fetch(`${BASE}/settings/storage`).then((response) => response.text());
-    expect(html).not.toContain("主な保存データ");
+    const [pageResponse, apiBody] = await Promise.all([
+      SELF.fetch(`${BASE}/settings/storage`),
+      SELF.fetch(`${BASE}/api/settings/storage`).then((response) => response.json() as Promise<{ databaseRecords: { watchList: number } }>),
+    ]);
+    const html = await pageResponse.text();
+    expect(html).toContain("主な保存データ");
+    // The count is the first child of <strong> (no boundary comment before
+    // it -- that only appears between it and the following " 件" text --
+    // see the earlier "GET /watch-list embeds..." test's comment), so
+    // matching right after <strong> is exact.
+    const watchListRow = html.match(/Watch List<\/span><strong>(\d+)/);
+    expect(watchListRow, "expected a Watch List row with a numeric count in the raw HTML").toBeTruthy();
+    expect(Number(watchListRow![1])).toBe(apiBody.databaseRecords.watchList);
   });
 
   // The functional tests above would all still pass even if someone
