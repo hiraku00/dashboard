@@ -188,21 +188,25 @@ async function D1AnalyticsPanel({ d1Query }: { d1Query: D1BackedUsage }) {
             <p>書き込み {count.format(todayRowsWritten)} / 100,000 行（{todayWrittenPct.toFixed(2)}%）</p>
           </div>
           <div className="usage-metrics-grid" aria-label="直近30日のD1利用状況（参考値・日次上限とは対比不可）">
-            <div><span>読み取り行数（30日累計）</span><strong>{count.format(d1.configured ? d1.last30Days.rowsRead : 0)}</strong></div>
-            <div><span>書き込み行数（30日累計）</span><strong>{count.format(d1.configured ? d1.last30Days.rowsWritten : 0)}</strong></div>
-            <div><span>読み取りクエリ（30日累計）</span><strong>{count.format(d1.configured ? d1.last30Days.readQueries : 0)}</strong></div>
-            <div><span>書き込みクエリ（30日累計）</span><strong>{count.format(d1.configured ? d1.last30Days.writeQueries : 0)}</strong></div>
-          </div>
-          <div className="usage-breakdown database-breakdown">
-            <div className="usage-section-label">主な保存データ</div>
-            <div className="usage-row"><span>Watch List</span><strong>{count.format(d1Query.databaseRecords.watchList)} 件</strong></div>
-            <div className="usage-row"><span>Manage Assetのスナップショット</span><strong>{count.format(d1Query.databaseRecords.manageAsset)} 件</strong></div>
-            <div className="usage-row"><span>TextTubeの動画</span><strong>{count.format(d1Query.databaseRecords.textTube)} 件</strong></div>
+            <div><span>読み取り行数（30日累計）</span><strong>{count.format(d1.last30Days.rowsRead)}</strong></div>
+            <div><span>書き込み行数（30日累計）</span><strong>{count.format(d1.last30Days.rowsWritten)}</strong></div>
+            <div><span>読み取りクエリ（30日累計）</span><strong>{count.format(d1.last30Days.readQueries)}</strong></div>
+            <div><span>書き込みクエリ（30日累計）</span><strong>{count.format(d1.last30Days.writeQueries)}</strong></div>
           </div>
         </>
       ) : (
         <p className="muted-copy">Cloudflare Analyticsの読み取り専用トークンを設定すると、D1容量と直近30日の読み書き量を表示します。</p>
       )}
+      {/* Issue #100: Watch List/Manage Asset/TextTubeの件数はD1BackedUsage()
+          由来の純粋なD1データで、Cloudflare Analyticsの設定有無とは無関係。
+          以前はd1.configuredの分岐の内側に入れ子になっており、Analytics未
+          設定の環境(ローカル開発・テスト)ではこの件数表示ごと消えていた。 */}
+      <div className="usage-breakdown database-breakdown">
+        <div className="usage-section-label">主な保存データ</div>
+        <div className="usage-row"><span>Watch List</span><strong>{count.format(d1Query.databaseRecords.watchList)} 件</strong></div>
+        <div className="usage-row"><span>Manage Assetのスナップショット</span><strong>{count.format(d1Query.databaseRecords.manageAsset)} 件</strong></div>
+        <div className="usage-row"><span>TextTubeの動画</span><strong>{count.format(d1Query.databaseRecords.textTube)} 件</strong></div>
+      </div>
     </section>
   );
 }
