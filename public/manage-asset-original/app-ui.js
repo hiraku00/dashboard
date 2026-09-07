@@ -103,7 +103,7 @@
       const response=await fetch(`/api/manage-asset/history?days=${period==='all'?'all':need}`,{cache:'no-store'});
       if(!response.ok)return;
       history=await response.json();historyDays=need;
-    }catch(error){/* 取得に失敗したら既存の履歴で描画を続ける */}
+    }catch{/* 取得に失敗したら既存の履歴で描画を続ける */}
   }
   async function load(){const [nextState,nextHistory,providers,rewards,rates]=await Promise.all([fetch('/api/manage-asset/state',{cache:'no-store'}).then(response=>response.json()),fetch('/api/manage-asset/history?days=90',{cache:'no-store'}).then(response=>response.json()),fetch('/api/providers',{cache:'no-store'}).then(response=>response.json()),fetch('/api/lido-rewards',{cache:'no-store'}).then(response=>response.ok?response.json():{rows:[]}).catch(()=>({rows:[]})),fetch('/api/usd-jpy-rates',{cache:'no-store'}).then(response=>response.ok?response.json():{rows:[]}).catch(()=>({rows:[]}))]);state=nextState;history=nextHistory;historyDays=90; lidoRewards=rewards.rows||[];usdJpyRates=rates.rows||[];providerLabels=Object.fromEntries((providers.providers||[]).map(item=>[item.provider,item.label]));$('provider').innerHTML=providers.providers.map(item=>`<option value="${escapeHtml(item.provider)}">${escapeHtml(item.label)}</option>`).join('');render();if(await ensureStethHistory())renderCurrency()}
 
