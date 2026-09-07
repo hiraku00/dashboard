@@ -1,5 +1,5 @@
 import { env } from "cloudflare:workers";
-import { BOARD_ID, boardColumns, clean, normalizeTask, now } from "../_lib";
+import { BOARD_ID, boardColumns, clean, materializeRoutines, normalizeTask, now, todoDate } from "../_lib";
 import { route } from "@/app/lib/route";
 
 // Wrapped with route() (Issue #77) as the first, feasibility-proving case:
@@ -14,6 +14,10 @@ export const POST = route(async (request: Request) => {
   const normalized = normalizeTask(body ?? {});
   if (!normalized.value) return Response.json({ error: normalized.error }, { status: 400 });
   const columns = await boardColumns();
+  // Self-healing insurance (Issue #71): if the daily cron ever misses a day,
+  // any board write -- not just this one -- catches today's board back up.
+  // See the matching comment in app/api/todos/routines/route.ts's POST.
+  await materializeRoutines(todoDate());
   const desired = clean(body?.columnId, 100);
   const defaultColumn = columns.find((column) => column.id === (desired || (normalized.value?.occurrenceDate ? "todo-today" : "todo-inbox")));
   if (!defaultColumn) return Response.json({ error: "移動先のリストが見つかりません。" }, { status: 400 });

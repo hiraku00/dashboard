@@ -1,15 +1,17 @@
-import { env } from "cloudflare:workers";
-import { BOARD_ID, boardColumns, materializeRoutines, taskShape, todoDate, validDate } from "../_lib";
+import { todoDate, validDate } from "../_lib";
+import { boardSnapshot } from "@/app/lib/queries/todo";
 import { route } from "@/app/lib/route";
 
+// materializeRoutines() no longer runs here (Issue #71): a GET used to
+// write to D1 on every view, which Next.js's <Link> prefetching or a
+// re-render could trigger an unbounded number of times. It now runs only
+// from the daily cron (worker/index.ts's `scheduled`) and, as a
+// self-healing insurance measure in case that cron ever misses a day, from
+// the write endpoints that can newly qualify a routine for today's board
+// (see app/api/todos/routines/route.ts, .../[id]/route.ts, and
+// app/api/todos/tasks*/route.ts).
 export const GET = route(async (request: Request) => {
   const requested = new URL(request.url).searchParams.get("date") ?? todoDate();
   if (!validDate(requested)) return Response.json({ error: "日付が不正です。" }, { status: 400 });
-  const columns = await boardColumns();
-  await materializeRoutines(requested);
-  const rows = (await env.DB.prepare("SELECT * FROM todo_tasks WHERE board_id=? AND deleted_at IS NULL AND (occurrence_date=? OR occurrence_date IS NULL) ORDER BY position,created_at").bind(BOARD_ID, requested).all<Record<string, unknown>>()).results ?? [];
-  const tasks = rows.map(taskShape);
-  const today = columns.find((column) => column.kind === "today")?.id;
-  const done = columns.find((column) => column.kind === "done")?.id;
-  return Response.json({ board: { id: BOARD_ID, name: "To Do", timezone: "Asia/Bangkok" }, date: requested, columns, tasks, summary: { total: tasks.filter((task) => task.occurrenceDate).length, completed: tasks.filter((task) => task.columnId === done && task.occurrenceDate === requested).length, today: tasks.filter((task) => task.columnId === today).length } });
+  return Response.json(await boardSnapshot(requested));
 });

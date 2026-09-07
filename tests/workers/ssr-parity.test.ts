@@ -171,6 +171,51 @@ describe("TextTube pages", () => {
   });
 });
 
+describe("To Do page", () => {
+  // app/todo/page.tsx is a Server Component (Issue #71) that fetches
+  // today's board directly from D1 -- see app/lib/queries/todo.ts. This was
+  // deliberately excluded from F-1's original RSC pass because GET
+  // /api/todos/board used to write to D1 (materializeRoutines()) on every
+  // read; Issue #71 moved that write out to the daily cron and to
+  // insurance calls in the write endpoints (see those routes' own
+  // comments) before this page could be converted safely.
+  async function createDailyRoutine(title: string) {
+    const response = await SELF.fetch(`${BASE}/api/todos/routines`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ title, scheduleType: "daily", defaultColumnId: "todo-today" }),
+    });
+    expect(response.status).toBe(201);
+  }
+
+  test("GET /todo renders without erroring", async () => {
+    const response = await SELF.fetch(`${BASE}/todo`);
+    expect(response.status).toBe(200);
+    const html = await response.text();
+    expect(html).toMatch(/portal-nav/);
+    expect(html).toMatch(/todo-shell/);
+  });
+
+  // Creating the routine (rather than relying on this GET) is what
+  // materializes today's task -- see app/api/todos/routines/route.ts's
+  // POST. A real regression here would be either this page not showing it
+  // (RSC layer stale) or the create endpoint failing to self-heal at all.
+  test("GET /todo embeds a routine materialized via the create-insurance path in the server-rendered HTML", async () => {
+    await createDailyRoutine("ssr-parity-todo-routine");
+    const html = await SELF.fetch(`${BASE}/todo`).then((response) => response.text());
+    expect(html).toContain("ssr-parity-todo-routine");
+  });
+
+  test("GET /todo does not ask the client to fetch what the server already rendered", async () => {
+    const html = await SELF.fetch(`${BASE}/todo`).then((response) => response.text());
+    // "todo-skeleton" is what each column shows before the client-side
+    // fetch resolves (see app/todo-app.tsx); its absence here is direct
+    // evidence the client hydrates into already-complete data instead of a
+    // loading state.
+    expect(html).not.toMatch(/todo-skeleton/);
+  });
+});
+
 describe("API response shapes", () => {
   test("GET /api/items returns the shape the Watch List page consumes", async () => {
     const response = await SELF.fetch(`${BASE}/api/items?limit=1`);

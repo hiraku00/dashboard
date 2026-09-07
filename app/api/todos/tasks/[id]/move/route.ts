@@ -1,5 +1,5 @@
 import { env } from "cloudflare:workers";
-import { BOARD_ID, boardColumns, clean, now, taskShape } from "../../../_lib";
+import { BOARD_ID, boardColumns, clean, materializeRoutines, now, taskShape, todoDate } from "../../../_lib";
 import { route } from "@/app/lib/route";
 
 export const POST = route(async (request: Request, { params }: { params: Promise<{ id: string }> }) => {
@@ -11,6 +11,9 @@ export const POST = route(async (request: Request, { params }: { params: Promise
   // longer decides the version match itself -- see the versioned UPDATE
   // further down for why.
   const expectedVersion = Number(body?.version);
+  // Self-healing insurance (Issue #71) -- see the matching comment in
+  // app/api/todos/tasks/route.ts's POST.
+  await materializeRoutines(todoDate());
   const columns = await boardColumns(); const column = columns.find((item) => item.id === columnId);
   if (!column) return Response.json({ error: "移動先のリストが不正です。" }, { status: 400 });
   const date = current.occurrence_date;

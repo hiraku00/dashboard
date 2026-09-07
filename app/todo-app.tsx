@@ -1,21 +1,41 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PortalHeader } from "./portal-nav";
 import { readErrorMessage, readJson } from "./lib/json";
 
-type Column = { id: string; name: string; kind: "inbox" | "today" | "doing" | "done" };
-type Task = { id: string; columnId: string; routineId: string | null; occurrenceDate: string | null; title: string; description: string; priority: number | null; dueTime: string | null; completedAt: string | null; version: number };
-type Routine = { id: string; title: string; description: string; schedule_type: "daily" | "weekdays"; weekdays: string; priority: number | null; default_due_time: string | null; active: number; version: number };
+export type Column = { id: string; name: string; kind: "inbox" | "today" | "doing" | "done" };
+export type Task = { id: string; columnId: string; routineId: string | null; occurrenceDate: string | null; title: string; description: string; priority: number | null; dueTime: string | null; completedAt: string | null; version: number };
+export type Routine = { id: string; title: string; description: string; schedule_type: "daily" | "weekdays"; weekdays: string; priority: number | null; default_due_time: string | null; active: number; version: number };
 type Draft = { title: string; description: string; priority: string; dueTime: string; occurrenceDate: string; columnId: string };
 const weekdayLabels = ["日", "月", "火", "水", "木", "金", "土"];
 const isoDate = (date: Date) => { const parts = new Intl.DateTimeFormat("en", { timeZone: "Asia/Bangkok", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(date); const value = (type: string) => parts.find((part) => part.type === type)?.value ?? ""; return `${value("year")}-${value("month")}-${value("day")}`; };
 const formatDate = (value: string) => new Intl.DateTimeFormat("ja-JP", { timeZone: "Asia/Bangkok", month: "long", day: "numeric", weekday: "short" }).format(new Date(`${value}T12:00:00Z`));
 const emptyDraft = (date: string): Draft => ({ title: "", description: "", priority: "", dueTime: "", occurrenceDate: date, columnId: "todo-today" });
 
-export function TodoApp() {
-  const [date, setDate] = useState(() => isoDate(new Date())); const [columns, setColumns] = useState<Column[]>([]); const [tasks, setTasks] = useState<Task[]>([]);
-  const [routines, setRoutines] = useState<Routine[]>([]); const [notice, setNotice] = useState(""); const [loading, setLoading] = useState(true);
+export function TodoApp({
+  initialDate = null,
+  initialColumns = null,
+  initialTasks = null,
+  initialRoutines = null,
+}: {
+  // Passed by app/todo/page.tsx (a Server Component) after fetching this
+  // directly from D1 for today's date -- see app/lib/queries/todo.ts. All
+  // optional so this component still works exactly as before (client-side
+  // fetch on mount) if ever rendered without them.
+  initialDate?: string | null;
+  initialColumns?: Column[] | null;
+  initialTasks?: Task[] | null;
+  initialRoutines?: Routine[] | null;
+} = {}) {
+  const [date, setDate] = useState(() => initialDate ?? isoDate(new Date())); const [columns, setColumns] = useState<Column[]>(initialColumns ?? []); const [tasks, setTasks] = useState<Task[]>(initialTasks ?? []);
+  const [routines, setRoutines] = useState<Routine[]>(initialRoutines ?? []); const [notice, setNotice] = useState(""); const [loading, setLoading] = useState(!initialColumns);
+  // Guards only the very first run of the mount effect below: this page has
+  // a date filter (like Watch List's query filters), so only the *initial*
+  // mount fetch can be skipped when the server already rendered this same
+  // date's data -- every later date change must still fetch normally. See
+  // the matching comment in app/watch-list-app.tsx.
+  const skippedInitialFetch = useRef(false);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [draft, setDraft] = useState<Draft>(() => emptyDraft(isoDate(new Date()))); const [editing, setEditing] = useState<Task | null>(null); const [showEditor, setShowEditor] = useState(false); const [showRoutines, setShowRoutines] = useState(false);
   const [routineDraft, setRoutineDraft] = useState({ title: "", description: "", priority: "", dueTime: "", scheduleType: "daily", weekdays: [1, 2, 3, 4, 5] as number[] });
@@ -30,8 +50,23 @@ export function TodoApp() {
   // macrotask avoids that without changing when the fetch actually starts
   // (still effectively on mount / whenever `refresh` changes).
   useEffect(() => {
+    // Skip exactly one invocation -- the one that runs on mount -- when the
+    // server already rendered this same date's board. Every subsequent
+    // invocation (the user changing `date`, which is what actually
+    // re-triggers this effect since `refresh` is recreated on each such
+    // change) must still fetch normally; the ref flips permanently on its
+    // first check so a later change is never mistaken for the initial mount.
+    if (initialColumns && !skippedInitialFetch.current) {
+      skippedInitialFetch.current = true;
+      return;
+    }
     const timer = setTimeout(() => { void refresh(); }, 0);
     return () => clearTimeout(timer);
+    // `initialColumns` is intentionally omitted below: it is a prop from the
+    // server that does not change across this component's lifetime, so
+    // adding it as a dep would never itself re-trigger the effect -- only
+    // the ref actually gates behavior, and that is read, not depended on.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refresh]);
   const openNew = useCallback((columnId = "todo-today") => { setEditing(null); setDraft({ ...emptyDraft(date), columnId }); setShowEditor(true); }, [date]);
   // Depends on openNew, which closes over `date`: an empty dep array would
