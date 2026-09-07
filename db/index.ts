@@ -226,7 +226,7 @@ export async function ensureSchema({ seed = true }: { seed?: boolean } = {}) {
   // sync POST unable to duplicate a snapshot.
   //
   // Deliberately outside the batch above and tolerant of failure: an existing
-  // database must run db/migrations/2026-09-04-dedupe-asset-snapshots.sql first,
+  // database must run migrations/0004_dedupe_asset_snapshots.sql first,
   // and creating this index fails while duplicates remain. Inside the batch that
   // failure would take every table's DDL -- and so every route -- down with it.
   // Out here, a database that has not been migrated yet only fails the sync
