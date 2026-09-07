@@ -1,4 +1,4 @@
-import { SELF } from "cloudflare:test";
+import { SELF, env } from "cloudflare:test";
 import { beforeAll, describe, expect, test } from "vitest";
 import { ensureSchema } from "@/db";
 
@@ -213,6 +213,87 @@ describe("To Do page", () => {
     // evidence the client hydrates into already-complete data instead of a
     // loading state.
     expect(html).not.toMatch(/todo-skeleton/);
+  });
+});
+
+describe("Storage usage page", () => {
+  // app/settings/storage/page.tsx is a Server Component (Issue #72). Unlike
+  // every other page converted in F-1/#71, part of its data comes from
+  // Cloudflare's external Analytics API (see
+  // app/lib/queries/storage-usage.ts's cloudflareAnalyticsUsage()) -- an
+  // order of magnitude slower than a D1 query, which is exactly why this
+  // page was excluded from the original RSC pass. It stays safe to convert
+  // by isolating that one slow call inside <D1AnalyticsPanel>'s own
+  // <Suspense> boundary (see the page's own comment) so the D1-backed data
+  // (R2/Supadata panels, and the D1 panel's own record counts) is never
+  // blocked on it -- confirmed with a disposable timing spike (not
+  // committed) showing a Suspense boundary streams the fast shell in ~4ms
+  // regardless of how long the slow child takes.
+  //
+  // Neither CF_ANALYTICS_TOKEN nor CF_ACCOUNT_ID is set in this test
+  // environment (see vitest.config.ts's `bindings`), so
+  // cloudflareAnalyticsUsage() always reports { configured: false } here --
+  // the same "未設定" state a real deployment shows before those secrets
+  // are configured (see `wrangler secret list` in production, where they
+  // are set).
+  test("GET /settings/storage renders without erroring", async () => {
+    const response = await SELF.fetch(`${BASE}/settings/storage`);
+    expect(response.status).toBe(200);
+    const html = await response.text();
+    expect(html).toMatch(/portal-nav/);
+    expect(html).toMatch(/r2-usage-panel/);
+    expect(html).toMatch(/d1-usage-panel/);
+    expect(html).toMatch(/transcript-usage-panel/);
+  });
+
+  // The R2 panel (categories/bytes) is entirely D1-backed and renders
+  // outside the <Suspense> boundary -- it must never wait on, or be gated
+  // by, the Analytics call. Seeded directly against D1 (there is no upload
+  // API convenient to call from a test) rather than through
+  // seedOneItem()/seedOneVideo(), which don't touch storage_objects at all.
+  test("GET /settings/storage embeds the real R2 category breakdown in the server-rendered HTML, independent of Analytics configuration", async () => {
+    await env.DB.prepare(
+      "INSERT INTO storage_objects (object_key,category,size_bytes,sha256,content_type,created_at) VALUES (?,?,?,?,?,?)",
+    ).bind("ssr-parity-storage-object", "text-tube/videos", 2 * 1024 * 1024, "deadbeef", "text/plain", new Date().toISOString()).run();
+    const html = await SELF.fetch(`${BASE}/settings/storage`).then((response) => response.text());
+    expect(html).toContain("TextTubeの保存済み本文");
+    // React renders a text-node boundary comment between a dynamic value and
+    // adjacent static text (e.g. `2.00<!-- --> MB`) -- see the matching
+    // comment on the Watch List page's own SSR test above.
+    expect(html).toMatch(/2\.00[^0-9]*MB/);
+  });
+
+  // "主な保存データ" (Watch List/Manage Asset/TextTube record counts) is
+  // gated behind Analytics being configured -- a pre-existing behavior from
+  // before this page was RSC'd (the client version nested it in the same
+  // `d1?.configured ? (...)` branch as the Analytics meters), deliberately
+  // preserved by this conversion rather than changed. Since no
+  // CF_ANALYTICS_TOKEN is set in this test environment, it must not appear,
+  // even though the underlying data (d1BackedUsage()) has it ready.
+  test("GET /settings/storage does not show record counts that are gated behind unconfigured Analytics", async () => {
+    await seedOneItem();
+    const html = await SELF.fetch(`${BASE}/settings/storage`).then((response) => response.text());
+    expect(html).not.toContain("主な保存データ");
+  });
+
+  // The functional tests above would all still pass even if someone
+  // collapsed <D1AnalyticsPanel> back into one blocking top-level await --
+  // Issue #72's whole point (the R2/Supadata panels must not wait on the
+  // slow Analytics call) would regress silently with the same final HTML.
+  // React marks a real <Suspense> boundary's resolved content with `<!--$-->`
+  // / `<!--/$-->` comments in streamed SSR output; a blocking await produces
+  // neither, so their presence here is direct evidence the boundary is
+  // actually a Suspense boundary and not just a `{await ...}` inline.
+  test("GET /settings/storage's Analytics panel is wrapped in a real Suspense boundary, not a blocking await", async () => {
+    const html = await SELF.fetch(`${BASE}/settings/storage`).then((response) => response.text());
+    expect(html).toMatch(/<!--\$--><section class="settings-panel usage-panel d1-usage-panel"/);
+    expect(html).toContain(`<!--/$-->`);
+  });
+
+  test("GET /settings/storage shows the Analytics panel as unconfigured rather than blocking on it, since no token is set in this environment", async () => {
+    const html = await SELF.fetch(`${BASE}/settings/storage`).then((response) => response.text());
+    expect(html).toContain("未設定");
+    expect(html).toContain("Cloudflare Analyticsの読み取り専用トークンを設定すると");
   });
 });
 
