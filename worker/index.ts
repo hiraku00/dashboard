@@ -3,6 +3,7 @@ import { handleImageOptimization, DEFAULT_DEVICE_SIZES, DEFAULT_IMAGE_SIZES } fr
 import handler from "vinext/server/app-router-entry";
 import { reconcileStorageUsage } from "../app/lib/storage-usage";
 import { guardRequest } from "../app/lib/access";
+import { initTodo, materializeRoutines, todoDate } from "../app/api/todos/_lib";
 
 interface Env {
   ASSETS: Fetcher;
@@ -53,10 +54,20 @@ const worker = {
 
     return handler.fetch(request, env, ctx);
   },
-  async scheduled(_controller: ScheduledController, env: Env, _ctx: ExecutionContext) {
-    void _controller;
+  async scheduled(controller: ScheduledController, env: Env, _ctx: ExecutionContext) {
     void _ctx;
-    if (!env.FILES || !env.DB) return;
+    if (!env.DB) return;
+    // wrangler.jsonc's `triggers.crons` has two independent schedules
+    // firing this same handler; `controller.cron` says which one woke it.
+    // "0 17 * * *" = UTC 17:00 = Asia/Bangkok 00:00 (todoDate()'s timezone),
+    // i.e. right after the To Do board's day rolls over -- see Issue #71 for
+    // why this materialization was moved out of GET /api/todos/board.
+    if (controller.cron === "0 17 * * *") {
+      await initTodo();
+      await materializeRoutines(todoDate());
+      return;
+    }
+    if (!env.FILES) return;
     await reconcileStorageUsage(env.FILES, env.DB, "scheduled-r2-list");
   },
 };

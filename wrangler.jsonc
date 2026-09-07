@@ -41,6 +41,10 @@
     }
   ],
   "triggers": {
-    "crons": ["17 2 * * *"]
+    // "17 2 * * *": R2 storage-usage reconciliation (UTC 2:17 = Bangkok 9:17).
+    // "0 17 * * *": materializes today's recurring To Do tasks right after
+    // the board's day rolls over (UTC 17:00 = Asia/Bangkok 00:00). See
+    // worker/index.ts's `scheduled` and Issue #71.
+    "crons": ["17 2 * * *", "0 17 * * *"]
   }
 }

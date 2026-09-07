@@ -1,5 +1,5 @@
 import { env } from "cloudflare:workers";
-import { BOARD_ID, boardColumns, normalizeTask, now, taskShape } from "../../_lib";
+import { BOARD_ID, boardColumns, materializeRoutines, normalizeTask, now, taskShape, todoDate } from "../../_lib";
 import { route } from "@/app/lib/route";
 
 export const GET = route(async (_: Request, { params }: { params: Promise<{ id: string }> }) => { const { id } = await params; const row = await env.DB.prepare("SELECT * FROM todo_tasks WHERE id=? AND board_id=? AND deleted_at IS NULL").bind(id, BOARD_ID).first<Record<string, unknown>>(); return row ? Response.json({ task: taskShape(row) }) : Response.json({ error: "タスクが見つかりません。" }, { status: 404 }); });
@@ -16,6 +16,9 @@ export const PATCH = route(async (request: Request, { params }: { params: Promis
   // afterward left a window for a concurrent request to pass the same
   // comparison and both writes to land.
   const expectedVersion = Number(body?.version);
+  // Self-healing insurance (Issue #71) -- see the matching comment in
+  // app/api/todos/tasks/route.ts's POST.
+  await materializeRoutines(todoDate());
   const columns = await boardColumns(); const columnId = typeof body?.columnId === "string" ? body.columnId : String(current.column_id);
   if (!columns.some((column) => column.id === columnId)) return Response.json({ error: "移動先のリストが不正です。" }, { status: 400 });
   const completedAt = columns.find((column) => column.id === columnId)?.kind === "done" ? (current.completed_at || now()) : null;
