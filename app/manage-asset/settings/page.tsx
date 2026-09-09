@@ -10,6 +10,7 @@ export default async function ManageAssetSettingsPage() {
       initialHistory={initial?.history ?? null}
       initialLidoRewards={initial?.lidoRewards ?? null}
       initialUsdJpyRates={initial?.usdJpyRates ?? null}
+      initialLatestSyncRun={initial?.latestSyncRun ?? null}
     />
   );
 }

@@ -4,6 +4,7 @@ import { currentStorageBytes, putPortalObject } from "@/app/lib/portal";
 import { clean } from "@/app/lib/text";
 import { normalizeSyncedPositions } from "@/app/lib/manage-asset-core";
 import { summarizeRun } from "@/app/lib/sync-summary";
+import { latestSyncRun } from "@/app/lib/queries/manage-asset";
 import { route } from "@/app/lib/route";
 
 // One request carries every source of a run, so cap it: the Workers Free plan
@@ -103,11 +104,7 @@ async function storeEntry(runId: string, entry: Entry, now: string, knownUsedByt
   return { sourceId, snapshotId, rawStorageStatus: storageStatus, rawStorageError, usedBytes: usedBytesResult ?? knownUsedBytes };
 }
 
-export const GET = route(async () => {
-  await ensureSchema({ seed: false });
-  const latest = (await env.DB.prepare("SELECT * FROM asset_sync_runs ORDER BY received_at DESC LIMIT 1").all<Record<string, unknown>>()).results?.[0] ?? null;
-  return Response.json({ ok: true, latest });
-});
+export const GET = route(async () => Response.json({ ok: true, latest: await latestSyncRun() }));
 
 export const POST = route(async (request: Request) => {
   // Cloudflare Access validates the Service Token at the edge. Its client-secret

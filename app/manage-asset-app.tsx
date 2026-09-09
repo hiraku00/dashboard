@@ -8,6 +8,8 @@ import { PortalHeader } from "./portal-nav";
 import { AssetOverview, type AssetHistoryData, type AssetStateData } from "./manage-asset-overview";
 import { LocationsView } from "./manage-asset-locations";
 import { CurrencyView } from "./manage-asset-currency";
+import { SettingsView } from "./manage-asset-settings";
+import { SyncView } from "./manage-asset-sync-view";
 
 const assetViews = [
   ["overview", "資産概要"],
@@ -17,7 +19,6 @@ const assetViews = [
   ["settings", "設定"],
 ] as const;
 
-/** The view ids the embedded legacy app knows (its nav `data-view` values). */
 export type AssetView = (typeof assetViews)[number][0];
 
 const subscribeNoop = () => () => {};
@@ -29,25 +30,28 @@ export function ManageAssetApp({
   initialHistory = null,
   initialLidoRewards = null,
   initialUsdJpyRates = null,
+  initialLatestSyncRun = null,
 }: {
   initialView?: AssetView;
   initialState?: AssetStateData | null;
   initialHistory?: AssetHistoryData | null;
   initialLidoRewards?: AssetRow[] | null;
   initialUsdJpyRates?: AssetRow[] | null;
+  initialLatestSyncRun?: AssetRow | null;
 } = {}) {
   const [view, setView] = useState<AssetView>(initialView);
 
-  // state/history/lidoRewards/usdJpyRates live here (not inside each view) so
-  // switching tabs -- which unmounts the previous view -- does not lose data
-  // already fetched, and a period selection made in one view can be served
-  // from the same cache another view already warmed. Mirrors the legacy app's
-  // single shared `state`/`history`/`historyDays` module state.
+  // state/history/lidoRewards/usdJpyRates/latestSyncRun live here (not inside
+  // each view) so switching tabs -- which unmounts the previous view -- does
+  // not lose data already fetched, and a period selection made in one view can
+  // be served from the same cache another view already warmed. Mirrors the
+  // legacy app's single shared `state`/`history`/`historyDays` module state.
   const [state, setState] = useState<AssetStateData | null>(initialState);
   const [history, setHistory] = useState<AssetHistoryData | null>(initialHistory);
   const [historyDays, setHistoryDays] = useState(initialHistory ? 90 : 0);
   const [lidoRewards, setLidoRewards] = useState<AssetRow[] | null>(initialLidoRewards);
   const [usdJpyRates, setUsdJpyRates] = useState<AssetRow[] | null>(initialUsdJpyRates);
+  const [latestSyncRun, setLatestSyncRun] = useState<AssetRow | null>(initialLatestSyncRun);
   // localDate()/formatDate() are timezone-dependent; see manage-asset-overview.tsx.
   const today = useSyncExternalStore(subscribeNoop, localDate, emptyString);
 
@@ -57,11 +61,12 @@ export function ManageAssetApp({
     let cancelled = false;
     (async () => {
       try {
-        const [nextState, nextHistory, rewards, rates] = await Promise.all([
+        const [nextState, nextHistory, rewards, rates, sync] = await Promise.all([
           fetch("/api/manage-asset/state", { cache: "no-store" }).then((response) => response.json()),
           fetch("/api/manage-asset/history?days=90", { cache: "no-store" }).then((response) => response.json()),
           fetch("/api/lido-rewards", { cache: "no-store" }).then((response) => (response.ok ? response.json() : { rows: [] })).catch(() => ({ rows: [] })),
           fetch("/api/usd-jpy-rates", { cache: "no-store" }).then((response) => (response.ok ? response.json() : { rows: [] })).catch(() => ({ rows: [] })),
+          fetch("/api/manage-asset/sync", { cache: "no-store" }).then((response) => (response.ok ? response.json() : { latest: null })).catch(() => ({ latest: null })),
         ]);
         if (cancelled) return;
         setState(nextState as AssetStateData);
@@ -69,6 +74,7 @@ export function ManageAssetApp({
         setHistoryDays(90);
         setLidoRewards(((rewards as { rows?: AssetRow[] }).rows ?? []));
         setUsdJpyRates(((rates as { rows?: AssetRow[] }).rows ?? []));
+        setLatestSyncRun((sync as { latest?: AssetRow | null }).latest ?? null);
       } catch {
         /* leave empty; the views render their own empty states */
       }
@@ -101,11 +107,11 @@ export function ManageAssetApp({
           </button>
         ))}
       </nav>
-      {/* The three migrated views stay mounted and are only CSS-hidden when
-          inactive (the `hidden` attribute), matching how the legacy SPA kept
-          every section in the DOM and toggled `.view.active`. Unmounting on
-          tab switch would reset each view's own selection (chosen currency,
-          period, expanded row) every time the user came back to it. */}
+      {/* Every view stays mounted and is only CSS-hidden when inactive (the
+          `hidden` attribute), matching how the legacy SPA kept every section in
+          the DOM and toggled `.view.active`. Unmounting on tab switch would
+          reset each view's own selection (chosen currency, period, expanded
+          row) every time the user came back to it. */}
       <div hidden={view !== "overview"}>
         <AssetOverview state={state} history={history} today={today} ensureHistory={ensureHistory} />
       </div>
@@ -115,42 +121,12 @@ export function ManageAssetApp({
       <div hidden={view !== "currency"}>
         <CurrencyView state={state} history={history} lidoRewards={lidoRewards} usdJpyRates={usdJpyRates} today={today} ensureHistory={ensureHistory} />
       </div>
-      {view === "settings" || view === "update" ? (
-        // Settings / data-update views: not yet migrated (Phase C).
-        <LegacyAssetFrame view={view} />
-      ) : null}
+      <div hidden={view !== "update"}>
+        <SyncView latestRun={latestSyncRun} today={today} />
+      </div>
+      <div hidden={view !== "settings"}>
+        <SettingsView state={state} />
+      </div>
     </main>
-  );
-}
-
-/** The not-yet-migrated views, still served by public/manage-asset-original.
- *  Posts the requested view once loaded and follows the iframe body's height. */
-function LegacyAssetFrame({ view }: { view: AssetView }) {
-  const frame = useRef<HTMLIFrameElement>(null);
-  const [height, setHeight] = useState(900);
-  useEffect(() => {
-    frame.current?.contentWindow?.postMessage({ type: "manage-asset:view", view }, window.location.origin);
-  }, [view]);
-  useEffect(() => {
-    const resize = () => {
-      const body = frame.current?.contentDocument?.body;
-      if (body) setHeight(Math.max(700, body.scrollHeight + 12));
-    };
-    window.addEventListener("message", resize);
-    const timer = window.setInterval(resize, 500);
-    return () => {
-      window.removeEventListener("message", resize);
-      window.clearInterval(timer);
-    };
-  }, []);
-  return (
-    <iframe
-      ref={frame}
-      className="manage-asset-original"
-      style={{ height }}
-      src="/manage-asset-original/index.html?embedded=1"
-      title="Manage Asset"
-      onLoad={() => frame.current?.contentWindow?.postMessage({ type: "manage-asset:view", view }, window.location.origin)}
-    />
   );
 }
