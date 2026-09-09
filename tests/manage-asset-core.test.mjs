@@ -1,13 +1,19 @@
 import { expect, test } from "vitest";
 
 import {
+  allPositions,
   currencyHistory,
   exchangePositions,
   historyPoints,
   holdingsFromPositions,
+  latestFx,
   legacyDeFiAsset,
+  locations,
   normalizeSyncedPositions,
+  previousOpeningPoint,
+  reconciliation,
   stethRewardHistory,
+  total,
   walletPositions,
 } from "../app/lib/manage-asset-core.ts";
 
@@ -272,6 +278,79 @@ test("stethRewardHistory drops snapshot dates the CSV already covers", () => {
   ];
   const rows = stethRewardHistory(rewards, wallets, [], []);
   expect(rows.map((row) => [row.date, row.source])).toEqual([["2026-09-05", "csv"]]);
+});
+
+// The overview view's data layer, ported verbatim from
+// public/manage-asset-original/portfolio-core.js so the RSC page shows the same
+// numbers the embedded legacy app did. These pin that equivalence.
+
+const overviewWallets = [
+  { wallet_id: "w1", wallet_name: "Main", as_of_date: "2026-09-05", captured_at: "2026-09-05T10:00:00Z", fx_usdjpy: 150, total_usd: 7500, tokens: [{ symbol: "ETH", amount_value: 3, usd_value_display: 7500 }] },
+  // A retried sync leaves an older snapshot for the same wallet; latest wins.
+  { wallet_id: "w1", wallet_name: "Main", as_of_date: "2026-09-05", captured_at: "2026-09-05T09:00:00Z", fx_usdjpy: 149, total_usd: 7400, tokens: [{ symbol: "ETH", amount_value: 3, usd_value_display: 7400 }] },
+];
+const overviewExchanges = [
+  { source_id: "e1", account_name: "Binance", as_of_date: "2026-09-05", captured_at: "2026-09-05T10:05:00Z", fx_usdjpy: 151, totals: { net_asset_usd: 30000 }, positions: [{ symbol: "BTC", net_quantity: 0.5, usd_value: 30000 }] },
+];
+
+test("total sums the latest snapshot's declared total per source", () => {
+  expect(total(overviewWallets, overviewExchanges)).toBe(37500);
+});
+
+test("allPositions merges wallet and exchange positions", () => {
+  const positions = allPositions(overviewWallets, overviewExchanges);
+  expect(positions.map((position) => [position.symbol, position.valueUsd, position.locationType])).toEqual([
+    ["ETH", 7500, "wallet"],
+    ["BTC", 30000, "exchange"],
+  ]);
+});
+
+test("locations flags a source whose as_of_date is not today as 古いデータ", () => {
+  const places = locations(overviewWallets, overviewExchanges, "2026-09-06");
+  // Sorted by value: Binance (30000) before Main (7500).
+  expect(places.map((place) => [place.name, place.value, place.status])).toEqual([
+    ["Binance", 30000, "古いデータ"],
+    ["Main", 7500, "古いデータ"],
+  ]);
+  expect(locations(overviewWallets, overviewExchanges, "2026-09-05").map((place) => place.status)).toEqual(["最新", "最新"]);
+});
+
+test("reconciliation reports a source whose declared total exceeds its positions", () => {
+  // Main declares 7500 and its ETH position is 7500 (matches); give Binance a
+  // declared total that overshoots its single position by 1000.
+  const exchanges = [{ ...overviewExchanges[0], totals: { net_asset_usd: 31000 } }];
+  const result = reconciliation(overviewWallets, exchanges);
+  expect(result.total).toBe(38500);
+  expect(result.detail).toBe(37500);
+  expect(result.issues.map((issue) => [issue.name, issue.difference])).toEqual([["Binance", 1000]]);
+});
+
+test("reconciliation ignores sub-0.5 USD rounding gaps", () => {
+  const exchanges = [{ ...overviewExchanges[0], totals: { net_asset_usd: 30000.4 } }];
+  expect(reconciliation(overviewWallets, exchanges).issues).toEqual([]);
+});
+
+test("latestFx picks the newest captured_at row carrying a rate", () => {
+  expect(latestFx(overviewWallets, overviewExchanges)).toEqual({ rate: 151, at: "2026-09-05T10:05:00Z" });
+  expect(latestFx([], [])).toBe(null);
+});
+
+test("previousOpeningPoint totals the opening record of the newest prior date", () => {
+  const wallets = [
+    { wallet_id: "w1", as_of_date: "2026-09-03", captured_at: "2026-09-03T10:00:00Z", total_usd: 100 },
+    // Same source and date, retried later: opening (earliest captured_at) wins.
+    { wallet_id: "w1", as_of_date: "2026-09-04", captured_at: "2026-09-04T11:00:00Z", total_usd: 130 },
+    { wallet_id: "w1", as_of_date: "2026-09-04", captured_at: "2026-09-04T09:00:00Z", total_usd: 120 },
+    // The latest date itself is excluded by the latestDate filter.
+    { wallet_id: "w1", as_of_date: "2026-09-05", captured_at: "2026-09-05T10:00:00Z", total_usd: 200 },
+  ];
+  const exchanges = [{ source_id: "e1", as_of_date: "2026-09-04", captured_at: "2026-09-04T09:30:00Z", totals: { net_asset_usd: 50 } }];
+  expect(previousOpeningPoint(wallets, exchanges, "2026-09-05")).toEqual({ date: "2026-09-04", value: 170 });
+});
+
+test("previousOpeningPoint returns null when nothing precedes the latest date", () => {
+  const wallets = [{ wallet_id: "w1", as_of_date: "2026-09-05", captured_at: "2026-09-05T10:00:00Z", total_usd: 200 }];
+  expect(previousOpeningPoint(wallets, [], "2026-09-05")).toBe(null);
 });
 
 test("legacyDeFiAsset parses the two display_text shapes it has seen", () => {
