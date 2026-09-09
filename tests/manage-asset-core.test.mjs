@@ -280,6 +280,23 @@ test("stethRewardHistory drops snapshot dates the CSV already covers", () => {
   expect(rows.map((row) => [row.date, row.source])).toEqual([["2026-09-05", "csv"]]);
 });
 
+test("stethRewardHistory's snapshotStartDate skips a snapshot between the CSV's last date and the migration boundary", () => {
+  // Matches public/manage-asset-original/app-ui.js's rewardHistory(), which
+  // always passes '2026-07-12' as the boundary: a snapshot dated between the
+  // CSV's last date and that boundary must not be treated as a reward day,
+  // even though it is later than the CSV.
+  const rewards = [{ date: "2026-06-01", type: "reward", change: 0.01, change_USD: 25, apr: 3, balance: 10 }];
+  const wallets = [
+    { wallet_id: "w1", as_of_date: "2026-06-05", captured_at: "2026-06-05T10:00:00Z", fx_usdjpy: 150, tokens: [{ symbol: "stETH", amount_value: 10.5, usd_value_display: 26250 }] },
+    { wallet_id: "w1", as_of_date: "2026-07-15", captured_at: "2026-07-15T10:00:00Z", fx_usdjpy: 150, tokens: [{ symbol: "stETH", amount_value: 11, usd_value_display: 27500 }] },
+  ];
+  const rows = stethRewardHistory(rewards, wallets, [], [], "2026-07-12");
+  expect(rows.map((row) => [row.date, row.source, row.balance])).toEqual([
+    ["2026-06-01", "csv", 10],
+    ["2026-07-15", "snapshot", 11],
+  ]);
+});
+
 // The overview view's data layer, ported verbatim from
 // public/manage-asset-original/portfolio-core.js so the RSC page shows the same
 // numbers the embedded legacy app did. These pin that equivalence.

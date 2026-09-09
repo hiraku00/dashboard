@@ -366,6 +366,28 @@ describe("Manage Asset page", () => {
     // 前日保存比: 1200 (latest) - 1000 (prior opening) = +$200.00.
     expect(html).toContain(money(200));
   });
+
+  test("GET /manage-asset/locations renders the native locations view with the seeded wallet's value", async () => {
+    const response = await SELF.fetch(`${BASE}/manage-asset/locations`);
+    expect(response.status).toBe(200);
+    const html = await response.text();
+    expect(html).toContain("asset-workspace");
+    expect(html).toContain("SSR Parity Wallet");
+    expect(html).toContain(money(1200));
+    expect(html).not.toMatch(/manage-asset-original/);
+  });
+
+  test("GET /manage-asset/currencies renders the native currency view for the seeded ETH holding", async () => {
+    const response = await SELF.fetch(`${BASE}/manage-asset/currencies`);
+    expect(response.status).toBe(200);
+    const html = await response.text();
+    expect(html).toContain("asset-workspace");
+    expect(html).toContain("表示する通貨");
+    // The default symbol is the highest-value holding; the seeded wallet only
+    // ever holds ETH, so it must be selected and its balance rendered.
+    expect(html).toContain(">ETH<");
+    expect(html).not.toMatch(/manage-asset-original/);
+  });
 });
 
 describe("API response shapes", () => {
