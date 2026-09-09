@@ -268,7 +268,10 @@ export function currencyHistory(wallets: AssetRow[], exchanges: AssetRow[], symb
   });
 }
 
-export function stethRewardHistory(rewards: AssetRow[], wallets: AssetRow[], exchanges: AssetRow[], rates: AssetRow[]) {
+/** snapshotStartDate は portfolio-core.js の第4引数（移行境界日）と同じ役割。
+ *  CSV の最終日より後、かつこの日付以降のスナップショットだけを継ぎ足す --
+ *  CSV が境界日より前で途切れていても、境界日までの間を誤って埋めない。 */
+export function stethRewardHistory(rewards: AssetRow[], wallets: AssetRow[], exchanges: AssetRow[], rates: AssetRow[], snapshotStartDate?: string) {
   const rateByDate = new Map(rates.map((row) => [String(row.date ?? "").slice(0, 10), number(row.rate)]));
   const rewardsOnly = rewards.filter((row) => String(row.type ?? row.reward_type ?? "").toLowerCase() === "reward").map((row) => {
     const date = String(row.date ?? row.reward_date ?? "").slice(0, 10);
@@ -283,7 +286,7 @@ export function stethRewardHistory(rewards: AssetRow[], wallets: AssetRow[], exc
   const lastRewardDate = rewardsOnly.at(-1)?.date;
   const result = [...rewardsOnly];
   let previous = result.at(-1)?.balance ?? snapshots[0]?.balance ?? 0;
-  for (const row of snapshots.filter((item) => !lastRewardDate || item.date > lastRewardDate)) {
+  for (const row of snapshots.filter((item) => (!lastRewardDate || item.date > lastRewardDate) && (!snapshotStartDate || item.date >= snapshotStartDate))) {
     const change = row.balance - previous;
     const usd = row.price == null ? 0 : change * row.price;
     result.push({ date: row.date, change, usd, apr: previous ? change / previous * 365 * 100 : 0, balance: row.balance, price: row.price, fx: row.fx, yen: row.fx ? usd * row.fx : null, balanceUsd: row.balanceUsd, source: "snapshot" });

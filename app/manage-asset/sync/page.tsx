@@ -1,3 +1,15 @@
 import { ManageAssetApp } from "../../manage-asset-app";
+import { fetchManageAssetInitial } from "../../manage-asset-initial";
 
-export default function ManageAssetSyncPage() { return <ManageAssetApp initialView="update" />; }
+export default async function ManageAssetSyncPage() {
+  const initial = await fetchManageAssetInitial();
+  return (
+    <ManageAssetApp
+      initialView="update"
+      initialState={initial?.state ?? null}
+      initialHistory={initial?.history ?? null}
+      initialLidoRewards={initial?.lidoRewards ?? null}
+      initialUsdJpyRates={initial?.usdJpyRates ?? null}
+    />
+  );
+}

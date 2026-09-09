@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useMemo, useState } from "react";
 import {
   allPositions,
   historyPoints,
@@ -13,83 +13,31 @@ import {
   type AssetRow,
   type Holding,
 } from "@/app/lib/manage-asset-core";
-import { formatDate, formatQuantity, localDate, money, shortDate, yen } from "@/app/lib/manage-asset-format";
+import { formatDate, formatQuantity, money, shortDate, yen } from "@/app/lib/manage-asset-format";
+import { periodRows, periods, samplePoints, type Period } from "@/app/lib/manage-asset-chart";
 
 export type AssetStateData = { snapshots: AssetRow[]; exchange_snapshots: AssetRow[] };
 export type AssetHistoryData = { snapshots: AssetRow[]; exchange_snapshots: AssetRow[] };
 
-type Period = "7" | "30" | "90" | "all";
-const periods: [Period, string][] = [["7", "7日"], ["30", "30日"], ["90", "90日"], ["all", "全期間"]];
 const allocationColors = ["#0A84FF", "#30D158", "#FF9F0A", "#BF5AF2", "#FF375F", "#8E8E93"];
-const subscribeNoop = () => () => {};
-const emptyString = () => "";
 
-/** app-ui.js の assetPeriodRows: 期間で対象日を絞る（最終日から period-1 日ぶん）。 */
-function periodRows<T extends { date: string }>(rows: T[], period: Period): T[] {
-  if (period === "all" || !rows.length) return rows;
-  const cutoff = new Date(`${rows.at(-1)!.date}T00:00:00Z`);
-  cutoff.setUTCDate(cutoff.getUTCDate() - Number(period) + 1);
-  return rows.filter((row) => new Date(`${row.date}T00:00:00Z`) >= cutoff);
-}
-
-/** app-ui.js の sampledAssetTrendPoints: 15/18/24 点へ間引く（7日は間引かない）。 */
-function samplePoints<T>(points: T[], period: Period): T[] {
-  const limit = period === "7" ? Infinity : period === "30" ? 15 : period === "90" ? 18 : 24;
-  if (points.length <= limit) return points;
-  return Array.from({ length: limit }, (_, index) => points[Math.round((index * (points.length - 1)) / (limit - 1))]);
-}
-
-export function AssetOverview({ initialState, initialHistory }: { initialState: AssetStateData | null; initialHistory: AssetHistoryData | null }) {
-  const [state, setState] = useState<AssetStateData | null>(initialState);
-  const [history, setHistory] = useState<AssetHistoryData | null>(initialHistory);
-  const [historyDays, setHistoryDays] = useState(initialHistory ? 90 : 0);
+export function AssetOverview({
+  state,
+  history,
+  today,
+  ensureHistory,
+}: {
+  state: AssetStateData | null;
+  history: AssetHistoryData | null;
+  today: string;
+  ensureHistory: (period: Period) => Promise<void>;
+}) {
   const [period, setPeriod] = useState<Period>("7");
   const [showDust, setShowDust] = useState(false);
-  // localDate() and formatDate() depend on the runtime timezone, so the server
-  // (UTC) and the browser (the user's zone) would render them differently and
-  // hydration would mismatch. useSyncExternalStore returns "" for the server
-  // snapshot and the first client render, then the browser-local date once
-  // hydrated -- the "最終更新" timestamp and the stale-data check become
-  // browser-local, as they were in the pre-RSC app, with no setState-in-effect.
-  const today = useSyncExternalStore(subscribeNoop, localDate, emptyString);
-  const skipInitialFetch = useRef(initialState != null && initialHistory != null);
 
-  // Mirror watch-list-app: if the server seeded us, do not re-fetch on mount;
-  // otherwise fetch state + 90d history ourselves (the pre-RSC behavior).
-  useEffect(() => {
-    if (skipInitialFetch.current) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const [nextState, nextHistory] = await Promise.all([
-          fetch("/api/manage-asset/state", { cache: "no-store" }).then((response) => response.json()),
-          fetch("/api/manage-asset/history?days=90", { cache: "no-store" }).then((response) => response.json()),
-        ]);
-        if (cancelled) return;
-        setState(nextState as AssetStateData);
-        setHistory(nextHistory as AssetHistoryData);
-        setHistoryDays(90);
-      } catch {
-        /* leave empty; the panels render their own empty states */
-      }
-    })();
-    return () => { cancelled = true; };
-  }, []);
-
-  // ?days= is only re-fetched when the chosen period needs more than is cached
-  // (app-ui.js's ensureHistory). 7/30/90 are covered by the initial 90 days.
-  async function ensurePeriod(next: Period) {
+  async function selectPeriod(next: Period) {
     setPeriod(next);
-    const need = next === "all" ? Infinity : Number(next);
-    if (need <= historyDays) return;
-    try {
-      const response = await fetch(`/api/manage-asset/history?days=${next === "all" ? "all" : need}`, { cache: "no-store" });
-      if (!response.ok) return;
-      setHistory(await response.json());
-      setHistoryDays(need);
-    } catch {
-      /* keep the existing history on failure */
-    }
+    await ensureHistory(next);
   }
 
   const view = useMemo(() => {
@@ -150,7 +98,7 @@ export function AssetOverview({ initialState, initialHistory }: { initialState: 
             </div>
             <div className="period-control" role="group" aria-label="グラフ期間">
               {periods.map(([value, label]) => (
-                <button key={value} type="button" className={period === value ? "active" : ""} aria-pressed={period === value} onClick={() => ensurePeriod(value)}>{label}</button>
+                <button key={value} type="button" className={period === value ? "active" : ""} aria-pressed={period === value} onClick={() => selectPeriod(value)}>{label}</button>
               ))}
             </div>
           </div>

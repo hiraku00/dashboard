@@ -40,6 +40,17 @@ export const tokenDigits = (symbol: string, key: string): number =>
 export const formatQuantity = (value: number | null | undefined, symbol: string): string =>
   value == null ? "—" : fixed(value, tokenDigits(symbol, "balance"));
 
+/** 通貨推移テーブルの数量セル（balance/change で桁数が変わる）。 */
+export const currencyQuantity = (value: number | null | undefined, symbol: string, key: "balance" | "change"): string =>
+  value == null ? "—" : fixed(value, tokenDigits(symbol, key));
+
+/** 通貨推移テーブルの USD/JPY セル。currency は "USD" | "JPY"。 */
+export const currencyFiat = (value: number | null | undefined, currency: "USD" | "JPY"): string =>
+  value == null ? "—" : `${currency === "USD" ? "$" : "¥"}${fixed(value, fiatDigits(currency))}`;
+
+export const signedCurrencyFiat = (value: number | null | undefined, currency: "USD" | "JPY"): string =>
+  value == null ? "—" : `${value > 0 ? "+" : value < 0 ? "-" : ""}${currencyFiat(Math.abs(value), currency)}`;
+
 export const formatDate = (value: unknown): string =>
   value ? new Date(String(value)).toLocaleString("ja-JP", { dateStyle: "medium", timeStyle: "short" }) : "—";
 

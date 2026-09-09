@@ -158,3 +158,17 @@ export async function assetHistory(days: string | null): Promise<AssetHistory> {
   exchangeSnapshots = [...newestExchanges.values()].sort((a, b) => String(a.as_of_date ?? "").localeCompare(String(b.as_of_date ?? "")));
   return { snapshots, exchange_snapshots: exchangeSnapshots };
 }
+
+/** app/api/lido-rewards の GET と、通貨推移ページの初期表示が両方呼ぶ。 */
+export async function lidoRewards(): Promise<Row[]> {
+  await ensureSchema({ seed: false });
+  const rows = (await env.DB.prepare("SELECT payload_json FROM asset_lido_rewards ORDER BY reward_date ASC").all<{ payload_json: string }>()).results ?? [];
+  return rows.map((row) => JSON.parse(row.payload_json));
+}
+
+/** app/api/usd-jpy-rates の GET と、通貨推移ページの初期表示が両方呼ぶ。 */
+export async function usdJpyRates(): Promise<Row[]> {
+  await ensureSchema({ seed: false });
+  const rows = (await env.DB.prepare("SELECT payload_json FROM asset_fx_rates ORDER BY rate_date ASC").all<{ payload_json: string }>()).results ?? [];
+  return rows.map((row) => JSON.parse(row.payload_json));
+}
