@@ -10,7 +10,7 @@ Manage Assetは既存アプリの表示仕様を基準にした資産ダッシ�
 - データ更新: 取得元ごとの成功日時、同期状態、古いデータの警告
 - 設定: 表示や同期に関する設定
 
-元のUI資産は `public/manage-asset-original/` に保持し、ポータル側はこれを基準に共通ヘッダーとCloudflare側のデータ連携を提供します。表示上の文言、桁数、表の列、グラフの期間、ホバー表示を変更する場合は、元UIとの互換性を確認します。
+各画面は他のポータル機能と同じくServer Componentとして実装されたネイティブなReact実装です（`app/manage-asset-overview.tsx`・`manage-asset-locations.tsx`・`manage-asset-currency.tsx`・`manage-asset-settings.tsx`・`manage-asset-sync-view.tsx`）。計算ロジックは`app/lib/manage-asset-core.ts`の純関数に集約されており、表示上の文言、桁数、表の列、グラフの期間、ホバー表示を変更する場合は`tests/manage-asset-core.test.mjs`で数値の同値性を確認します。設定・データ更新は読み取り専用です（取引所の追加、認証情報の変更、ウォレットの編集はMac側collectorが担当し、このポータルには対応する書き込みAPIがありません）。
 
 ## データ取得の責務
 
@@ -70,8 +70,10 @@ APIキーは次の命名規則でmacOS Keychainに保存します。
 
 ## 関連ファイル
 
-- `public/manage-asset-original/`: 既存UIの基準アセット
-- `app/manage-asset-app.tsx`: ポータル組み込み
+- `app/manage-asset-app.tsx`: ビュー切り替えとタブ間で共有する`state`/`history`の管理
+- `app/manage-asset-overview.tsx` / `manage-asset-locations.tsx` / `manage-asset-currency.tsx` / `manage-asset-settings.tsx` / `manage-asset-sync-view.tsx`: 各画面の実装
+- `app/lib/manage-asset-core.ts`: 計算ロジック（純関数、テスト済み）
+- `app/lib/queries/manage-asset.ts`: D1読み取りの共有ロジック（ページとAPIの両方が呼ぶ）
 - `app/api/manage-asset/`: 表示・同期API
 - `collector/`: ローカル取得処理
 - `scripts/sync-manage-asset.mjs`: 手動同期

@@ -37,7 +37,7 @@ Watch List、TextTube、Manage Asset、To Doを一つのCloudflare上で管理�
 | `/todo` | 日別の看板、単発タスク、毎日／曜日指定の繰り返しタスク |
 | `/settings/storage` | D1/R2の利用状況、TextTube字幕APIの実消費クレジット、ストレージ管理 |
 
-各機能画面には共通ポータルヘッダーが表示されます。Manage Assetの中心画面は、既存UIの表示仕様を維持した静的アセットをベースに、ポータルのナビゲーションを外側から追加する構成です。
+各機能画面には共通ポータルヘッダーが表示されます。Manage Assetは他画面と同じくServer Componentとして実装されており、既存UIの表記・桁数・計算ロジックを踏襲したネイティブなReact実装です（旧来の静的アセットをiframeで埋め込む構成は撤去済み）。
 
 ## システム構成
 

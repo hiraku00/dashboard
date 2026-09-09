@@ -61,4 +61,4 @@ collectorは `collector/` にあり、外部APIキーをmacOS Keychainから読�
 - D1の列変更はmigrationを追加する。
 - R2のキー形式を変える場合は既存revisionの読み取り互換性を維持する。
 - collectorのpayload変更はWorker APIと同時に検証する。
-- UIの表示変更は元のManage Asset/TextTube画面との互換性を確認する。
+- UIの表示変更はTextTubeの元デザインとの互換性を確認する。Manage Assetは`app/lib/manage-asset-core.ts`の純関数群と`tests/manage-asset-core.test.mjs`が計算ロジックの正であり、表示側の変更もこのテストで数値の同値性を担保する。
