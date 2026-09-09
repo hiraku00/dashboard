@@ -1,6 +1,8 @@
 import { SELF, env } from "cloudflare:test";
 import { beforeAll, describe, expect, test } from "vitest";
 import { ensureSchema } from "@/db";
+import { total as assetTotalOf, type AssetRow } from "@/app/lib/manage-asset-core";
+import { money } from "@/app/lib/manage-asset-format";
 
 // Replaces tests/ssr-parity.test.mjs (Issue #80, Stage 2). That file spawned
 // `wrangler dev --local` as a child process and hit it with real HTTP
@@ -305,6 +307,64 @@ describe("Storage usage page", () => {
     const html = await SELF.fetch(`${BASE}/settings/storage`).then((response) => response.text());
     expect(html).toContain("未設定");
     expect(html).toContain("Cloudflare Analyticsの読み取り専用トークンを設定すると");
+  });
+});
+
+describe("Manage Asset page", () => {
+  // The overview view was migrated from an embedded vanilla-JS iframe app to a
+  // native RSC (app/manage-asset/page.tsx -> AssetOverview), fed by the shared
+  // read layer in app/lib/queries/manage-asset.ts. These assert the server
+  // renders the real total into the first HTML, exactly like the other pages.
+  async function sync(body: Record<string, unknown>) {
+    const response = await SELF.fetch(`${BASE}/api/manage-asset/sync`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    expect(response.status).toBe(200);
+  }
+
+  async function seedWalletOnDate(asOfDate: string, totalUsd: number) {
+    const clientRunId = crypto.randomUUID();
+    await sync({ action: "start", clientRunId, sourceCount: 1 });
+    await sync({
+      action: "source",
+      clientRunId,
+      source: { sourceId: "ssr-parity-asset-wallet", sourceType: "wallet", provider: "manual", displayName: "SSR Parity Wallet" },
+      snapshot: { capturedAt: `${asOfDate}T10:00:00Z`, asOfDate, totalUsd, tokens: [{ symbol: "ETH", amount_value: totalUsd / 100, usd_value_display: totalUsd }] },
+    });
+    await sync({ action: "complete", clientRunId });
+  }
+
+  beforeAll(async () => {
+    // Two dates so the overview has both a latest total and a prior "opening"
+    // point to compute 前日保存比 against.
+    await seedWalletOnDate("2026-02-14", 1000);
+    await seedWalletOnDate("2026-02-15", 1200);
+  });
+
+  test("GET /manage-asset renders the native overview, not the legacy iframe", async () => {
+    const response = await SELF.fetch(`${BASE}/manage-asset`);
+    expect(response.status).toBe(200);
+    const html = await response.text();
+    expect(html).toContain("asset-workspace");
+    expect(html).toContain("総資産");
+    // The overview view must not fall back to the embedded original app.
+    expect(html).not.toMatch(/manage-asset-original/);
+  });
+
+  test("the server-rendered total matches /api/manage-asset/state", async () => {
+    const [html, state] = await Promise.all([
+      SELF.fetch(`${BASE}/manage-asset`).then((response) => response.text()),
+      SELF.fetch(`${BASE}/api/manage-asset/state`).then((response) => response.json() as Promise<{ snapshots: AssetRow[]; exchange_snapshots: AssetRow[] }>),
+    ]);
+    const expectedTotal = assetTotalOf(state.snapshots, state.exchange_snapshots);
+    expect(expectedTotal).toBe(1200);
+    // The total is embedded in the first HTML, proving the server did the read
+    // rather than shipping an empty shell for the client to fill.
+    expect(html).toContain(money(expectedTotal));
+    // 前日保存比: 1200 (latest) - 1000 (prior opening) = +$200.00.
+    expect(html).toContain(money(200));
   });
 });
 

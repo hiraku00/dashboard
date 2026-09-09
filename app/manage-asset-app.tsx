@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { PortalHeader } from "./portal-nav";
+import { AssetOverview, type AssetHistoryData, type AssetStateData } from "./manage-asset-overview";
 
 const assetViews = [
   ["overview", "資産概要"],
@@ -14,28 +15,48 @@ const assetViews = [
 /** The view ids the embedded legacy app knows (its nav `data-view` values). */
 export type AssetView = (typeof assetViews)[number][0];
 
-export function ManageAssetApp({ initialView = "overview" }: { initialView?: AssetView } = {}) {
+export function ManageAssetApp({
+  initialView = "overview",
+  initialState = null,
+  initialHistory = null,
+}: {
+  initialView?: AssetView;
+  initialState?: AssetStateData | null;
+  initialHistory?: AssetHistoryData | null;
+} = {}) {
+  const [view, setView] = useState<AssetView>(initialView);
+  return (
+    <main className="portal-shell asset-workspace">
+      <PortalHeader title="Manage Asset" active="/manage-asset" />
+      <nav className="asset-tabs" aria-label="Manage Asset メニュー">
+        {assetViews.map(([id, label]) => (
+          <button key={id} type="button" className={view === id ? "active" : ""} aria-current={view === id ? "page" : undefined} onClick={() => setView(id)}>
+            {label}
+          </button>
+        ))}
+      </nav>
+      {view === "overview" ? (
+        // Overview is the migrated native view (Issue: manage-asset RSC, phase A).
+        // Seeded from the server on the /manage-asset route; other routes pass
+        // null and it fetches on the client, like the pre-RSC app did.
+        <AssetOverview initialState={initialState} initialHistory={initialHistory} />
+      ) : (
+        // Locations / currency / settings / sync still render the original app in
+        // an iframe until phases B and C port them.
+        <LegacyAssetFrame view={view} />
+      )}
+    </main>
+  );
+}
+
+/** The not-yet-migrated views, still served by public/manage-asset-original.
+ *  Posts the requested view once loaded and follows the iframe body's height. */
+function LegacyAssetFrame({ view }: { view: AssetView }) {
   const frame = useRef<HTMLIFrameElement>(null);
   const [height, setHeight] = useState(900);
-  // The iframe is told which view to show in onLoad, so starting here is what
-  // makes /manage-asset/settings and friends open on their own section.
-  const [view, setView] = useState<AssetView>(initialView);
-  const scrollToViewStart = () => {
-    const target = frame.current;
-    const chrome = document.querySelector<HTMLElement>(
-      ".manage-asset-host .portal-chrome",
-    );
-    if (!target) return;
-    window.scrollTo({
-      top: Math.max(
-        0,
-        target.getBoundingClientRect().top +
-          window.scrollY -
-          (chrome?.getBoundingClientRect().height ?? 0),
-      ),
-      behavior: "smooth",
-    });
-  };
+  useEffect(() => {
+    frame.current?.contentWindow?.postMessage({ type: "manage-asset:view", view }, window.location.origin);
+  }, [view]);
   useEffect(() => {
     const resize = () => {
       const body = frame.current?.contentDocument?.body;
@@ -48,63 +69,14 @@ export function ManageAssetApp({ initialView = "overview" }: { initialView?: Ass
       window.clearInterval(timer);
     };
   }, []);
-  useEffect(() => {
-    const onMessage = (event: MessageEvent) => {
-      if (
-        event.source !== frame.current?.contentWindow ||
-        event.data?.type !== "manage-asset:view"
-      )
-        return;
-      if (assetViews.some(([id]) => id === event.data.view)) {
-        setView(event.data.view);
-        scrollToViewStart();
-      }
-    };
-    window.addEventListener("message", onMessage);
-    return () => window.removeEventListener("message", onMessage);
-  }, []);
-  const postView = (nextView: AssetView) =>
-    frame.current?.contentWindow?.postMessage(
-      { type: "manage-asset:view", view: nextView },
-      window.location.origin,
-    );
-  // The iframe is server-rendered, so it usually finishes loading before React
-  // hydrates and its onLoad handler never fires. Posting the view from an
-  // effect as well is what makes /manage-asset/settings and friends open on
-  // their own section; onLoad still covers the reverse order.
-  useEffect(() => {
-    postView(view);
-  }, [view]);
-  const selectView = (nextView: AssetView) => {
-    setView(nextView);
-    postView(nextView);
-    scrollToViewStart();
-  };
   return (
-    <main className="portal-shell manage-asset-host">
-      <PortalHeader title="Manage Asset" active="/manage-asset">
-        <nav className="asset-section-nav" aria-label="Manage Asset メニュー">
-          {assetViews.map(([id, label]) => (
-            <button
-              key={id}
-              type="button"
-              className={view === id ? "active" : ""}
-              aria-current={view === id ? "page" : undefined}
-              onClick={() => selectView(id)}
-            >
-              {label}
-            </button>
-          ))}
-        </nav>
-      </PortalHeader>
-      <iframe
-        ref={frame}
-        className="manage-asset-original"
-        style={{ height }}
-        src="/manage-asset-original/index.html?embedded=1"
-        title="Manage Asset"
-        onLoad={() => postView(view)}
-      />
-    </main>
+    <iframe
+      ref={frame}
+      className="manage-asset-original"
+      style={{ height }}
+      src="/manage-asset-original/index.html?embedded=1"
+      title="Manage Asset"
+      onLoad={() => frame.current?.contentWindow?.postMessage({ type: "manage-asset:view", view }, window.location.origin)}
+    />
   );
 }

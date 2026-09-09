@@ -124,6 +124,85 @@ export function holdingsFromPositions(positions: NormalizedPosition[]): Holding[
   return [...grouped.values()].map((item) => ({ symbol: item.symbol, quantity: item.quantity, quantityKnown: item.quantityKnown, valueUsd: item.valueUsd, locations: [...item.locations.entries()].sort((a, b) => b[1] - a[1]).map(([name]) => name), unitPriceUsd: item.quantityKnown && item.quantity > 0 && item.valueUsd > 0 ? item.valueUsd / item.quantity : null, unpriced: item.unpriced })).sort((a, b) => b.valueUsd - a.valueUsd);
 }
 
+/** wallet + exchange のポジションを結合する（portfolio-core.js の allPositions）。
+ *  保管場所の内訳表示や reconciliation の明細合計で使う。 */
+export function allPositions(wallets: AssetRow[], exchanges: AssetRow[]): NormalizedPosition[] {
+  return [...walletPositions(wallets), ...exchangePositions(exchanges)];
+}
+
+/** 総資産（USD）。各 source の最新スナップショットが持つ総額を合算する。
+ *  ポジション明細の合計（reconciliation.detail）ではなく、スナップショットが
+ *  申告した総額を正とする -- 明細に評価漏れがあっても総額は崩れない。 */
+export function total(wallets: AssetRow[], exchanges: AssetRow[]): number {
+  return (
+    latest(wallets, "wallet_id").reduce((sum, row) => sum + number(row.total_usd), 0) +
+    latest(exchanges, "source_id").reduce((sum, row) => sum + number((row.totals as AssetRow | undefined)?.net_asset_usd), 0)
+  );
+}
+
+export type LocationSummary = {
+  id: unknown;
+  name: string;
+  type: string;
+  value: number;
+  captured_at: unknown;
+  as_of_date: unknown;
+  status: string;
+};
+
+/** 保管場所ごとの評価額と鮮度。`today` と as_of_date がズレていれば「古いデータ」。 */
+export function locations(wallets: AssetRow[], exchanges: AssetRow[], today: string): LocationSummary[] {
+  return [
+    ...latest(wallets, "wallet_id").map((row) => ({
+      id: row.wallet_id,
+      name: String(row.wallet_name ?? row.address ?? ""),
+      type: "ウォレット",
+      value: number(row.total_usd),
+      captured_at: row.captured_at,
+      as_of_date: row.as_of_date,
+      status: today && row.as_of_date !== today ? "古いデータ" : "最新",
+    })),
+    ...latest(exchanges, "source_id").map((row) => ({
+      id: row.source_id,
+      name: String(row.account_name ?? ""),
+      type: "取引所",
+      value: number((row.totals as AssetRow | undefined)?.net_asset_usd),
+      captured_at: row.captured_at,
+      as_of_date: row.as_of_date,
+      status: (row.quality as AssetRow | undefined)?.warnings != null && Array.isArray((row.quality as AssetRow).warnings) && ((row.quality as AssetRow).warnings as unknown[]).length
+        ? "一部未評価"
+        : today && row.as_of_date !== today ? "古いデータ" : "最新",
+    })),
+  ].sort((a, b) => b.value - a.value);
+}
+
+export type ReconciliationSource = { kind: string; id: unknown; name: string; expected: number; detail: number; difference: number };
+export type Reconciliation = { sources: ReconciliationSource[]; issues: ReconciliationSource[]; total: number; detail: number };
+
+/** 申告総額（expected）とポジション明細の合計（detail）を source ごとに突き合わせ、
+ *  0.5 USD を超える差がある source を issues として返す。 */
+export function reconciliation(wallets: AssetRow[], exchanges: AssetRow[]): Reconciliation {
+  const rows = [
+    ...latest(wallets, "wallet_id").map((row) => ({ kind: "wallet", id: row.wallet_id, name: String(row.wallet_name ?? row.address ?? ""), expected: number(row.total_usd), positions: walletPositions([row]) })),
+    ...latest(exchanges, "source_id").map((row) => ({ kind: "exchange", id: row.source_id, name: String(row.account_name ?? ""), expected: number((row.totals as AssetRow | undefined)?.net_asset_usd), positions: exchangePositions([row]) })),
+  ];
+  const sources = rows.map((row) => {
+    const detail = row.positions.reduce((sum, position) => sum + position.valueUsd, 0);
+    return { kind: row.kind, id: row.id, name: row.name, expected: row.expected, detail, difference: row.expected - detail };
+  });
+  const issues = sources.filter((row) => Math.abs(row.difference) > 0.5 + 1e-9);
+  return { sources, issues, total: sources.reduce((sum, row) => sum + row.expected, 0), detail: sources.reduce((sum, row) => sum + row.detail, 0) };
+}
+
+/** 最新スナップショット由来の USD/JPY レート。captured_at が最も新しく fx_usdjpy を
+ *  持つ行を採用する（app-ui.js の fxInfo と同じ）。資産概要の円換算・前日比の円額に使う。 */
+export function latestFx(wallets: AssetRow[], exchanges: AssetRow[]): { rate: number; at: unknown } | null {
+  const rows = [...wallets, ...exchanges].filter((row) => row.fx_usdjpy);
+  if (!rows.length) return null;
+  const row = rows.slice().sort((a, b) => String(a.captured_at).localeCompare(String(b.captured_at))).at(-1)!;
+  return { rate: Number(row.fx_usdjpy), at: row.captured_at };
+}
+
 export function historyPoints(wallets: AssetRow[], exchanges: AssetRow[]) {
   const newest = new Map<string, AssetRow>();
   for (const row of wallets) {
@@ -143,6 +222,25 @@ export function historyPoints(wallets: AssetRow[], exchanges: AssetRow[]) {
     totals.set(date, (totals.get(date) ?? 0) + number(row.total_usd ?? (row.totals as AssetRow | undefined)?.net_asset_usd));
   }
   return [...totals.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([date, value]) => ({ date, value }));
+}
+
+/** 資産概要の「前日保存比」の基準となる、直近スナップショット日より前で最も新しい
+ *  記録日の総額。その日の各 source について captured_at が最も早い（＝その日の
+ *  始値相当の）行を採り、合算する（app-ui.js が渡す history 全体を対象にする）。 */
+export function previousOpeningPoint(wallets: AssetRow[], exchanges: AssetRow[], latestDate: string | null): { date: string; value: number } | null {
+  const tag = (row: AssetRow, sourceKey: string): AssetRow & { sourceKey: string } => ({ ...row, sourceKey });
+  const rows = [
+    ...wallets.map((row) => tag(row, `wallet:${row.wallet_id}`)),
+    ...exchanges.map((row) => tag(row, `exchange:${row.source_id}`)),
+  ].filter((row) => row.as_of_date && (!latestDate || String(row.as_of_date) < latestDate));
+  if (!rows.length) return null;
+  const date = rows.map((row) => String(row.as_of_date)).sort().at(-1)!;
+  const earliest = new Map<string, AssetRow>();
+  for (const row of rows.filter((item) => String(item.as_of_date) === date)) {
+    const old = earliest.get(row.sourceKey);
+    if (!old || String(row.captured_at) < String(old.captured_at)) earliest.set(row.sourceKey, row);
+  }
+  return { date, value: [...earliest.values()].reduce((sum, row) => sum + number(row.total_usd ?? (row.totals as AssetRow | undefined)?.net_asset_usd), 0) };
 }
 
 export function currencyHistory(wallets: AssetRow[], exchanges: AssetRow[], symbol: string, rates: AssetRow[]) {
