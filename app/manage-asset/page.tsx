@@ -15,6 +15,7 @@ export default async function ManageAssetPage() {
       initialHistory={initial?.history ?? null}
       initialLidoRewards={initial?.lidoRewards ?? null}
       initialUsdJpyRates={initial?.usdJpyRates ?? null}
+      initialLatestSyncRun={initial?.latestSyncRun ?? null}
     />
   );
 }

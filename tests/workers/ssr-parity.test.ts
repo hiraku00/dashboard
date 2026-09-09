@@ -388,6 +388,26 @@ describe("Manage Asset page", () => {
     expect(html).toContain(">ETH<");
     expect(html).not.toMatch(/manage-asset-original/);
   });
+
+  test("GET /manage-asset/settings renders the seeded wallet read-only, without the legacy iframe", async () => {
+    const response = await SELF.fetch(`${BASE}/manage-asset/settings`);
+    expect(response.status).toBe(200);
+    const html = await response.text();
+    expect(html).toContain("asset-workspace");
+    expect(html).toContain("SSR Parity Wallet");
+    // Read-only: no write forms for a route this portal never implements.
+    expect(html).not.toMatch(/id="addSource"|id="saveWallets"/);
+    expect(html).not.toMatch(/manage-asset-original/);
+  });
+
+  test("GET /manage-asset/sync renders read-only data-update guidance, without the legacy iframe", async () => {
+    const response = await SELF.fetch(`${BASE}/manage-asset/sync`);
+    expect(response.status).toBe(200);
+    const html = await response.text();
+    expect(html).toContain("asset-workspace");
+    expect(html).toContain("データ更新");
+    expect(html).not.toMatch(/manage-asset-original/);
+  });
 });
 
 describe("API response shapes", () => {

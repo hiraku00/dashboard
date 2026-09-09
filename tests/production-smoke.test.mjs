@@ -21,9 +21,6 @@ const paths = [
   "/text-tube",
   "/manage-asset",
   "/todo",
-  // Static assets are served without invoking the Worker unless
-  // assets.run_worker_first is set, so they are their own case.
-  "/manage-asset-original/index.html",
   // The endpoints worth being loudest about: they read and write the data.
   "/api/manage-asset/state",
   "/api/manage-asset/history",

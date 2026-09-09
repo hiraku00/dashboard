@@ -27,14 +27,12 @@ import { mockOutboundResponse } from "./tests/workers/fixtures/outbound-mocks";
 //   would slow them down for no benefit, since none of them touch a
 //   binding.
 //
-// - "dom" (tests/dom/**/*.test.{ts,tsx}): the two remaining pieces of
-//   tests/rendered-html.test.mjs (Issue #94) that genuinely need a DOM --
-//   public/manage-asset-original/compat-fixes.js (reads `document`, uses
-//   MutationObserver) and app/text-tube-app.tsx's VideoEditor (a real React
-//   component's click behavior, tested with @testing-library/react). Every
-//   other rendered-html.test.mjs check either had a stronger equivalent
-//   already elsewhere or turned out not to need a DOM at all once looked at
-//   closely (see tests/portfolio-core.test.mjs's own comment).
+// - "dom" (tests/dom/**/*.test.{ts,tsx}): app/text-tube-app.tsx's VideoEditor
+//   (a real React component's click behavior, tested with
+//   @testing-library/react), which genuinely needs a DOM. Originally also
+//   covered public/manage-asset-original/compat-fixes.js, removed once the
+//   Manage Asset iframe app it patched was replaced by a native RSC
+//   implementation.
 export default defineConfig({
   test: {
     projects: [

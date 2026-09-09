@@ -172,3 +172,9 @@ export async function usdJpyRates(): Promise<Row[]> {
   const rows = (await env.DB.prepare("SELECT payload_json FROM asset_fx_rates ORDER BY rate_date ASC").all<{ payload_json: string }>()).results ?? [];
   return rows.map((row) => JSON.parse(row.payload_json));
 }
+
+/** app/api/manage-asset/sync の GET と、データ更新ページの初期表示が両方呼ぶ。 */
+export async function latestSyncRun(): Promise<Row | null> {
+  await ensureSchema({ seed: false });
+  return (await env.DB.prepare("SELECT * FROM asset_sync_runs ORDER BY received_at DESC LIMIT 1").all<Row>()).results?.[0] ?? null;
+}
