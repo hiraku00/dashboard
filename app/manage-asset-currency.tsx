@@ -18,6 +18,7 @@ import {
   signedCurrencyFiat,
 } from "@/app/lib/manage-asset-format";
 import { periodRows, periods, samplePoints, type Period } from "@/app/lib/manage-asset-chart";
+import { ChartTooltip, useChartHoverTooltip, type ChartHoverPoint } from "@/app/manage-asset-chart-tooltip";
 import type { AssetHistoryData, AssetStateData } from "./manage-asset-overview";
 
 // stETH の CSV 履歴とスナップショットの移行境界日。
@@ -203,7 +204,6 @@ export function CurrencyView({
 
 function CurrencyChangeChart({ points, symbol }: { points: CalculatedRow[]; symbol: string }) {
   const data = points.filter((row) => row.change != null);
-  if (!data.length) return <div className="asset-chart"><p className="muted-copy">差分を表示するには、異なる記録日が2日以上必要です。</p></div>;
   const monetary = data.some((row) => row.usd != null);
   const valueOf = (row: CalculatedRow) => (monetary ? Math.abs(row.usd ?? 0) : Math.abs(row.change ?? 0));
   const peak = Math.max(...data.map(valueOf), 0.000001);
@@ -214,31 +214,49 @@ function CurrencyChangeChart({ points, symbol }: { points: CalculatedRow[]; symb
   const ticks = [max, max * 0.75, max * 0.5, max * 0.25, 0];
   const step = Math.max(1, Math.ceil(data.length / 10));
   const line = data.map((row, index) => `${index ? "L" : "M"}${x(index)},${y(valueOf(row))}`).join(" ");
+  const hoverPoints: ChartHoverPoint[] = data.map((row, index) => ({
+    x: x(index),
+    y: y(valueOf(row)),
+    lines: monetary
+      ? [row.date, `USD ${currencyFiat(row.usd, "USD")}`, row.fx ? `JPY ${currencyFiat((row.usd ?? 0) * row.fx, "JPY")}` : "JPY —"]
+      : [row.date, `${symbol} ${(row.change ?? 0) >= 0 ? "+" : "−"}${currencyQuantity(Math.abs(row.change ?? 0), symbol, "change")}`],
+  }));
+  const { containerRef, tooltip, handlePointerMove, handlePointerLeave } = useChartHoverTooltip(hoverPoints);
+  if (!data.length) return <div className="asset-chart"><p className="muted-copy">差分を表示するには、異なる記録日が2日以上必要です。</p></div>;
   return (
-    <svg className="asset-chart" viewBox={`-12 0 ${width + 24} ${height}`} role="img" aria-label={`${symbol}の日次増加量`}>
-      {ticks.map((tick, index) => (
-        <g key={index}>
-          <line x1={left} x2={width - right} y1={y(tick)} y2={y(tick)} stroke="var(--line)" />
-          <text textAnchor="end" x={left - 8} y={y(tick) - 3}>{monetary ? currencyFiat(tick, "USD") : currencyQuantity(tick, symbol, "change")}</text>
-        </g>
-      ))}
-      <path className="asset-chart-area" d={`${line} L${x(data.length - 1)},${y(0)} L${x(0)},${y(0)}Z`} />
-      <path className="asset-chart-line" d={line} />
-      {data.map((row, index) => (
-        <g key={row.date}>
-          <circle className="asset-chart-dot" cx={x(index)} cy={y(valueOf(row))} r={4} tabIndex={0}>
-            <title>{`${row.date}${monetary ? ` / USD ${currencyFiat(row.usd, "USD")}${row.fx ? ` / JPY ${currencyFiat((row.usd ?? 0) * row.fx, "JPY")}` : ""}` : ` / ${symbol} ${(row.change ?? 0) >= 0 ? "+" : "−"}${currencyQuantity(Math.abs(row.change ?? 0), symbol, "change")}`}`}</title>
-          </circle>
-          <text textAnchor="middle" x={x(index)} y={height - 8}>{index % step === 0 || index === data.length - 1 ? shortDate(row.date) : ""}</text>
-        </g>
-      ))}
-    </svg>
+    <div className="asset-chart-wrap" ref={containerRef}>
+      <svg
+        className="asset-chart"
+        viewBox={`-12 0 ${width + 24} ${height}`}
+        role="img"
+        aria-label={`${symbol}の日次増加量`}
+        onPointerMove={handlePointerMove}
+        onPointerLeave={handlePointerLeave}
+      >
+        {ticks.map((tick, index) => (
+          <g key={index}>
+            <line x1={left} x2={width - right} y1={y(tick)} y2={y(tick)} stroke="var(--line)" />
+            <text textAnchor="end" x={left - 8} y={y(tick) - 3}>{monetary ? currencyFiat(tick, "USD") : currencyQuantity(tick, symbol, "change")}</text>
+          </g>
+        ))}
+        <path className="asset-chart-area" d={`${line} L${x(data.length - 1)},${y(0)} L${x(0)},${y(0)}Z`} />
+        <path className="asset-chart-line" d={line} />
+        {data.map((row, index) => (
+          <g key={row.date}>
+            <circle className="asset-chart-dot" cx={x(index)} cy={y(valueOf(row))} r={4} tabIndex={0}>
+              <title>{`${row.date}${monetary ? ` / USD ${currencyFiat(row.usd, "USD")}${row.fx ? ` / JPY ${currencyFiat((row.usd ?? 0) * row.fx, "JPY")}` : ""}` : ` / ${symbol} ${(row.change ?? 0) >= 0 ? "+" : "−"}${currencyQuantity(Math.abs(row.change ?? 0), symbol, "change")}`}`}</title>
+            </circle>
+            <text textAnchor="middle" x={x(index)} y={height - 8}>{index % step === 0 || index === data.length - 1 ? shortDate(row.date) : ""}</text>
+          </g>
+        ))}
+      </svg>
+      <ChartTooltip tooltip={tooltip} />
+    </div>
   );
 }
 
 function CurrencyBalanceChart({ points, symbol }: { points: CalculatedRow[]; symbol: string }) {
   const data = points.filter((row) => row.balanceUsd != null);
-  if (data.length < 2) return <div className="asset-chart"><p className="muted-copy">USD評価額の推移を表示するには、異なる記録日の保存が2回以上必要です。</p></div>;
   const width = 720, height = 300, left = 96, right = 6, top = 20, bottom = 40;
   const values = data.map((row) => row.balanceUsd as number);
   const rawMin = Math.min(...values), rawMax = Math.max(...values);
@@ -249,25 +267,47 @@ function CurrencyBalanceChart({ points, symbol }: { points: CalculatedRow[]; sym
   const ticks = [max, max - span * 0.25, max - span * 0.5, max - span * 0.75, min];
   const step = Math.max(1, Math.ceil(data.length / 10));
   const line = data.map((row, index) => `${index ? "L" : "M"}${x(index)},${y(row.balanceUsd as number)}`).join(" ");
+  const hoverPoints: ChartHoverPoint[] = data.map((row, index) => ({
+    x: x(index),
+    y: y(row.balanceUsd as number),
+    lines: [
+      row.date,
+      `USD ${currencyFiat(row.balanceUsd, "USD")}`,
+      row.fx ? `JPY ${currencyFiat((row.balanceUsd ?? 0) * row.fx, "JPY")}` : "JPY —",
+      `${symbol} ${currencyQuantity(row.balance, symbol, "balance")}`,
+    ],
+  }));
+  const { containerRef, tooltip, handlePointerMove, handlePointerLeave } = useChartHoverTooltip(hoverPoints);
+  if (data.length < 2) return <div className="asset-chart"><p className="muted-copy">USD評価額の推移を表示するには、異なる記録日の保存が2回以上必要です。</p></div>;
   return (
-    <svg className="asset-chart" viewBox={`-12 0 ${width + 24} ${height}`} role="img" aria-label={`${symbol}の資産推移（USD・JPY評価額）`}>
-      {ticks.map((tick, index) => (
-        <g key={index}>
-          <line x1={left} x2={width - right} y1={y(tick)} y2={y(tick)} stroke="var(--line)" />
-          <text textAnchor="end" x={left - 8} y={y(tick) - 3}>{currencyFiat(tick, "USD")}</text>
-        </g>
-      ))}
-      <path className="asset-chart-area" d={`${line} L${x(data.length - 1)},${height - bottom} L${x(0)},${height - bottom}Z`} />
-      <path className="asset-chart-line" d={line} />
-      {data.map((row, index) => (
-        <g key={row.date}>
-          <circle className="asset-chart-dot" cx={x(index)} cy={y(row.balanceUsd as number)} r={4} tabIndex={0}>
-            <title>{`${row.date} / USD ${currencyFiat(row.balanceUsd, "USD")}${row.fx ? ` / JPY ${currencyFiat((row.balanceUsd ?? 0) * row.fx, "JPY")}` : ""} / ${symbol} ${currencyQuantity(row.balance, symbol, "balance")}`}</title>
-          </circle>
-          <text textAnchor="middle" x={x(index)} y={height - 8}>{index % step === 0 || index === data.length - 1 ? shortDate(row.date) : ""}</text>
-        </g>
-      ))}
-    </svg>
+    <div className="asset-chart-wrap" ref={containerRef}>
+      <svg
+        className="asset-chart"
+        viewBox={`-12 0 ${width + 24} ${height}`}
+        role="img"
+        aria-label={`${symbol}の資産推移（USD・JPY評価額）`}
+        onPointerMove={handlePointerMove}
+        onPointerLeave={handlePointerLeave}
+      >
+        {ticks.map((tick, index) => (
+          <g key={index}>
+            <line x1={left} x2={width - right} y1={y(tick)} y2={y(tick)} stroke="var(--line)" />
+            <text textAnchor="end" x={left - 8} y={y(tick) - 3}>{currencyFiat(tick, "USD")}</text>
+          </g>
+        ))}
+        <path className="asset-chart-area" d={`${line} L${x(data.length - 1)},${height - bottom} L${x(0)},${height - bottom}Z`} />
+        <path className="asset-chart-line" d={line} />
+        {data.map((row, index) => (
+          <g key={row.date}>
+            <circle className="asset-chart-dot" cx={x(index)} cy={y(row.balanceUsd as number)} r={4} tabIndex={0}>
+              <title>{`${row.date} / USD ${currencyFiat(row.balanceUsd, "USD")}${row.fx ? ` / JPY ${currencyFiat((row.balanceUsd ?? 0) * row.fx, "JPY")}` : ""} / ${symbol} ${currencyQuantity(row.balance, symbol, "balance")}`}</title>
+            </circle>
+            <text textAnchor="middle" x={x(index)} y={height - 8}>{index % step === 0 || index === data.length - 1 ? shortDate(row.date) : ""}</text>
+          </g>
+        ))}
+      </svg>
+      <ChartTooltip tooltip={tooltip} />
+    </div>
   );
 }
 

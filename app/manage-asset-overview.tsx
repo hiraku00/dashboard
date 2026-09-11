@@ -15,6 +15,7 @@ import {
 } from "@/app/lib/manage-asset-core";
 import { formatDate, formatQuantity, money, shortDate, yen } from "@/app/lib/manage-asset-format";
 import { periodRows, periods, samplePoints, type Period } from "@/app/lib/manage-asset-chart";
+import { ChartTooltip, useChartHoverTooltip, type ChartHoverPoint } from "@/app/manage-asset-chart-tooltip";
 
 export type AssetStateData = { snapshots: AssetRow[]; exchange_snapshots: AssetRow[] };
 export type AssetHistoryData = { snapshots: AssetRow[]; exchange_snapshots: AssetRow[] };
@@ -148,7 +149,6 @@ function MoneyPair({ value, rate }: { value: number; rate: number | null }) {
 }
 
 function TrendChart({ points, rate }: { points: { date: string; value: number }[]; rate: number | null }) {
-  if (points.length < 2) return <div className="asset-chart"><p className="muted-copy">推移を表示するには、異なる記録日の保存が2回以上必要です。</p></div>;
   const width = 720, height = 300, left = 76, right = 6, top = 20, bottom = 40;
   const values = points.map((point) => point.value);
   const rawMin = Math.min(...values), rawMax = Math.max(...values);
@@ -159,27 +159,44 @@ function TrendChart({ points, rate }: { points: { date: string; value: number }[
   const line = points.map((point, index) => `${index ? "L" : "M"}${x(index)},${y(point.value)}`).join(" ");
   const ticks = [max, max - span * 0.25, max - span * 0.5, max - span * 0.75, min];
   const step = Math.max(1, Math.ceil(points.length / 10));
+  const hoverPoints: ChartHoverPoint[] = points.map((point, index) => ({
+    x: x(index),
+    y: y(point.value),
+    lines: [point.date, money(point.value), rate ? yen(point.value * rate) : "円換算 —"],
+  }));
+  const { containerRef, tooltip, handlePointerMove, handlePointerLeave } = useChartHoverTooltip(hoverPoints);
+  if (points.length < 2) return <div className="asset-chart"><p className="muted-copy">推移を表示するには、異なる記録日の保存が2回以上必要です。</p></div>;
   return (
-    <svg className="asset-chart" viewBox={`-12 0 ${width + 24} ${height}`} role="img" aria-label="資産推移（USD・JPY評価額）">
-      {ticks.map((tick, index) => (
-        <g key={index}>
-          <line x1={left} x2={width - right} y1={y(tick)} y2={y(tick)} stroke="var(--line)" />
-          <text textAnchor="end" x={left - 5} y={y(tick) - 4}>{money(tick)}{rate ? ` (${yen(tick * rate)})` : ""}</text>
-        </g>
-      ))}
-      <path className="asset-chart-area" d={`${line} L${x(points.length - 1)},${height - bottom} L${x(0)},${height - bottom}Z`} />
-      <path className="asset-chart-line" d={line} />
-      {points.map((point, index) => (
-        <g key={point.date}>
-          <circle className="asset-chart-dot" cx={x(index)} cy={y(point.value)} r={4} tabIndex={0}>
-            <title>{`${point.date} ${money(point.value)}${rate ? ` (${yen(point.value * rate)})` : ""}`}</title>
-          </circle>
-          <text textAnchor={index === 0 ? "start" : index === points.length - 1 ? "end" : "middle"} x={x(index)} y={height - 8}>
-            {index % step === 0 || index === points.length - 1 ? shortDate(point.date) : ""}
-          </text>
-        </g>
-      ))}
-    </svg>
+    <div className="asset-chart-wrap" ref={containerRef}>
+      <svg
+        className="asset-chart"
+        viewBox={`-12 0 ${width + 24} ${height}`}
+        role="img"
+        aria-label="資産推移（USD・JPY評価額）"
+        onPointerMove={handlePointerMove}
+        onPointerLeave={handlePointerLeave}
+      >
+        {ticks.map((tick, index) => (
+          <g key={index}>
+            <line x1={left} x2={width - right} y1={y(tick)} y2={y(tick)} stroke="var(--line)" />
+            <text textAnchor="end" x={left - 5} y={y(tick) - 4}>{money(tick)}{rate ? ` (${yen(tick * rate)})` : ""}</text>
+          </g>
+        ))}
+        <path className="asset-chart-area" d={`${line} L${x(points.length - 1)},${height - bottom} L${x(0)},${height - bottom}Z`} />
+        <path className="asset-chart-line" d={line} />
+        {points.map((point, index) => (
+          <g key={point.date}>
+            <circle className="asset-chart-dot" cx={x(index)} cy={y(point.value)} r={4} tabIndex={0}>
+              <title>{`${point.date} ${money(point.value)}${rate ? ` (${yen(point.value * rate)})` : ""}`}</title>
+            </circle>
+            <text textAnchor={index === 0 ? "start" : index === points.length - 1 ? "end" : "middle"} x={x(index)} y={height - 8}>
+              {index % step === 0 || index === points.length - 1 ? shortDate(point.date) : ""}
+            </text>
+          </g>
+        ))}
+      </svg>
+      <ChartTooltip tooltip={tooltip} />
+    </div>
   );
 }
 
