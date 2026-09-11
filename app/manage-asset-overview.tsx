@@ -15,7 +15,7 @@ import {
 } from "@/app/lib/manage-asset-core";
 import { formatDate, formatQuantity, money, shortDate, yen } from "@/app/lib/manage-asset-format";
 import { periodRows, periods, samplePoints, type Period } from "@/app/lib/manage-asset-chart";
-import { ChartTooltip, useChartHoverTooltip, type ChartHoverPoint } from "@/app/manage-asset-chart-tooltip";
+import { ChartTooltip, useChartHoverTooltip, useSvgFontScale, type ChartHoverPoint } from "@/app/manage-asset-chart-tooltip";
 
 export type AssetStateData = { snapshots: AssetRow[]; exchange_snapshots: AssetRow[] };
 export type AssetHistoryData = { snapshots: AssetRow[]; exchange_snapshots: AssetRow[] };
@@ -174,6 +174,8 @@ function TrendChart({ points, rate }: { points: { date: string; value: number }[
     lines: [point.date, money(point.value), rate ? yen(point.value * rate) : "円換算 —"],
   }));
   const { containerRef, tooltip, handlePointerMove, handlePointerLeave } = useChartHoverTooltip(hoverPoints);
+  const scale = useSvgFontScale(containerRef, width + 16, points.length);
+  const mainFontSize = 11 / scale, subFontSize = 10 / scale, lineGap = 13 / scale;
   if (points.length < 2) return <div className="asset-chart"><p className="muted-copy">推移を表示するには、異なる記録日の保存が2回以上必要です。</p></div>;
   return (
     <div className="asset-chart-wrap" ref={containerRef}>
@@ -188,9 +190,9 @@ function TrendChart({ points, rate }: { points: { date: string; value: number }[
         {ticks.map((tick, index) => (
           <g key={index}>
             <line x1={left} x2={width - right} y1={y(tick)} y2={y(tick)} stroke="var(--line)" />
-            <text textAnchor="end" x={left - 5} y={y(tick) - 2}>
+            <text textAnchor="end" x={left - 5} y={y(tick) - 2} style={{ fontSize: mainFontSize }}>
               <tspan x={left - 5}>{money(tick)}</tspan>
-              <tspan className="asset-chart-subtext" x={left - 5} dy="13">{rate ? yen(tick * rate) : "円換算 —"}</tspan>
+              <tspan className="asset-chart-subtext" x={left - 5} dy={lineGap} style={{ fontSize: subFontSize }}>{rate ? yen(tick * rate) : "円換算 —"}</tspan>
             </text>
           </g>
         ))}
@@ -201,7 +203,7 @@ function TrendChart({ points, rate }: { points: { date: string; value: number }[
             <circle className="asset-chart-dot" cx={x(index)} cy={y(point.value)} r={4} tabIndex={0}>
               <title>{`${point.date} ${money(point.value)}${rate ? ` (${yen(point.value * rate)})` : ""}`}</title>
             </circle>
-            <text textAnchor={index === 0 ? "start" : index === points.length - 1 ? "end" : "middle"} x={x(index)} y={height - 8}>
+            <text textAnchor={index === 0 ? "start" : index === points.length - 1 ? "end" : "middle"} x={x(index)} y={height - 8} style={{ fontSize: mainFontSize }}>
               {index % step === 0 || index === points.length - 1 ? shortDate(point.date) : ""}
             </text>
           </g>

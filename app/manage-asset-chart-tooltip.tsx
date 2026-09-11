@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type RefObject } from "react";
 
 /** SVG のユーザー座標系上の点。x はグラフの横位置（データ点の並び順）。 */
 export type ChartHoverPoint = { x: number; y: number; lines: string[] };
@@ -49,6 +49,42 @@ export function useChartHoverTooltip(points: ChartHoverPoint[]) {
   }
 
   return { containerRef, tooltip, handlePointerMove, handlePointerLeave };
+}
+
+/** SVG は viewBox でコンテナ幅に合わせて拡大縮小されるため、user-space で同じ
+ *  font-size を指定していても、コンテナが広いページほど実際の画面上のピクセル
+ *  サイズは大きくなる（資産推移はドーナツと2列、通貨推移は280px固定カードと2列
+ *  ……とページごとにコンテナ幅の比率が違うため、この差が実際に出ていた）。
+ *  ResizeObserver で実測した「1 user-space単位あたりの実ピクセル数」を返し、
+ *  呼び出し側が toPhysicalPx(desiredPx) = desiredPx / scale を font-size に
+ *  使うことで、コンテナ幅に関係なく物理サイズを一定に保つ。 */
+export function useSvgFontScale(containerRef: RefObject<HTMLDivElement | null>, viewBoxWidth: number, renderKey: unknown = null) {
+  const [scale, setScale] = useState(1);
+
+  // containerRef.current swaps to a new DOM node whenever the caller's early
+  // return flips between the empty-state <div> (no ref) and the chart <svg>
+  // wrap (ref attached) -- e.g. switching the currency select from a
+  // single-snapshot symbol to one with history. A plain useRef mutation like
+  // that doesn't change identity, so an effect keyed only on
+  // [containerRef, viewBoxWidth] never reruns to observe the new node and
+  // `scale` stays stuck at its very first reading (1, if the chart wasn't
+  // even mounted yet on that first run). renderKey lets the caller pass
+  // something that changes across that transition (e.g. data.length) so the
+  // observer actually gets re-attached to the node that is mounted now.
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const update = () => {
+      const width = el.getBoundingClientRect().width;
+      if (width > 0) setScale(width / viewBoxWidth);
+    };
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [containerRef, viewBoxWidth, renderKey]);
+
+  return scale;
 }
 
 export function ChartTooltip({ tooltip }: { tooltip: { left: number; top: number; lines: string[] } | null }) {
