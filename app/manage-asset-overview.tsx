@@ -71,22 +71,31 @@ export function AssetOverview({
       ) : null}
 
       <section className="asset-hero">
-        <div>
-          <p>総資産（USD）</p>
-          <strong>{money(total)}</strong>
-          <p>{fx ? `円換算 ${yen(total * fx.rate)}` : "円換算 —"}</p>
-        </div>
-        <div className="asset-freshness">
-          <span>前日保存比</span>
-          <strong>
-            {delta == null
-              ? "比較データがありません"
-              : `${delta >= 0 ? "+" : "−"}${money(Math.abs(delta))}（${previous ? Math.abs((delta / previous) * 100).toFixed(2) : "0.00"}%）${rate ? ` / ${delta >= 0 ? "+" : "−"}${yen(Math.abs(delta) * rate)}` : ""}`}
-          </strong>
-          <span>換算レート</span>
-          <strong>{fx ? `USD/JPY ${fx.rate.toFixed(2)}` : "USD/JPY 未取得"}</strong>
-          <span>最終更新</span>
-          <strong>{!today ? "—" : view.freshness ? formatDate(view.freshness) : "データ未取得"}</strong>
+        <div className="hero-grid">
+          <div>
+            <p>総資産（USD）</p>
+            <strong>{money(total)}</strong>
+            <p>{fx ? `円換算 ${yen(total * fx.rate)}` : "円換算 —"}</p>
+          </div>
+          <div className="hero-metric">
+            <span>前日保存比</span>
+            {delta == null ? (
+              <strong>比較データがありません</strong>
+            ) : (
+              <strong>
+                {`${delta >= 0 ? "+" : "−"}${money(Math.abs(delta))}（${previous ? Math.abs((delta / previous) * 100).toFixed(2) : "0.00"}%）`}
+                {rate ? <span className="hero-metric-sub">{`${delta >= 0 ? "+" : "−"}${yen(Math.abs(delta) * rate)}`}</span> : null}
+              </strong>
+            )}
+          </div>
+          <div className="hero-metric">
+            <span>換算レート</span>
+            <strong>{fx ? `USD/JPY ${fx.rate.toFixed(2)}` : "USD/JPY 未取得"}</strong>
+          </div>
+          <div className="hero-metric">
+            <span>最終更新</span>
+            <strong>{!today ? "—" : view.freshness ? formatDate(view.freshness) : "データ未取得"}</strong>
+          </div>
         </div>
       </section>
 
@@ -149,7 +158,7 @@ function MoneyPair({ value, rate }: { value: number; rate: number | null }) {
 }
 
 function TrendChart({ points, rate }: { points: { date: string; value: number }[]; rate: number | null }) {
-  const width = 720, height = 300, left = 76, right = 6, top = 20, bottom = 40;
+  const width = 720, height = 240, left = 64, right = 6, top = 22, bottom = 32;
   const values = points.map((point) => point.value);
   const rawMin = Math.min(...values), rawMax = Math.max(...values);
   const padding = Math.max((rawMax - rawMin) * 0.12, rawMax * 0.02, 1);
@@ -170,7 +179,7 @@ function TrendChart({ points, rate }: { points: { date: string; value: number }[
     <div className="asset-chart-wrap" ref={containerRef}>
       <svg
         className="asset-chart"
-        viewBox={`-12 0 ${width + 24} ${height}`}
+        viewBox={`-4 0 ${width + 16} ${height}`}
         role="img"
         aria-label="資産推移（USD・JPY評価額）"
         onPointerMove={handlePointerMove}
@@ -179,7 +188,10 @@ function TrendChart({ points, rate }: { points: { date: string; value: number }[
         {ticks.map((tick, index) => (
           <g key={index}>
             <line x1={left} x2={width - right} y1={y(tick)} y2={y(tick)} stroke="var(--line)" />
-            <text textAnchor="end" x={left - 5} y={y(tick) - 4}>{money(tick)}{rate ? ` (${yen(tick * rate)})` : ""}</text>
+            <text textAnchor="end" x={left - 5} y={y(tick) - 2}>
+              <tspan x={left - 5}>{money(tick)}</tspan>
+              <tspan className="asset-chart-subtext" x={left - 5} dy="13">{rate ? yen(tick * rate) : "円換算 —"}</tspan>
+            </text>
           </g>
         ))}
         <path className="asset-chart-area" d={`${line} L${x(points.length - 1)},${height - bottom} L${x(0)},${height - bottom}Z`} />

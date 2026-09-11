@@ -210,7 +210,8 @@ function CurrencyChangeChart({ points, symbol }: { points: CalculatedRow[]; symb
   const valueOf = (row: CalculatedRow) => (monetary ? Math.abs(row.usd ?? 0) : Math.abs(row.change ?? 0));
   const peak = Math.max(...data.map(valueOf), 0.000001);
   const max = peak / 0.72;
-  const width = 720, height = 300, left = 96, right = 6, top = 20, bottom = 40;
+  const referenceFx = data.at(-1)?.fx ?? null;
+  const width = 720, height = 240, left = 80, right = 6, top = 22, bottom = 32;
   const x = (index: number) => left + (data.length === 1 ? 0 : (index * (width - left - right)) / (data.length - 1));
   const y = (value: number) => height - bottom - (Math.max(0, value) / max) * (height - top - bottom);
   const ticks = [max, max * 0.75, max * 0.5, max * 0.25, 0];
@@ -229,7 +230,7 @@ function CurrencyChangeChart({ points, symbol }: { points: CalculatedRow[]; symb
     <div className="asset-chart-wrap" ref={containerRef}>
       <svg
         className="asset-chart"
-        viewBox={`-12 0 ${width + 24} ${height}`}
+        viewBox={`-4 0 ${width + 16} ${height}`}
         role="img"
         aria-label={`${symbol}の日次増加量`}
         onPointerMove={handlePointerMove}
@@ -238,7 +239,10 @@ function CurrencyChangeChart({ points, symbol }: { points: CalculatedRow[]; symb
         {ticks.map((tick, index) => (
           <g key={index}>
             <line x1={left} x2={width - right} y1={y(tick)} y2={y(tick)} stroke="var(--line)" />
-            <text textAnchor="end" x={left - 8} y={y(tick) - 3}>{monetary ? currencyFiat(tick, "USD") : currencyQuantity(tick, symbol, "change")}</text>
+            <text textAnchor="end" x={left - 8} y={y(tick) - 2}>
+              <tspan x={left - 8}>{monetary ? currencyFiat(tick, "USD") : currencyQuantity(tick, symbol, "change")}</tspan>
+              {monetary && referenceFx ? <tspan className="asset-chart-subtext" x={left - 8} dy="13">{currencyFiat(tick * referenceFx, "JPY")}</tspan> : null}
+            </text>
           </g>
         ))}
         <path className="asset-chart-area" d={`${line} L${x(data.length - 1)},${y(0)} L${x(0)},${y(0)}Z`} />
@@ -259,7 +263,8 @@ function CurrencyChangeChart({ points, symbol }: { points: CalculatedRow[]; symb
 
 function CurrencyBalanceChart({ points, symbol }: { points: CalculatedRow[]; symbol: string }) {
   const data = points.filter((row) => row.balanceUsd != null);
-  const width = 720, height = 300, left = 96, right = 6, top = 20, bottom = 40;
+  const referenceFx = data.at(-1)?.fx ?? null;
+  const width = 720, height = 240, left = 80, right = 6, top = 22, bottom = 32;
   const values = data.map((row) => row.balanceUsd as number);
   const rawMin = Math.min(...values), rawMax = Math.max(...values);
   const padding = Math.max((rawMax - rawMin) * 0.12, Math.abs(rawMax) * 0.02, 0.01);
@@ -285,7 +290,7 @@ function CurrencyBalanceChart({ points, symbol }: { points: CalculatedRow[]; sym
     <div className="asset-chart-wrap" ref={containerRef}>
       <svg
         className="asset-chart"
-        viewBox={`-12 0 ${width + 24} ${height}`}
+        viewBox={`-4 0 ${width + 16} ${height}`}
         role="img"
         aria-label={`${symbol}の資産推移（USD・JPY評価額）`}
         onPointerMove={handlePointerMove}
@@ -294,7 +299,10 @@ function CurrencyBalanceChart({ points, symbol }: { points: CalculatedRow[]; sym
         {ticks.map((tick, index) => (
           <g key={index}>
             <line x1={left} x2={width - right} y1={y(tick)} y2={y(tick)} stroke="var(--line)" />
-            <text textAnchor="end" x={left - 8} y={y(tick) - 3}>{currencyFiat(tick, "USD")}</text>
+            <text textAnchor="end" x={left - 8} y={y(tick) - 2}>
+              <tspan x={left - 8}>{currencyFiat(tick, "USD")}</tspan>
+              {referenceFx ? <tspan className="asset-chart-subtext" x={left - 8} dy="13">{currencyFiat(tick * referenceFx, "JPY")}</tspan> : null}
+            </text>
           </g>
         ))}
         <path className="asset-chart-area" d={`${line} L${x(data.length - 1)},${height - bottom} L${x(0)},${height - bottom}Z`} />
