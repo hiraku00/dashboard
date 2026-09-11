@@ -99,14 +99,15 @@ export function ManageAssetApp({
 
   return (
     <main className="portal-shell asset-workspace">
-      <PortalHeader title="Manage Asset" active="/manage-asset" />
-      <nav className="asset-tabs" aria-label="Manage Asset メニュー">
-        {assetViews.map(([id, label]) => (
-          <button key={id} type="button" className={view === id ? "active" : ""} aria-current={view === id ? "page" : undefined} onClick={() => setView(id)}>
-            {label}
-          </button>
-        ))}
-      </nav>
+      <PortalHeader title="Manage Asset" active="/manage-asset">
+        <nav className="asset-tabs" aria-label="Manage Asset メニュー">
+          {assetViews.map(([id, label]) => (
+            <button key={id} type="button" className={view === id ? "active" : ""} aria-current={view === id ? "page" : undefined} onClick={() => setView(id)}>
+              {label}
+            </button>
+          ))}
+        </nav>
+      </PortalHeader>
       {/* Every view stays mounted and is only CSS-hidden when inactive (the
           `hidden` attribute), matching how the legacy SPA kept every section in
           the DOM and toggled `.view.active`. Unmounting on tab switch would
