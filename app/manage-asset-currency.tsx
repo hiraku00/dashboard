@@ -162,36 +162,38 @@ export function CurrencyView({
         <div className="asset-panel"><p className="muted-copy">表示できる通貨がありません。</p></div>
       ) : (
         <>
-          <div className="currency-grid">
-            <div className="currency-card">
-              <span>現在残高</span>
-              <b>{view.last ? `${currencyQuantity(view.last.balance, selected, "balance")} ${selected}` : "—"}</b>
-              <span>{currencyFiat(view.last?.balanceUsd ?? null, "USD")} / {currencyFiat(view.last?.balanceUsd != null && view.last.fx ? view.last.balanceUsd * view.last.fx : null, "JPY")}</span>
-            </div>
-            <div className="currency-card">
-              <span>{view.balanceMode ? `USD評価額の期間増減（${view.periodLabel}）` : isSteth ? `期間報酬（${view.periodLabel}）` : `期間増加分（${view.periodLabel}）`}</span>
-              <b>
-                {view.balanceMode
-                  ? signedCurrencyFiat(view.deltaUsd, "USD")
-                  : view.delta == null ? "—" : `${view.delta >= 0 ? "+" : "−"}${currencyQuantity(Math.abs(view.delta), selected, "change")} ${selected}`}
-              </b>
-              <span>{view.balanceMode ? signedCurrencyFiat(view.deltaYen, "JPY") : `${currencyFiat(view.deltaUsd, "USD")} / ${currencyFiat(view.deltaYen, "JPY")}`}</span>
-            </div>
-          </div>
-
-          <section className="asset-panel chart-panel">
-            <div className="panel-heading">
-              <div>
-                <h2>{view.balanceMode ? `${selected}の資産推移` : `${selected}の日次増加量`}</h2>
-                <span>
+          <div className="currency-overview-grid">
+            <div className="currency-grid">
+              <div className="currency-card">
+                <span>現在残高</span>
+                <b>{view.last ? `${currencyQuantity(view.last.balance, selected, "balance")} ${selected}` : "—"}</b>
+                <span>{currencyFiat(view.last?.balanceUsd ?? null, "USD")} / {currencyFiat(view.last?.balanceUsd != null && view.last.fx ? view.last.balanceUsd * view.last.fx : null, "JPY")}</span>
+              </div>
+              <div className="currency-card">
+                <span>{view.balanceMode ? `USD評価額の期間増減（${view.periodLabel}）` : isSteth ? `期間報酬（${view.periodLabel}）` : `期間増加分（${view.periodLabel}）`}</span>
+                <b>
                   {view.balanceMode
-                    ? isSteth ? "LidoのRewardのみを合計し、入出庫を除外しています。" : "選択したグラフ期間のUSD評価額を表示します。"
-                    : isSteth ? "LidoのRewardを表示します。CSV最終日より後は残高差から暫定計算します。" : "前の記録日からの残高差を表示します。入出金や報酬の内訳は区別しません。"}
-                </span>
+                    ? signedCurrencyFiat(view.deltaUsd, "USD")
+                    : view.delta == null ? "—" : `${view.delta >= 0 ? "+" : "−"}${currencyQuantity(Math.abs(view.delta), selected, "change")} ${selected}`}
+                </b>
+                <span>{view.balanceMode ? signedCurrencyFiat(view.deltaYen, "JPY") : `${currencyFiat(view.deltaUsd, "USD")} / ${currencyFiat(view.deltaYen, "JPY")}`}</span>
               </div>
             </div>
-            {view.balanceMode ? <CurrencyBalanceChart points={samplePoints(view.shown, period)} symbol={selected} /> : <CurrencyChangeChart points={samplePoints(view.shown, period)} symbol={selected} />}
-          </section>
+
+            <section className="asset-panel chart-panel">
+              <div className="panel-heading">
+                <div>
+                  <h2>{view.balanceMode ? `${selected}の資産推移` : `${selected}の日次増加量`}</h2>
+                  <span>
+                    {view.balanceMode
+                      ? isSteth ? "LidoのRewardのみを合計し、入出庫を除外しています。" : "選択したグラフ期間のUSD評価額を表示します。"
+                      : isSteth ? "LidoのRewardを表示します。CSV最終日より後は残高差から暫定計算します。" : "前の記録日からの残高差を表示します。入出金や報酬の内訳は区別しません。"}
+                  </span>
+                </div>
+              </div>
+              {view.balanceMode ? <CurrencyBalanceChart points={samplePoints(view.shown, period)} symbol={selected} /> : <CurrencyChangeChart points={samplePoints(view.shown, period)} symbol={selected} />}
+            </section>
+          </div>
 
           <section className="asset-panel asset-table-panel">
             <CurrencyTable rows={view.calculated} symbol={selected} balanceMode={view.balanceMode} page={page} setPage={setPage} />
