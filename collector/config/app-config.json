@@ -5,13 +5,12 @@
     "windows": [
       {
         "start": "00:00",
-        "end": "01:20",
+        "end": "01:00",
         "interval_minutes": 10
       }
     ],
     "additional_retry_times": [
-      "02:40",
-      "02:50"
+      "02:05"
     ]
   }
 }
