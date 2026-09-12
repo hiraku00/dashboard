@@ -176,7 +176,7 @@ async function D1AnalyticsPanel({ d1Query }: { d1Query: D1BackedUsage }) {
               </span>
             ))}
             <span className="usage-window-caveat">
-              コレクタの同期もUTC基準（00:00〜02:50）で動くため、必ずこの集計期間の中に入ります。
+              コレクタの同期もUTC基準（00:00〜02:05）で動くため、必ずこの集計期間の中に入ります。
             </span>
           </p>
           <div className="usage-meter" aria-label={`本日の読み取り行数 ${todayReadPct.toFixed(2)}%`}>
