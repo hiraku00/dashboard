@@ -7,10 +7,13 @@
         "start": "00:00",
         "end": "01:00",
         "interval_minutes": 10
+      },
+      {
+        "start": "02:05",
+        "end": "02:30",
+        "interval_minutes": 5
       }
     ],
-    "additional_retry_times": [
-      "02:05"
-    ]
+    "additional_retry_times": []
   }
 }
