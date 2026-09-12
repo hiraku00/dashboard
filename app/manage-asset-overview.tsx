@@ -62,11 +62,18 @@ export function AssetOverview({
   const { fx, total, delta, previous } = view;
   const rate = fx?.rate ?? null;
 
+  // GMOコインは毎週土曜9:00〜11:00（日本時間）にシステムメンテナンスがある
+  // （https://support.coin.z.com/hc/ja/articles/115007815487）。土曜に古い
+  // データ扱いになっているのがこの定例メンテによるものだと分かるよう注記する。
+  const isSaturday = today ? new Date(`${today}T00:00:00`).getDay() === 6 : false;
+  const staleGmo = view.stale.some((place) => place.name.includes("GMO"));
+
   return (
     <>
       {view.stale.length ? (
         <div className="notice" role="status">
           <strong>古いデータがあります。</strong> 当日取得できていない保管場所があります（{view.stale.map((place) => place.name).join("、")}）。表示中の金額は前回成功時のスナップショットです。
+          {isSaturday && staleGmo ? " GMOコインは毎週土曜9:00〜11:00（日本時間）にシステムメンテナンスがあるため、この時間帯は取得できないことがあります。" : ""}
         </div>
       ) : null}
 
@@ -255,7 +262,10 @@ function Allocation({ holdings, total }: { holdings: Holding[]; total: number })
           <div className="allocation-row" key={item.symbol}>
             <i style={{ background: allocationColors[index] }} />
             <strong>{item.symbol}</strong>
-            <span>{money(item.value)} · {total ? ((item.value / total) * 100).toFixed(1) : "0.0"}%</span>
+            <span className="allocation-value">
+              <span>{money(item.value)}</span>
+              <span className="allocation-percent">{total ? ((item.value / total) * 100).toFixed(1) : "0.0"}%</span>
+            </span>
           </div>
         ))}
       </div>
