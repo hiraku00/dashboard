@@ -6,10 +6,19 @@ type HistoryRow = Record<string, unknown>;
 const number = (value: unknown) => { const result = Number(value); return Number.isFinite(result) ? result : 0; };
 const text = (value: unknown) => String(value ?? "");
 
+// One request carries a batch of historical records, so cap it the same way
+// app/api/manage-asset/sync/route.ts's MAX_BATCH_ENTRIES does: the Workers
+// Free plan allows 10ms of CPU per invocation, and without a cap here the
+// full input arrays are parsed and turned into D1 prepared statements before
+// any batching begins.
+const MAX_BATCH_ENTRIES = 500;
+
 export const POST = route(async (request: Request) => {
   await ensureSchema({ seed: false });
   const body = await request.json().catch(() => null) as { snapshots?: HistoryRow[]; exchangeSnapshots?: HistoryRow[]; lidoRewards?: HistoryRow[]; rates?: HistoryRow[] } | null;
   if (!body) return Response.json({ error: "履歴データが不正です。" }, { status: 400 });
+  const totalEntries = (body.snapshots?.length ?? 0) + (body.exchangeSnapshots?.length ?? 0) + (body.lidoRewards?.length ?? 0) + (body.rates?.length ?? 0);
+  if (totalEntries > MAX_BATCH_ENTRIES) return Response.json({ error: `1リクエストあたり${MAX_BATCH_ENTRIES}件までです。` }, { status: 400 });
   const rows: D1PreparedStatement[] = [];
   for (const [recordType, input] of [["wallet", body.snapshots ?? []], ["exchange", body.exchangeSnapshots ?? []]] as const) {
     for (const row of input) {

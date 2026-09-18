@@ -14,7 +14,11 @@ const MAX_BATCH_ENTRIES = 50;
 function containsCredential(value: unknown): boolean {
   if (Array.isArray(value)) return value.some(containsCredential);
   if (!value || typeof value !== "object") return false;
-  return Object.entries(value).some(([key, child]) => /api.?secret|api.?key|passphrase|private.?key|credential/i.test(key) || containsCredential(child));
+  // token(?![a-z_]) excludes this app's own legitimate "tokens" (plural,
+  // a wallet's held crypto tokens) and "*_token_symbol"/"*_token_id"-style
+  // fields, while still matching "token", "accessToken", "authToken",
+  // "bearerToken", "sessionToken", "refreshToken" etc.
+  return Object.entries(value).some(([key, child]) => /api.?secret|api.?key|passphrase|private.?key|credential|secret|token(?![a-z_])|cookie|mnemonic|seed.?phrase|bearer/i.test(key) || containsCredential(child));
 }
 
 type Entry = { source?: Record<string, unknown>; snapshot?: Record<string, unknown>; positions?: unknown[] };

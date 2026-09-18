@@ -14,7 +14,7 @@ import { route } from "@/app/lib/route";
 // silently stopped applying to a single item's GET/PATCH response while
 // still applying everywhere else.
 async function itemResponse(id: string) {
-  const itemResult = await env.DB.prepare("SELECT * FROM items WHERE id = ?").bind(id).all<Record<string, unknown>>();
+  const itemResult = await env.DB.prepare("SELECT * FROM items WHERE id = ? AND deleted_at IS NULL").bind(id).all<Record<string, unknown>>();
   const row = itemResult.results?.[0];
   if (!row) return null;
   return (await attachLinks([row]))[0];
@@ -49,13 +49,13 @@ export const PATCH = route(async (request: Request, { params }: { params: Promis
   // land. Checking result.meta.changes here is the only point that can
   // actually tell whether this request's version was the one still current
   // at write time.
-  const updateResult = await env.DB.prepare(`UPDATE items SET content_type=?, creator_name=?, series_title=?, title=?, description=?, priority=?, status=?, added_on=?, watched_on=?, comment=?, source_system=?, external_id=?, raw_source=?, version=version+1, updated_at=? WHERE id=? AND version=?`)
+  const updateResult = await env.DB.prepare(`UPDATE items SET content_type=?, creator_name=?, series_title=?, title=?, description=?, priority=?, status=?, added_on=?, watched_on=?, comment=?, source_system=?, external_id=?, raw_source=?, version=version+1, updated_at=? WHERE id=? AND version=? AND deleted_at IS NULL`)
     .bind(item.contentType, item.creatorName ?? "", item.seriesTitle ?? "", item.title, item.description ?? "", item.priority, item.status ?? "backlog", item.addedOn, item.watchedOn, item.comment ?? "", item.sourceSystem ?? "manual", item.externalId, item.rawSource, now, id, expectedVersion).run();
   if (!updateResult.meta.changes) {
     // meta.changes === 0 means either the id doesn't exist, or it exists but
     // its version has already moved on -- distinguish them with one cheap
     // existence check rather than guessing.
-    const exists = await env.DB.prepare("SELECT 1 FROM items WHERE id = ?").bind(id).first();
+    const exists = await env.DB.prepare("SELECT 1 FROM items WHERE id = ? AND deleted_at IS NULL").bind(id).first();
     return exists
       ? Response.json({ error: "ほかの画面で更新されています。再読み込みしてください。" }, { status: 409 })
       : Response.json({ error: "見つかりません。" }, { status: 404 });
