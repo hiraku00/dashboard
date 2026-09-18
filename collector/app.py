@@ -19,6 +19,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse
 
+import keyring
 from bs4 import BeautifulSoup
 from exchange import CONNECTORS, ExchangeError, supported_providers, usd_jpy_rate
 
@@ -104,18 +105,24 @@ def keychain_service(source_id: str) -> str:
 
 
 def save_credentials(source_id: str, credentials: dict) -> None:
-    """Store credentials in macOS Keychain, never in the project directory."""
+    """Store credentials in macOS Keychain, never in the project directory.
+
+    Uses the `keyring` package (Security.framework via ctypes) instead of
+    shelling out to `security add-generic-password -w <value>`: the `security`
+    CLI's non-interactive -w form takes the secret as a literal argv element,
+    which is briefly visible to any other local process via `ps` for the
+    subprocess's lifetime. keyring.set_password() never puts the secret on a
+    command line. Reads still go through `security find-generic-password`
+    (load_credentials below), which only ever passes the secret on stdout,
+    never in argv, and reads back the same login-keychain generic-password
+    item keyring writes here (same service/account naming).
+    """
     clean = {key: str(credentials.get(key, "")).strip() for key in ("api_key", "api_secret", "passphrase")}
     if not clean["api_key"] or not clean["api_secret"]:
         raise ValueError("API KeyとAPI Secretを入力してください")
     try:
-        subprocess.run(
-            ["security", "add-generic-password", "-U", "-a", "local-user", "-s", keychain_service(source_id), "-w", json.dumps(clean)],
-            check=True, capture_output=True, text=True,
-        )
-    except FileNotFoundError as exc:
-        raise ValueError("macOS Keychainを利用できません。このアプリはmacOSで実行してください") from exc
-    except subprocess.CalledProcessError as exc:
+        keyring.set_password(keychain_service(source_id), "local-user", json.dumps(clean))
+    except Exception as exc:
         raise ValueError("macOS KeychainへAPI認証情報を保存できませんでした") from exc
 
 
@@ -524,6 +531,13 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_POST(self):
+        # This server binds to 127.0.0.1 only, but has no auth of its own --
+        # without an Origin check, any other page open in the same browser
+        # could POST here cross-origin (a `Content-Type: text/plain` fetch
+        # skips CORS preflight) and silently change wallets/sources.
+        origin = self.headers.get("Origin")
+        if origin is not None and origin != f"http://127.0.0.1:{self.server.server_port}":
+            return json_response(self, {"error": "forbidden"}, 403)
         path = urlparse(self.path).path
         length = int(self.headers.get("Content-Length", "0"))
         if length > 6_000_000:
