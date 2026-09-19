@@ -179,8 +179,14 @@ export function locations(wallets: AssetRow[], exchanges: AssetRow[], today: str
 export type ReconciliationSource = { kind: string; id: unknown; name: string; expected: number; detail: number; difference: number };
 export type Reconciliation = { sources: ReconciliationSource[]; issues: ReconciliationSource[]; total: number; detail: number };
 
+/** 総額と明細の差をどこまで丸め誤差として許すか（USD）。ウォレットの総額は DeBank の
+ *  ヘッダー表示をそのまま読むため、残高が数ドル以下だと整数に丸められる（例: 明細合計
+ *  0.49 に対し総額 "$1"）。整数丸めの誤差は最大 0.5 なので、0.5 ちょうどでは
+ *  0.5 を跨いだ日に誤検知する。 */
+const RECONCILIATION_TOLERANCE_USD = 1;
+
 /** 申告総額（expected）とポジション明細の合計（detail）を source ごとに突き合わせ、
- *  0.5 USD を超える差がある source を issues として返す。 */
+ *  RECONCILIATION_TOLERANCE_USD を超える差がある source を issues として返す。 */
 export function reconciliation(wallets: AssetRow[], exchanges: AssetRow[]): Reconciliation {
   const rows = [
     ...latest(wallets, "wallet_id").map((row) => ({ kind: "wallet", id: row.wallet_id, name: String(row.wallet_name ?? row.address ?? ""), expected: number(row.total_usd), positions: walletPositions([row]) })),
@@ -190,7 +196,7 @@ export function reconciliation(wallets: AssetRow[], exchanges: AssetRow[]): Reco
     const detail = row.positions.reduce((sum, position) => sum + position.valueUsd, 0);
     return { kind: row.kind, id: row.id, name: row.name, expected: row.expected, detail, difference: row.expected - detail };
   });
-  const issues = sources.filter((row) => Math.abs(row.difference) > 0.5 + 1e-9);
+  const issues = sources.filter((row) => Math.abs(row.difference) > RECONCILIATION_TOLERANCE_USD + 1e-9);
   return { sources, issues, total: sources.reduce((sum, row) => sum + row.expected, 0), detail: sources.reduce((sum, row) => sum + row.detail, 0) };
 }
 
