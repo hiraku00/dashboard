@@ -347,6 +347,15 @@ test("reconciliation ignores sub-0.5 USD rounding gaps", () => {
   expect(reconciliation(overviewWallets, exchanges).issues).toEqual([]);
 });
 
+test("reconciliation tolerates the whole-dollar rounding DeBank applies to tiny wallet totals", () => {
+  // A wallet worth ~$0.5 is displayed as "$1" while its positions sum to 0.49:
+  // a 0.51 gap that is rounding, not a missing position.
+  const wallets = [{ wallet_id: "venus", wallet_name: "Venus", as_of_date: "2026-09-19", captured_at: "2026-09-19T02:39:04Z", total_usd: 1, tokens: [{ symbol: "XVS", amount_value: 1, usd_value_display: 0.49 }] }];
+  expect(reconciliation(wallets, []).issues).toEqual([]);
+  const missing = [{ ...wallets[0], total_usd: 1.6 }];
+  expect(reconciliation(missing, []).issues.map((issue) => issue.name)).toEqual(["Venus"]);
+});
+
 test("latestFx picks the newest captured_at row carrying a rate", () => {
   expect(latestFx(overviewWallets, overviewExchanges)).toEqual({ rate: 151, at: "2026-09-05T10:05:00Z" });
   expect(latestFx([], [])).toBe(null);
