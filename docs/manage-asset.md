@@ -12,6 +12,11 @@ Manage Assetは既存アプリの表示仕様を基準にした資産ダッシ�
 
 各画面は他のポータル機能と同じくServer Componentとして実装されたネイティブなReact実装です（`app/manage-asset-overview.tsx`・`manage-asset-locations.tsx`・`manage-asset-currency.tsx`・`manage-asset-settings.tsx`・`manage-asset-sync-view.tsx`）。計算ロジックは`app/lib/manage-asset-core.ts`の純関数に集約されており、表示上の文言、桁数、表の列、グラフの期間、ホバー表示を変更する場合は`tests/manage-asset-core.test.mjs`で数値の同値性を確認します。設定・データ更新は読み取り専用です（取引所の追加、認証情報の変更、ウォレットの編集はMac側collectorが担当し、このポータルには対応する書き込みAPIがありません）。
 
+### モバイル幅での表示
+
+- グラフ（`app/manage-asset-overview.tsx`・`manage-asset-currency.tsx`）は、軸ラベルを画面上で常に約11pxに保つため、幅が狭いほどSVGのuser-space上ではラベルが大きくなります。`app/manage-asset-chart-tooltip.tsx`の`axisLayout()`が、表示倍率が0.85未満のときだけ、y軸の左余白・ラベルとの隙間（約8px）・縦方向の寸法を画面px基準で広げます。0.85以上（PC相当）は従来の固定値のままです。軸ラベルや余白を変更する場合は、PC幅で描画が変わらないことと、375px幅でラベルがカード内に収まることの両方を確認します。
+- 表は`.table-scroll`で横スクロールします。監視リストの`content-table`用にモバイル幅（760px以下）で`.table-scroll`をカード表示へ切り替えるルールがあるため、資産管理側は`.asset-workspace .table-scroll`でスクロールを戻し、先頭列（資産名・日付・保管場所名）を固定しています。
+
 ## データ取得の責務
 
 外部APIを使う取得処理はMacのcollectorが担当します。Workerは外部APIキーを持たず、受信したスナップショットの検証・保存・表示だけを行います。
