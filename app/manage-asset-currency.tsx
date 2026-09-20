@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
   allPositions,
   currencyHistory,
@@ -18,7 +18,7 @@ import {
   signedCurrencyFiat,
 } from "@/app/lib/manage-asset-format";
 import { periodRows, periods, samplePoints, type Period } from "@/app/lib/manage-asset-chart";
-import { ChartTooltip, useChartHoverTooltip, useSvgFontScale, type ChartHoverPoint } from "@/app/manage-asset-chart-tooltip";
+import { ChartTooltip, axisLayout, useChartHoverTooltip, useSvgFontScale, type ChartHoverPoint } from "@/app/manage-asset-chart-tooltip";
 import type { AssetHistoryData, AssetStateData } from "./manage-asset-overview";
 
 // stETH の CSV 履歴とスナップショットの移行境界日。
@@ -211,10 +211,18 @@ function CurrencyChangeChart({ points, symbol }: { points: CalculatedRow[]; symb
   const peak = Math.max(...data.map(valueOf), 0.000001);
   const max = peak / 0.72;
   const referenceFx = data.at(-1)?.fx ?? null;
-  const width = 720, height = 240, left = 80, right = 6, top = 22, bottom = 32;
+  const width = 720, baseHeight = 240, baseLeft = 80, right = 6, baseTop = 22, baseBottom = 32;
+  const ticks = [max, max * 0.75, max * 0.5, max * 0.25, 0];
+  const containerRef = useRef<HTMLDivElement>(null);
+  const scale = useSvgFontScale(containerRef, width + 16, data.length);
+  const mainFontSize = 11 / scale, subFontSize = 10 / scale, lineGap = 13 / scale;
+  const { left, gap, vk } = axisLayout(baseLeft, 8, scale, ticks.flatMap((tick) => [
+    { text: monetary ? currencyFiat(tick, "USD") : currencyQuantity(tick, symbol, "change"), fontSize: mainFontSize },
+    ...(monetary && referenceFx ? [{ text: currencyFiat(tick * referenceFx, "JPY"), fontSize: subFontSize }] : []),
+  ]));
+  const height = baseHeight * vk, top = baseTop * vk, bottom = baseBottom * vk;
   const x = (index: number) => left + (data.length === 1 ? 0 : (index * (width - left - right)) / (data.length - 1));
   const y = (value: number) => height - bottom - (Math.max(0, value) / max) * (height - top - bottom);
-  const ticks = [max, max * 0.75, max * 0.5, max * 0.25, 0];
   const step = Math.max(1, Math.ceil(data.length / 10));
   const line = data.map((row, index) => `${index ? "L" : "M"}${x(index)},${y(valueOf(row))}`).join(" ");
   const hoverPoints: ChartHoverPoint[] = data.map((row, index) => ({
@@ -224,9 +232,7 @@ function CurrencyChangeChart({ points, symbol }: { points: CalculatedRow[]; symb
       ? [row.date, `USD ${currencyFiat(row.usd, "USD")}`, row.fx ? `JPY ${currencyFiat((row.usd ?? 0) * row.fx, "JPY")}` : "JPY —"]
       : [row.date, `${symbol} ${(row.change ?? 0) >= 0 ? "+" : "−"}${currencyQuantity(Math.abs(row.change ?? 0), symbol, "change")}`],
   }));
-  const { containerRef, tooltip, handlePointerMove, handlePointerLeave } = useChartHoverTooltip(hoverPoints);
-  const scale = useSvgFontScale(containerRef, width + 16, data.length);
-  const mainFontSize = 11 / scale, subFontSize = 10 / scale, lineGap = 13 / scale;
+  const { tooltip, handlePointerMove, handlePointerLeave } = useChartHoverTooltip(hoverPoints, containerRef);
   if (!data.length) return <div className="asset-chart"><p className="muted-copy">差分を表示するには、異なる記録日が2日以上必要です。</p></div>;
   return (
     <div className="asset-chart-wrap" ref={containerRef}>
@@ -241,9 +247,9 @@ function CurrencyChangeChart({ points, symbol }: { points: CalculatedRow[]; symb
         {ticks.map((tick, index) => (
           <g key={index}>
             <line x1={left} x2={width - right} y1={y(tick)} y2={y(tick)} stroke="var(--line)" />
-            <text textAnchor="end" x={left - 8} y={y(tick) - 2} style={{ fontSize: mainFontSize }}>
-              <tspan x={left - 8}>{monetary ? currencyFiat(tick, "USD") : currencyQuantity(tick, symbol, "change")}</tspan>
-              {monetary && referenceFx ? <tspan className="asset-chart-subtext" x={left - 8} dy={lineGap} style={{ fontSize: subFontSize }}>{currencyFiat(tick * referenceFx, "JPY")}</tspan> : null}
+            <text textAnchor="end" x={left - gap} y={y(tick) - 2 * vk} style={{ fontSize: mainFontSize }}>
+              <tspan x={left - gap}>{monetary ? currencyFiat(tick, "USD") : currencyQuantity(tick, symbol, "change")}</tspan>
+              {monetary && referenceFx ? <tspan className="asset-chart-subtext" x={left - gap} dy={lineGap} style={{ fontSize: subFontSize }}>{currencyFiat(tick * referenceFx, "JPY")}</tspan> : null}
             </text>
           </g>
         ))}
@@ -254,7 +260,7 @@ function CurrencyChangeChart({ points, symbol }: { points: CalculatedRow[]; symb
             <circle className="asset-chart-dot" cx={x(index)} cy={y(valueOf(row))} r={4} tabIndex={0}>
               <title>{`${row.date}${monetary ? ` / USD ${currencyFiat(row.usd, "USD")}${row.fx ? ` / JPY ${currencyFiat((row.usd ?? 0) * row.fx, "JPY")}` : ""}` : ` / ${symbol} ${(row.change ?? 0) >= 0 ? "+" : "−"}${currencyQuantity(Math.abs(row.change ?? 0), symbol, "change")}`}`}</title>
             </circle>
-            <text textAnchor="middle" x={x(index)} y={height - 8} style={{ fontSize: mainFontSize }}>{index % step === 0 || index === data.length - 1 ? shortDate(row.date) : ""}</text>
+            <text textAnchor="middle" x={x(index)} y={height - 8 * vk} style={{ fontSize: mainFontSize }}>{index % step === 0 || index === data.length - 1 ? shortDate(row.date) : ""}</text>
           </g>
         ))}
       </svg>
@@ -266,14 +272,22 @@ function CurrencyChangeChart({ points, symbol }: { points: CalculatedRow[]; symb
 function CurrencyBalanceChart({ points, symbol }: { points: CalculatedRow[]; symbol: string }) {
   const data = points.filter((row) => row.balanceUsd != null);
   const referenceFx = data.at(-1)?.fx ?? null;
-  const width = 720, height = 240, left = 80, right = 6, top = 22, bottom = 32;
+  const width = 720, baseHeight = 240, baseLeft = 80, right = 6, baseTop = 22, baseBottom = 32;
   const values = data.map((row) => row.balanceUsd as number);
   const rawMin = Math.min(...values), rawMax = Math.max(...values);
   const padding = Math.max((rawMax - rawMin) * 0.12, Math.abs(rawMax) * 0.02, 0.01);
   const min = Math.max(0, rawMin - padding), max = rawMax + padding, span = Math.max(max - min, 0.01);
+  const ticks = [max, max - span * 0.25, max - span * 0.5, max - span * 0.75, min];
+  const containerRef = useRef<HTMLDivElement>(null);
+  const scale = useSvgFontScale(containerRef, width + 16, data.length);
+  const mainFontSize = 11 / scale, subFontSize = 10 / scale, lineGap = 13 / scale;
+  const { left, gap, vk } = axisLayout(baseLeft, 8, scale, ticks.flatMap((tick) => [
+    { text: currencyFiat(tick, "USD"), fontSize: mainFontSize },
+    ...(referenceFx ? [{ text: currencyFiat(tick * referenceFx, "JPY"), fontSize: subFontSize }] : []),
+  ]));
+  const height = baseHeight * vk, top = baseTop * vk, bottom = baseBottom * vk;
   const x = (index: number) => left + (index * (width - left - right)) / (data.length - 1);
   const y = (value: number) => height - bottom - ((value - min) / span) * (height - top - bottom);
-  const ticks = [max, max - span * 0.25, max - span * 0.5, max - span * 0.75, min];
   const step = Math.max(1, Math.ceil(data.length / 10));
   const line = data.map((row, index) => `${index ? "L" : "M"}${x(index)},${y(row.balanceUsd as number)}`).join(" ");
   const hoverPoints: ChartHoverPoint[] = data.map((row, index) => ({
@@ -286,9 +300,7 @@ function CurrencyBalanceChart({ points, symbol }: { points: CalculatedRow[]; sym
       `${symbol} ${currencyQuantity(row.balance, symbol, "balance")}`,
     ],
   }));
-  const { containerRef, tooltip, handlePointerMove, handlePointerLeave } = useChartHoverTooltip(hoverPoints);
-  const scale = useSvgFontScale(containerRef, width + 16, data.length);
-  const mainFontSize = 11 / scale, subFontSize = 10 / scale, lineGap = 13 / scale;
+  const { tooltip, handlePointerMove, handlePointerLeave } = useChartHoverTooltip(hoverPoints, containerRef);
   if (data.length < 2) return <div className="asset-chart"><p className="muted-copy">USD評価額の推移を表示するには、異なる記録日の保存が2回以上必要です。</p></div>;
   return (
     <div className="asset-chart-wrap" ref={containerRef}>
@@ -303,9 +315,9 @@ function CurrencyBalanceChart({ points, symbol }: { points: CalculatedRow[]; sym
         {ticks.map((tick, index) => (
           <g key={index}>
             <line x1={left} x2={width - right} y1={y(tick)} y2={y(tick)} stroke="var(--line)" />
-            <text textAnchor="end" x={left - 8} y={y(tick) - 2} style={{ fontSize: mainFontSize }}>
-              <tspan x={left - 8}>{currencyFiat(tick, "USD")}</tspan>
-              {referenceFx ? <tspan className="asset-chart-subtext" x={left - 8} dy={lineGap} style={{ fontSize: subFontSize }}>{currencyFiat(tick * referenceFx, "JPY")}</tspan> : null}
+            <text textAnchor="end" x={left - gap} y={y(tick) - 2 * vk} style={{ fontSize: mainFontSize }}>
+              <tspan x={left - gap}>{currencyFiat(tick, "USD")}</tspan>
+              {referenceFx ? <tspan className="asset-chart-subtext" x={left - gap} dy={lineGap} style={{ fontSize: subFontSize }}>{currencyFiat(tick * referenceFx, "JPY")}</tspan> : null}
             </text>
           </g>
         ))}
@@ -316,7 +328,7 @@ function CurrencyBalanceChart({ points, symbol }: { points: CalculatedRow[]; sym
             <circle className="asset-chart-dot" cx={x(index)} cy={y(row.balanceUsd as number)} r={4} tabIndex={0}>
               <title>{`${row.date} / USD ${currencyFiat(row.balanceUsd, "USD")}${row.fx ? ` / JPY ${currencyFiat((row.balanceUsd ?? 0) * row.fx, "JPY")}` : ""} / ${symbol} ${currencyQuantity(row.balance, symbol, "balance")}`}</title>
             </circle>
-            <text textAnchor="middle" x={x(index)} y={height - 8} style={{ fontSize: mainFontSize }}>{index % step === 0 || index === data.length - 1 ? shortDate(row.date) : ""}</text>
+            <text textAnchor="middle" x={x(index)} y={height - 8 * vk} style={{ fontSize: mainFontSize }}>{index % step === 0 || index === data.length - 1 ? shortDate(row.date) : ""}</text>
           </g>
         ))}
       </svg>

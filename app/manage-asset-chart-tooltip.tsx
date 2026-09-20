@@ -10,8 +10,9 @@ type TooltipState = { left: number; top: number; lines: string[] };
 /** app-ui.js の attachChartTooltip 相当。pointermove で最も近いデータ点（x 距離）を
  *  探し、その画面座標にツールチップを浮かせる。SVG は viewBox でスケールされるため、
  *  getScreenCTM() でユーザー座標⇄画面座標を変換する。 */
-export function useChartHoverTooltip(points: ChartHoverPoint[]) {
-  const containerRef = useRef<HTMLDivElement>(null);
+export function useChartHoverTooltip(points: ChartHoverPoint[], externalRef?: RefObject<HTMLDivElement | null>) {
+  const ownRef = useRef<HTMLDivElement>(null);
+  const containerRef = externalRef ?? ownRef;
   const [tooltip, setTooltip] = useState<TooltipState | null>(null);
 
   function handlePointerMove(event: ReactPointerEvent<SVGSVGElement>) {
@@ -85,6 +86,22 @@ export function useSvgFontScale(containerRef: RefObject<HTMLDivElement | null>, 
   }, [containerRef, viewBoxWidth, renderKey]);
 
   return scale;
+}
+
+/** y 軸ラベルの左余白・ラベル〜プロット間の隙間・縦方向の倍率。ラベルは画面上で一定の
+ *  物理サイズ（useSvgFontScale）なので、コンテナが狭いほど user-space 上の幅・隙間が
+ *  膨らむ。固定の余白ではカード外へはみ出し、隙間も潰れる。また viewBox は縦横比固定で
+ *  縮むため、縦方向（グラフ高さ・上下余白）も潰れて2段ラベルが重なる。`vk` は縦方向の
+ *  user-space 寸法に掛ける倍率で、狭い画面では 1/scale（=PC と同じ画面 px の高さ）になる。
+ *  PC 相当の幅（scale が十分大きい）では従来値・vk=1 を返し、描画を変えない。 */
+const AXIS_WIDE_SCALE = 0.85;
+const AXIS_GAP_PX = 8;
+export function axisLayout(baseLeft: number, baseGap: number, scale: number, labels: { text: string; fontSize: number }[]) {
+  if (scale >= AXIS_WIDE_SCALE) return { left: baseLeft, gap: baseGap, vk: 1 };
+  const glyphWidth = (char: string) => (char === "," || char === "." ? 0.3 : 0.6);
+  const widest = Math.max(0, ...labels.map(({ text, fontSize }) => [...text].reduce((sum, char) => sum + glyphWidth(char), 0) * fontSize));
+  const gap = Math.max(baseGap, AXIS_GAP_PX / scale);
+  return { left: Math.max(baseLeft, Math.ceil(widest + gap)), gap, vk: 1 / scale };
 }
 
 export function ChartTooltip({ tooltip }: { tooltip: { left: number; top: number; lines: string[] } | null }) {
