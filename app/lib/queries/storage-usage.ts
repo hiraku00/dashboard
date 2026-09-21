@@ -16,7 +16,7 @@
  *  のと同じ安全性を、関数自身が保証する形に変えただけ。 */
 import { env } from "cloudflare:workers";
 import { ensureSchema } from "@/db";
-import { currentStorageBytes } from "@/app/lib/portal";
+import { STORAGE_BYTES_SQL, storageBytesFromRow } from "@/app/lib/portal";
 
 export type D1BackedUsage = {
   ok: boolean;
@@ -45,37 +45,27 @@ const emptyD1Records: Omit<D1BackedUsage, "ok" | "error"> = {
 export async function d1BackedUsage(month: string): Promise<D1BackedUsage> {
   try {
     await ensureSchema({ seed: false });
-    const usage = await currentStorageBytes();
-    const categories =
-      (
-        await env.DB.prepare(
-          "SELECT category, COUNT(*) AS count, COALESCE(SUM(size_bytes),0) AS bytes FROM storage_objects WHERE deleted_at IS NULL GROUP BY category ORDER BY bytes DESC",
-        ).all<Record<string, unknown>>()
-      ).results ?? [];
-    const latest =
-      (
-        await env.DB.prepare(
-          "SELECT * FROM storage_usage_daily ORDER BY usage_date DESC LIMIT 1",
-        ).all<Record<string, unknown>>()
-      ).results?.[0] ?? null;
-    const [watchList, manageAsset, textTube] = await Promise.all([
-      env.DB.prepare("SELECT COUNT(*) AS count FROM items WHERE deleted_at IS NULL").all<{ count: number }>(),
-      env.DB.prepare("SELECT COUNT(*) AS count FROM asset_snapshots").all<{ count: number }>(),
-      env.DB.prepare("SELECT COUNT(*) AS count FROM text_tube_videos WHERE deleted_at IS NULL").all<{ count: number }>(),
+    // One D1 round trip for all six reads. They never depended on each other --
+    // they were awaited one after another (and the three counts in a separate
+    // Promise.all), which cost a round trip each, ~100-300ms apiece from the
+    // Worker. A failure in any statement rejects the batch, so it still lands
+    // in the catch below and yields the same { ok: false } as before.
+    const [bytes, categories, latest, watchList, manageAsset, textTube, transcript] = await env.DB.batch<Record<string, unknown>>([
+      env.DB.prepare(STORAGE_BYTES_SQL),
+      env.DB.prepare("SELECT category, COUNT(*) AS count, COALESCE(SUM(size_bytes),0) AS bytes FROM storage_objects WHERE deleted_at IS NULL GROUP BY category ORDER BY bytes DESC"),
+      env.DB.prepare("SELECT * FROM storage_usage_daily ORDER BY usage_date DESC LIMIT 1"),
+      env.DB.prepare("SELECT COUNT(*) AS count FROM items WHERE deleted_at IS NULL"),
+      env.DB.prepare("SELECT COUNT(*) AS count FROM asset_snapshots"),
+      env.DB.prepare("SELECT COUNT(*) AS count FROM text_tube_videos WHERE deleted_at IS NULL"),
+      env.DB.prepare("SELECT COALESCE(SUM(credits),0) AS credits, COUNT(*) AS attempts, MAX(created_at) AS last_used_at FROM text_tube_api_usage WHERE provider='supadata' AND substr(created_at,1,7)=?").bind(month),
     ]);
-    const transcriptUsage = (
-      await env.DB.prepare(
-        "SELECT COALESCE(SUM(credits),0) AS credits, COUNT(*) AS attempts, MAX(created_at) AS last_used_at FROM text_tube_api_usage WHERE provider='supadata' AND substr(created_at,1,7)=?",
-      )
-        .bind(month)
-        .all<{ credits: number; attempts: number; last_used_at: string | null }>()
-    ).results?.[0] ?? { credits: 0, attempts: 0, last_used_at: null };
+    const transcriptUsage = (transcript.results?.[0] as { credits?: number; attempts?: number; last_used_at?: string | null } | undefined) ?? { credits: 0, attempts: 0, last_used_at: null };
     return {
       ok: true,
       error: null,
-      usage,
-      categories,
-      latest,
+      usage: storageBytesFromRow(bytes.results?.[0]),
+      categories: categories.results ?? [],
+      latest: latest.results?.[0] ?? null,
       databaseRecords: {
         watchList: Number(watchList.results?.[0]?.count ?? 0),
         manageAsset: Number(manageAsset.results?.[0]?.count ?? 0),
