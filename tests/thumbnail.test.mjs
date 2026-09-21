@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 
-import { isPublicHttpUrl, pageImageUrl, sameLinkSet, youTubeThumbnailFromLinks, youTubeThumbnailUrl } from "../app/lib/thumbnail.ts";
+import { isPublicHttpUrl, metaRefreshUrl, pageImageUrl, sameLinkSet, youTubeThumbnailFromLinks, youTubeThumbnailUrl } from "../app/lib/thumbnail.ts";
 import { toItem } from "../app/lib/watch-list-query.ts";
 
 // The pure half of the Watch List thumbnail feature. The fetching half (and
@@ -64,4 +64,17 @@ test("toItem exposes a YouTube link's derived thumbnail over the stored one, els
   expect(toItem({ id: "2", thumbnail_url: "https://cdn.example.org/og.png" }, [link("https://blog.example.org/a")]).thumbnailUrl).toBe("https://cdn.example.org/og.png");
   expect(toItem({ id: "3" }, [link("https://blog.example.org/a")]).thumbnailUrl).toBe("");
   expect(toItem({ id: "4", thumbnail_url: null }, []).thumbnailUrl).toBe("");
+});
+
+test("reads a meta refresh target (as t.co serves it), resolving relative URLs", () => {
+  const page = "https://t.co/abc";
+  expect(metaRefreshUrl('<head><noscript><META http-equiv="refresh" content="0;URL=https://news.web.nhk/newsweb/na/na-k1"></noscript></head>', page)).toBe("https://news.web.nhk/newsweb/na/na-k1");
+  expect(metaRefreshUrl("<meta http-equiv='Refresh' content=\"5; url='/next?a=1&amp;b=2'\">", "https://example.org/x/y")).toBe("https://example.org/next?a=1&b=2");
+  expect(metaRefreshUrl('<meta http-equiv="refresh" content="0;url=other.html">', "https://example.org/dir/page")).toBe("https://example.org/dir/other.html");
+});
+
+test("ignores a meta tag that is not a refresh, or has no target", () => {
+  expect(metaRefreshUrl('<meta http-equiv="content-type" content="text/html">', "https://example.org/")).toBe("");
+  expect(metaRefreshUrl('<meta http-equiv="refresh" content="30">', "https://example.org/")).toBe("");
+  expect(metaRefreshUrl("<html></html>", "https://example.org/")).toBe("");
 });

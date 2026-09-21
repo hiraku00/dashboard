@@ -12,9 +12,8 @@
 | `GET /api/items/:id`                   | 項目詳細                                                                                                                          |
 | `PATCH /api/items/:id`                 | 項目更新                                                                                                                          |
 | `DELETE /api/items/:id`                | 論理削除                                                                                                                          |
-| `POST /api/watch-list/thumbnails/backfill` | サムネイル未取得の項目を`id`順に4件ずつ処理し、リンク先の画像を保存する。`{ after }`に前回の`next`を渡して続きを処理し、`next`が`null`で終了。 |
 | `GET /api/stats`                       | 一覧用集計                                                                                                                        |
-| `POST /api/imports`                    | Watch Listデータのインポート                                                                                                      |
+| `POST /api/imports`                    | Watch Listデータのインポート（最大200件）。保存時にリンク先のサムネイルも取得する（先頭16件まで）。レスポンスの`thumbnails`に`looked` / `found` / `skipped`を返す。 |
 | `GET /api/exports`                     | バックアップ用エクスポート                                                                                                        |
 
 ## TextTube

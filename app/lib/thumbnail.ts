@@ -5,7 +5,7 @@
  *  A thumbnail comes from one of two places:
  *  - a YouTube link: the image URL is a fixed function of the video id, so it
  *    is derived every time an item is read and never stored (existing items
- *    get one with no backfill, and it can never go stale);
+ *    get one without any lookup, and it can never go stale);
  *  - any other link: the page's og:image, fetched once when the item is saved
  *    and stored in items.thumbnail_url.
  *  Imports use explicit .ts extensions for the same reason as
@@ -64,6 +64,24 @@ export function pageImageUrl(html: string, pageUrl: string) {
       if (url.protocol === "https:" && url.href.length <= 2000) return url.href;
     } catch {
       /* Try the next candidate. */
+    }
+  }
+  return "";
+}
+
+/** Where a page sends the browser with `<meta http-equiv="refresh"
+ *  content="0;URL=...">`, as an absolute URL, or "". t.co (the link shortener
+ *  used in tweets) answers a browser with exactly such a page -- and nothing
+ *  else -- so its target's preview image is only reachable by following it. */
+export function metaRefreshUrl(html: string, pageUrl: string) {
+  for (const tag of html.match(/<meta\b[^>]*>/gi) ?? []) {
+    if (attribute(tag, "http-equiv").toLowerCase() !== "refresh") continue;
+    const target = decodeHtml(attribute(tag, "content")).match(/^\s*\d*\s*;\s*url\s*=\s*['"]?([^'"\s]+)/i)?.[1];
+    if (!target) continue;
+    try {
+      return new URL(target, pageUrl).href;
+    } catch {
+      /* Not a URL. */
     }
   }
   return "";

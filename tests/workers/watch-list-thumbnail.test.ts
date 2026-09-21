@@ -3,7 +3,6 @@ import { beforeAll, describe, expect, test } from "vitest";
 import { ensureSchema } from "@/db";
 import { POST as itemsPost } from "@/app/api/items/route";
 import { PATCH as itemPatch } from "@/app/api/items/[id]/route";
-import { POST as backfillPost } from "@/app/api/watch-list/thumbnails/backfill/route";
 
 // Watch List thumbnails, end to end against a real D1 with the outbound
 // fetches mocked (see tests/workers/fixtures/outbound-mocks.ts). The pure
@@ -88,44 +87,5 @@ describe("thumbnail on PATCH", () => {
     const lost = await save("", { contentType: "text", title: "change", version: gained.version, links: [{ url: "https://noimage.example.org/a" }] }, item.id);
     expect(lost.thumbnailUrl).toBe("");
     expect(await storedThumbnail(item.id)).toBe("");
-  });
-});
-
-describe("POST /api/watch-list/thumbnails/backfill", () => {
-  async function runBackfill() {
-    let after = "";
-    let found = 0;
-    let processed = 0;
-    for (let i = 0; i < 50; i++) {
-      const response = await backfillPost(new Request("http://x/api/watch-list/thumbnails/backfill", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ after }) }));
-      expect(response.status).toBe(200);
-      const data = (await response.json()) as { processed: number; found: number; next: string | null };
-      found += data.found;
-      processed += data.processed;
-      if (!data.next) return { found, processed };
-      after = data.next;
-    }
-    throw new Error("backfill did not terminate");
-  }
-
-  test("fills items that have none, walking the whole list, and leaves ones without an image empty", async () => {
-    const withImage = await create("backfill me", ["https://blog.example.org/post"]);
-    const withoutImage = await create("no image here", ["https://noimage.example.org/a"]);
-    await env.DB.prepare("UPDATE items SET thumbnail_url = '' WHERE id = ?").bind(withImage.id).run();
-
-    const { found, processed } = await runBackfill();
-    expect(processed).toBeGreaterThan(4); // more than one batch, so the cursor was followed
-    expect(found).toBeGreaterThanOrEqual(1);
-    expect(await storedThumbnail(withImage.id)).toBe("https://blog.example.org/img/cover.png");
-    expect(await storedThumbnail(withoutImage.id)).toBe("");
-  });
-
-  test("does not overwrite a thumbnail that was set in the meantime", async () => {
-    const item = await create("race", ["https://blog.example.org/post"]);
-    const before = await storedThumbnail(item.id);
-    await env.DB.prepare("UPDATE items SET thumbnail_url = ? WHERE id = ?").bind("https://marker.example.org/set.png", item.id).run();
-    await runBackfill();
-    expect(before).toBe("https://blog.example.org/img/cover.png");
-    expect(await storedThumbnail(item.id)).toBe("https://marker.example.org/set.png");
   });
 });

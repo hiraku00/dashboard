@@ -3,6 +3,7 @@ import { ensureSchema } from "@/db";
 import { normalizeItem, type ItemInput } from "../items/route";
 import { canonicalUrl } from "@/app/lib/text";
 import { route } from "@/app/lib/route";
+import { resolveStoredThumbnail } from "@/app/lib/thumbnail-fetch";
 
 /** D1 rejects very large statement batches, and the rest of this codebase
  *  chunks at the same size (see db/index.ts and the Manage Asset history
@@ -12,6 +13,13 @@ const BATCH_SIZE = 50;
 /** Each pair binds two variables and SQLite allows 100 per statement, so stay
  *  well inside that. */
 const LOOKUP_PAIRS_PER_QUERY = 40;
+
+/** Items per request whose links are looked up for a preview image. Each lookup
+ *  makes up to two page fetches, and a Worker invocation has a small subrequest
+ *  budget (50 on the free plan) shared with the D1 calls, so a 200-item import
+ *  cannot look every item up. The daily TV-program import is ~14 items. Items
+ *  past the cap are saved without a thumbnail (reported in the response). */
+const MAX_THUMBNAIL_LOOKUPS = 16;
 
 /** Key for the "already imported" set. Both halves are free-form text, so a
  *  plain separator could be produced by two different pairs; JSON quoting
@@ -56,8 +64,10 @@ export const POST = route(async (request: Request) => {
     for (const row of results ?? []) known.add(importKey(row.source_system, row.external_id));
   }
 
-  const statements: D1PreparedStatement[] = [];
-  const inserted: number[] = [];
+  // First decide which items are really new, then look up their preview images
+  // together (in parallel, before any INSERT), then write each item with its
+  // thumbnail in the same statement.
+  const toInsert: Array<{ entry: Prepared; id: string; now: string }> = [];
   for (const entry of accepted) {
     const externalKey = entry.item.externalId ? importKey(entry.source, entry.item.externalId) : null;
     // `known` covers rows already in the table and ones an earlier item in
@@ -66,14 +76,23 @@ export const POST = route(async (request: Request) => {
     // on the unique index rather than skipping the duplicate.
     if (externalKey && known.has(externalKey)) { messages.push({ index: entry.index, error: "同じ外部IDのためスキップしました。" }); continue; }
     if (externalKey) known.add(externalKey);
-    const item = entry.item; const id = crypto.randomUUID(); const now = new Date().toISOString();
-    statements.push(env.DB.prepare("INSERT INTO items (id,content_type,creator_name,series_title,title,description,priority,status,added_on,watched_on,comment,source_system,external_id,raw_source,version,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?)").bind(id,item.contentType,item.creatorName ?? "",item.seriesTitle ?? "",item.title,item.description ?? "",item.priority,item.status ?? "backlog",item.addedOn,item.watchedOn,item.comment ?? "",entry.source,item.externalId,item.rawSource,now,now));
+    toInsert.push({ entry, id: crypto.randomUUID(), now: new Date().toISOString() });
+  }
+  const thumbnails = await Promise.all(toInsert.map(({ entry }, position) => position < MAX_THUMBNAIL_LOOKUPS
+    ? resolveStoredThumbnail((entry.item.links ?? []).map((link) => link.url))
+    : Promise.resolve("")));
+
+  const statements: D1PreparedStatement[] = [];
+  const inserted: number[] = [];
+  for (const [position, { entry, id, now }] of toInsert.entries()) {
+    const item = entry.item;
+    statements.push(env.DB.prepare("INSERT INTO items (id,content_type,creator_name,series_title,title,description,priority,status,added_on,watched_on,comment,source_system,external_id,raw_source,thumbnail_url,version,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?)").bind(id,item.contentType,item.creatorName ?? "",item.seriesTitle ?? "",item.title,item.description ?? "",item.priority,item.status ?? "backlog",item.addedOn,item.watchedOn,item.comment ?? "",entry.source,item.externalId,item.rawSource,thumbnails[position],now,now));
     // Same canonicalUrl() the /api/items POST path uses (strips the fragment
     // and utm_*/fbclid params), so an imported link and one entered manually
     // dedupe against item_links_canonical_idx the same way -- that index is
     // UNIQUE per (item_id, canonical_url), not global (see Issue #76), so
     // this only matters for links landing on the same item.
-    for (const [position, link] of (item.links ?? []).entries()) { statements.push(env.DB.prepare("INSERT INTO item_links (id,item_id,label,url,link_type,position,canonical_url) VALUES (?,?,?,?,?,?,?)").bind(crypto.randomUUID(),id,link.label ?? "",link.url,link.linkType ?? "reference",position,canonicalUrl(link.url))); }
+    for (const [linkPosition, link] of (item.links ?? []).entries()) { statements.push(env.DB.prepare("INSERT INTO item_links (id,item_id,label,url,link_type,position,canonical_url) VALUES (?,?,?,?,?,?,?)").bind(crypto.randomUUID(),id,link.label ?? "",link.url,link.linkType ?? "reference",linkPosition,canonicalUrl(link.url))); }
     inserted.push(entry.index);
   }
 
@@ -108,5 +127,7 @@ export const POST = route(async (request: Request) => {
   }
 
   await env.DB.prepare("INSERT INTO import_runs (id,source_name,total_count,created_count,updated_count,error_count) VALUES (?,?,?,?,?,?)").bind(runId,sourceName,body.items.length,created,0,errors).run();
-  return Response.json({ runId, total: body.items.length, created, errors, messages }, { status: errors ? 207 : 201 });
+  const looked = Math.min(toInsert.length, MAX_THUMBNAIL_LOOKUPS);
+  const thumbnailSummary = { looked, found: thumbnails.filter(Boolean).length, skipped: toInsert.length - looked };
+  return Response.json({ runId, total: body.items.length, created, errors, messages, thumbnails: thumbnailSummary }, { status: errors ? 207 : 201 });
 });

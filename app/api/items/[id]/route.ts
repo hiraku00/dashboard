@@ -44,8 +44,8 @@ export const PATCH = route(async (request: Request, { params }: { params: Promis
   const now = new Date().toISOString();
   // The stored thumbnail is derived from the links, so it is looked up again
   // only when the links themselves changed -- not on every save (a status
-  // change PATCHes the whole item). Items whose thumbnail could not be found
-  // are retried by /api/watch-list/thumbnails/backfill instead of on each edit.
+  // change PATCHes the whole item). An item whose page had no image is not
+  // retried on each edit either; changing its links looks it up again.
   const [previousItem, previousLinks] = await env.DB.batch<{ thumbnail_url?: string; canonical_url?: string }>([
     env.DB.prepare("SELECT thumbnail_url FROM items WHERE id = ? AND deleted_at IS NULL").bind(id),
     env.DB.prepare("SELECT canonical_url FROM item_links WHERE item_id = ? ORDER BY position ASC").bind(id),

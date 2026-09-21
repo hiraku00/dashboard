@@ -6,7 +6,7 @@
  *  Everything here is best effort: any failure -- timeout, non-HTML, a
  *  redirect to a refused host, no image tag -- resolves to "" rather than
  *  throwing, because a missing thumbnail must never fail saving an item. */
-import { isPublicHttpUrl, pageImageUrl, youTubeThumbnailFromLinks } from "./thumbnail.ts";
+import { isPublicHttpUrl, metaRefreshUrl, pageImageUrl, youTubeThumbnailFromLinks } from "./thumbnail.ts";
 
 /** One deadline for the whole lookup, redirects included. */
 const TIMEOUT_MS = 4000;
@@ -53,7 +53,14 @@ async function lookup(url: string, signal: AbortSignal): Promise<string> {
       }
       if (!response.ok) return "";
       if (!(response.headers.get("content-type") ?? "text/html").toLowerCase().includes("html")) return "";
-      return pageImageUrl(await readHead(response), current);
+      const head = await readHead(response);
+      const image = pageImageUrl(head, current);
+      if (image) return image;
+      // A page with no image that only redirects (t.co): follow it, within the
+      // same hop budget and the same public-host check as an HTTP redirect.
+      const next = metaRefreshUrl(head, current);
+      if (!next) return "";
+      current = next;
     }
   } catch {
     /* Best effort. */
