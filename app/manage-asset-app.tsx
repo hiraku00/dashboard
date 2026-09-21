@@ -120,7 +120,7 @@ export function ManageAssetApp({
         <LocationsView state={state} today={today} />
       </div>
       <div hidden={view !== "currency"}>
-        <CurrencyView state={state} history={history} lidoRewards={lidoRewards} usdJpyRates={usdJpyRates} today={today} ensureHistory={ensureHistory} />
+        <CurrencyView state={state} history={history} historyDays={historyDays} lidoRewards={lidoRewards} usdJpyRates={usdJpyRates} today={today} ensureHistory={ensureHistory} />
       </div>
       <div hidden={view !== "update"}>
         <SyncView latestRun={latestSyncRun} today={today} />

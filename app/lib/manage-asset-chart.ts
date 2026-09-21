@@ -28,3 +28,27 @@ export function samplePoints<T>(points: T[], period: Period): T[] {
 export function neededDays(period: Period): number {
   return period === "all" ? Infinity : Number(period);
 }
+
+/** Whether the history in hand stops short of the date stETH's two sources are
+ *  joined on, so its chart would be wrong.
+ *
+ *  stETH's history is the Lido CSV (which ends on a fixed day) continued by
+ *  snapshots from the migration boundary date on. A period window that starts
+ *  AFTER that date drops the days in between, and the first snapshot row then
+ *  carries the whole gap as one day's reward -- a spike that grows a little every
+ *  day the window slides further past the boundary. So stETH needs the full
+ *  history, but only when the window really is short of it: while the data still
+ *  starts on or before the boundary, nothing more is needed.
+ *
+ *  `historyDays` is the window that was fetched (Infinity for the full history,
+ *  which can never be short of it). Dates are compared as YYYY-MM-DD strings. */
+export function historyMissesCutover(
+  history: { snapshots: Array<Record<string, unknown>>; exchange_snapshots: Array<Record<string, unknown>> } | null,
+  historyDays: number,
+  cutoverDate: string,
+): boolean {
+  if (!history || historyDays === Infinity) return false;
+  const dates = [...history.snapshots, ...history.exchange_snapshots].map((row) => String(row.as_of_date ?? "").slice(0, 10)).filter(Boolean);
+  if (!dates.length) return false;
+  return dates.reduce((oldest, date) => (date < oldest ? date : oldest)) > cutoverDate;
+}

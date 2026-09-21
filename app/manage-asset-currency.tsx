@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   allPositions,
   currencyHistory,
@@ -17,7 +17,7 @@ import {
   shortDate,
   signedCurrencyFiat,
 } from "@/app/lib/manage-asset-format";
-import { periodRows, periods, samplePoints, type Period } from "@/app/lib/manage-asset-chart";
+import { historyMissesCutover, periodRows, periods, samplePoints, type Period } from "@/app/lib/manage-asset-chart";
 import { ChartTooltip, axisLayout, useChartHoverTooltip, useSvgFontScale, type ChartHoverPoint } from "@/app/manage-asset-chart-tooltip";
 import type { AssetHistoryData, AssetStateData } from "./manage-asset-overview";
 
@@ -54,6 +54,7 @@ function withBalanceChanges(rows: CurrencyRow[]): CalculatedRow[] {
 export function CurrencyView({
   state,
   history,
+  historyDays,
   lidoRewards,
   usdJpyRates,
   today,
@@ -61,6 +62,8 @@ export function CurrencyView({
 }: {
   state: AssetStateData | null;
   history: AssetHistoryData | null;
+  /** The window `history` was fetched for (Infinity = everything). */
+  historyDays: number;
   lidoRewards: AssetRow[] | null;
   usdJpyRates: AssetRow[] | null;
   today: string;
@@ -78,6 +81,22 @@ export function CurrencyView({
   }, [state]);
   const selected = symbolOverride && symbols.includes(symbolOverride) ? symbolOverride : symbols.includes("stETH") ? "stETH" : (symbols[0] ?? "");
   const isSteth = selected.toLowerCase() === "steth";
+
+  // stETH joins the Lido CSV to the snapshots at STETH_CUTOVER_DATE, so a history
+  // window that starts after it would leave a gap the chart shows as one huge
+  // "reward" (see historyMissesCutover). Fetch the full history first, and show
+  // nothing until it is in rather than the wrong chart. If the fetch fails
+  // (ensureHistory keeps the old history and resolves), draw what we have --
+  // as before -- instead of waiting forever.
+  const needsFullHistory = isSteth && historyMissesCutover(history, historyDays, STETH_CUTOVER_DATE);
+  const [fullHistoryTried, setFullHistoryTried] = useState(false);
+  const fullHistoryRequested = useRef(false);
+  useEffect(() => {
+    if (!needsFullHistory || fullHistoryRequested.current) return;
+    fullHistoryRequested.current = true;
+    void ensureHistory("all").finally(() => setFullHistoryTried(true));
+  }, [needsFullHistory, ensureHistory]);
+  const loadingFullHistory = needsFullHistory && !fullHistoryTried;
 
   async function selectPeriod(next: Period) {
     setPeriod(next);
@@ -158,7 +177,9 @@ export function CurrencyView({
         </div>
       </section>
 
-      {!view ? (
+      {loadingFullHistory ? (
+        <div className="asset-panel" role="status"><p className="muted-copy">stETHの履歴を読み込み中…</p></div>
+      ) : !view ? (
         <div className="asset-panel"><p className="muted-copy">表示できる通貨がありません。</p></div>
       ) : (
         <>
