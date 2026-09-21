@@ -3,12 +3,13 @@ import { beforeAll, describe, expect, test, vi } from "vitest";
 import { ensureSchema } from "@/db";
 import { portalSummary } from "@/app/lib/queries/portal";
 import { assetState } from "@/app/lib/queries/manage-asset";
+import { latestFx, total as manageAssetTotal } from "@/app/lib/manage-asset-core";
 
 // portalSummary() feeds the home page and /api/portal/summary. The first block
-// pins what it returns today (counts, per-source latest snapshot, the stored-
-// total-vs-positions fallback) so the query can be rewritten to read fewer rows
-// without changing a number on screen. The second block covers the one place
-// the rewrite intentionally lines the home page up with Manage Asset.
+// pins what it returns (counts, per-source latest snapshot). The asset totals use
+// Manage Asset's own definition -- see app/lib/portal-summary.ts -- and the last
+// blocks check that directly: the home page must show the same numbers as the
+// Manage Asset overview computed from the same data.
 
 const T0 = "2026-01-01T00:00:00.000Z";
 
@@ -16,8 +17,8 @@ async function run(sql: string, ...binds: unknown[]) {
   await env.DB.prepare(sql).bind(...binds).run();
 }
 
-async function snapshot(id: string, sourceId: string, asOf: string, capturedAt: string, usd: number, jpy: number, positions: Array<[number, number]> = []) {
-  await run("INSERT INTO asset_snapshots (id, run_id, source_id, captured_at, as_of_date, total_usd, total_jpy) VALUES (?, 'run-1', ?, ?, ?, ?, ?)", id, sourceId, capturedAt, asOf, usd, jpy);
+async function snapshot(id: string, sourceId: string, asOf: string, capturedAt: string, usd: number, jpy: number, positions: Array<[number, number]> = [], fx: number | null = null) {
+  await run("INSERT INTO asset_snapshots (id, run_id, source_id, captured_at, as_of_date, total_usd, total_jpy, fx_usdjpy) VALUES (?, 'run-1', ?, ?, ?, ?, ?, ?)", id, sourceId, capturedAt, asOf, usd, jpy, fx);
   for (const [i, [pUsd, pJpy]] of positions.entries()) {
     await run("INSERT INTO asset_positions (id, snapshot_id, symbol, value_usd, value_jpy) VALUES (?, ?, 'X', ?, ?)", `${id}-p${i}`, id, pUsd, pJpy);
   }
@@ -49,17 +50,18 @@ beforeAll(async () => {
   for (const [id, enabled] of [["A", 1], ["B", 1], ["C", 1], ["D", 0]] as const) {
     await run("INSERT INTO asset_sources (id, source_type, provider, display_name, enabled, created_at) VALUES (?, 'wallet', 'p', ?, ?, ?)", id, id, enabled, T0);
   }
-  // A: newest date wins (200), the older 100 is ignored.
-  await snapshot("A-old", "A", "2026-09-01", "2026-09-01T02:00:00Z", 100, 15000);
-  await snapshot("A-new", "A", "2026-09-10", "2026-09-10T02:00:00Z", 200, 30000);
-  // B: newest snapshot has stored totals of 0, so its positions (30+20 USD, 4500+3000 JPY) stand in;
-  // an older snapshot with a big total must not be used.
+  // A: newest date wins (200), the older 100 is ignored. Its rate (150) is the newest of all snapshots.
+  await snapshot("A-old", "A", "2026-09-01", "2026-09-01T02:00:00Z", 100, 15000, [], 140);
+  await snapshot("A-new", "A", "2026-09-10", "2026-09-10T02:00:00Z", 200, 30000, [], 150);
+  // B: the newest snapshot's stored totals are 0 (DeBank rounds a tiny wallet to $0). Its positions (30+20 USD)
+  // are NOT added in: the stored total is the declared total, as in Manage Asset. An older snapshot with a big
+  // total must not be used either.
   await snapshot("B-old", "B", "2026-09-02", "2026-09-02T02:00:00Z", 999, 999);
   await snapshot("B-new", "B", "2026-09-05", "2026-09-05T02:00:00Z", 0, 0, [[30, 4500], [20, 3000]]);
-  // C: stored USD wins, stored JPY is 0 so JPY alone falls back to positions.
-  await snapshot("C-new", "C", "2026-09-06", "2026-09-06T02:00:00Z", 10, 0, [[999, 1500]]);
+  // C and D carry rates too (151, 152) but were captured earlier than A's, so they do not set the rate.
+  await snapshot("C-new", "C", "2026-09-06", "2026-09-06T02:00:00Z", 10, 0, [[999, 1500]], 151);
   // D is disabled but its snapshot still counts today (the query never filtered on enabled).
-  await snapshot("D-new", "D", "2026-09-07", "2026-09-07T02:00:00Z", 5, 750);
+  await snapshot("D-new", "D", "2026-09-07", "2026-09-07T02:00:00Z", 5, 750, [], 152);
 });
 
 describe("portalSummary (behaviour that must not change)", () => {
@@ -72,12 +74,12 @@ describe("portalSummary (behaviour that must not change)", () => {
     expect(summary.todo).toEqual({ total: 3, completed: 1 });
   });
 
-  test("asset totals use each source's newest snapshot, with per-currency fallback to its positions", async () => {
+  test("asset totals: each source's newest stored total, JPY at the newest snapshot's single rate", async () => {
     const { assets } = await portalSummary();
-    // USD: A 200 + B (0 -> 30+20) + C 10 + D 5
-    expect(assets.totalUsd).toBe(265);
-    // JPY: A 30000 + B (0 -> 4500+3000) + C (0 -> 1500) + D 750
-    expect(assets.totalJpy).toBe(39750);
+    // USD: A 200 + B 0 (positions ignored) + C 10 + D 5
+    expect(assets.totalUsd).toBe(215);
+    // JPY: 215 x 150, the rate of the newest snapshot (A). Summing each snapshot's own JPY would give 30750.
+    expect(assets.totalJpy).toBe(215 * 150);
   });
 
   test("latestAt is the newest capture across all snapshots", async () => {
@@ -107,11 +109,25 @@ describe("portalSummary and Manage Asset pick the same snapshot", () => {
     await snapshot("E-newer-date", "E", "2026-09-08", "2026-09-08T02:00:00Z", 700, 70000);
     const after = await portalSummary();
     expect(after.assets.totalUsd - before.assets.totalUsd).toBe(700);
-    expect(after.assets.totalJpy - before.assets.totalJpy).toBe(70000);
+    expect(after.assets.totalJpy - before.assets.totalJpy).toBe(700 * 150); // E carries no rate, so 150 stays the newest
 
     const state = await assetState();
     const e = state.snapshots.find((row) => (row as { wallet_id?: unknown }).wallet_id === "E") as Record<string, unknown> | undefined;
     expect(e).toBeTruthy();
     expect(JSON.stringify(e)).toContain("2026-09-08");
+  });
+});
+
+describe("the home page shows Manage Asset's numbers", () => {
+  test("total USD and JPY equal what the Manage Asset overview computes from the same snapshots", async () => {
+    const summary = await portalSummary();
+    const state = await assetState();
+    const usd = manageAssetTotal(state.snapshots as never[], state.exchange_snapshots as never[]);
+    const fx = latestFx(state.snapshots as never[], state.exchange_snapshots as never[]);
+    expect(usd).toBeGreaterThan(0);
+    expect(fx).not.toBeNull();
+    // Exactly what manage-asset-overview.tsx renders: total, and total * rate as the JPY line.
+    expect(summary.assets.totalUsd).toBe(usd);
+    expect(summary.assets.totalJpy).toBe(usd * fx!.rate);
   });
 });
