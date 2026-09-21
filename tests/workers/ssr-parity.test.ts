@@ -299,7 +299,13 @@ describe("Storage usage page", () => {
   // actually a Suspense boundary and not just a `{await ...}` inline.
   test("GET /settings/storage's Analytics panel is wrapped in a real Suspense boundary, not a blocking await", async () => {
     const html = await SELF.fetch(`${BASE}/settings/storage`).then((response) => response.text());
-    expect(html).toMatch(/<!--\$--><section class="settings-panel usage-panel d1-usage-panel"/);
+    // Whether the boundary has already resolved when the shell is flushed
+    // (`<!--$-->`) or is still pending, showing its skeleton until a later script
+    // swaps the content in (`<!--$?--><template id="B:0"></template>`), depends
+    // on timing -- the nav being a client component moved it from the first to
+    // the second here. Both are the boundary doing its job; what this must catch
+    // is no boundary at all, i.e. a blocking await.
+    expect(html).toMatch(/<!--\$\??--><(?:template id="B:\d+"><\/template>)?<section class="settings-panel usage-panel d1-usage-panel"/);
     expect(html).toContain(`<!--/$-->`);
   });
 
