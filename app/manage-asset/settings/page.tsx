@@ -8,6 +8,7 @@ export default async function ManageAssetSettingsPage() {
       initialView="settings"
       initialState={initial?.state ?? null}
       initialHistory={initial?.history ?? null}
+      initialHistoryDetail={initial?.historyDetail ?? false}
       initialLidoRewards={initial?.lidoRewards ?? null}
       initialUsdJpyRates={initial?.usdJpyRates ?? null}
       initialLatestSyncRun={initial?.latestSyncRun ?? null}

@@ -1,12 +1,15 @@
-import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeAll, expect, test, vi } from "vitest";
 import { CurrencyView } from "@/app/manage-asset-currency";
 
-// stETH's chart must not be drawn from a history window that starts after the
-// boundary date its two data sources are joined on (it would show one day's
-// "reward" as the whole gap). The view fetches the full history first, shows a
-// loading line meanwhile, and falls back to what it has if that fails. When the
-// history already reaches the boundary it must NOT fetch anything extra.
+// The currency view reads what the other views do not: the history with every
+// token and position, the Lido rewards, the FX rates. It asks for them the first
+// time it is on screen (`active`), draws nothing until they are in, and for stETH
+// -- whose chart joins the Lido CSV to the snapshots at a boundary date -- asks for
+// the full history when the window in hand stops short of it, in ONE request.
+// Failure: with no full rows there is nothing to draw, so it says so and offers a
+// retry; with full rows that are merely short of the stETH boundary it draws what
+// it has rather than wait.
 
 beforeAll(() => {
   globalThis.ResizeObserver ??= class { observe() {} unobserve() {} disconnect() {} };
@@ -19,46 +22,95 @@ const rewards = [{ date: "2026-07-13", type: "reward", change: 0.001, change_USD
 const shortHistory = { snapshots: [wallet("2026-08-20", 120.1), wallet("2026-09-21", 120.2)], exchange_snapshots: [] } as never;
 const fullHistory = { snapshots: [wallet("2026-07-11", 119.9), wallet("2026-09-21", 120.2)], exchange_snapshots: [] } as never;
 
-const props = (over: Record<string, unknown>) => ({ state, history: shortHistory, historyDays: 90, lidoRewards: rewards, usdJpyRates: [], today: "2026-09-21", ensureHistory: vi.fn(async () => {}), ...over }) as Parameters<typeof CurrencyView>[0];
-
-test("a history window that stops short of the boundary: fetches the full history and shows a loading line, not a chart", async () => {
-  let resolve!: () => void;
-  const ensureHistory = vi.fn(() => new Promise<void>((r) => { resolve = r; }));
-  render(<CurrencyView {...props({ ensureHistory })} />);
-  await waitFor(() => expect(ensureHistory).toHaveBeenCalledTimes(1));
-  expect(ensureHistory).toHaveBeenCalledWith("all");
-  expect(screen.getByRole("status").textContent).toContain("読み込み中");
-  expect(screen.queryByText("現在残高")).toBeNull(); // no chart / cards from the incomplete history
-  await act(async () => { resolve(); });
+type Props = Parameters<typeof CurrencyView>[0];
+const props = (over: Partial<Props>): Props => ({
+  state, history: fullHistory, historyDays: 90, historyDetail: true, active: true, lidoRewards: rewards, usdJpyRates: [] as never, today: "2026-09-21",
+  ensureHistory: vi.fn(async () => true), ensureCurrencyData: vi.fn(async () => {}), ...over,
 });
 
-test("once the full history arrives the chart is drawn, and nothing is fetched again", async () => {
-  const ensureHistory = vi.fn(async () => {});
-  const view = render(<CurrencyView {...props({ ensureHistory })} />);
-  await waitFor(() => expect(ensureHistory).toHaveBeenCalledTimes(1));
-  view.rerender(<CurrencyView {...props({ ensureHistory, history: fullHistory, historyDays: Infinity })} />);
+test("not on screen: loads nothing (every view stays mounted, this one is usually hidden)", async () => {
+  const p = props({ active: false, historyDetail: false, lidoRewards: null, usdJpyRates: null });
+  render(<CurrencyView {...p} />);
+  await act(async () => {});
+  expect(p.ensureHistory).not.toHaveBeenCalled();
+  expect(p.ensureCurrencyData).not.toHaveBeenCalled();
+});
+
+test("on screen without its data: asks for the full rows and the extras, and shows a loading line, not a chart", async () => {
+  const p = props({ historyDetail: false, lidoRewards: null, usdJpyRates: null, history: fullHistory });
+  render(<CurrencyView {...p} />);
+  await waitFor(() => expect(p.ensureHistory).toHaveBeenCalledTimes(1));
+  expect(p.ensureHistory).toHaveBeenCalledWith("7", true); // the view's own period; the window in hand already covers it
+  expect(p.ensureCurrencyData).toHaveBeenCalledTimes(1);
+  expect(screen.getByRole("status").textContent).toContain("読み込み中");
+  expect(screen.queryByText("現在残高")).toBeNull();
+});
+
+test("once everything is in, the chart is drawn and nothing is asked for again", async () => {
+  const p = props({ historyDetail: false, lidoRewards: null, usdJpyRates: null });
+  const view = render(<CurrencyView {...p} />);
+  await waitFor(() => expect(p.ensureHistory).toHaveBeenCalledTimes(1));
+  view.rerender(<CurrencyView {...p} historyDetail lidoRewards={rewards} usdJpyRates={[] as never} />);
   await waitFor(() => expect(screen.getByText("現在残高")).toBeTruthy());
   expect(screen.queryByRole("status")).toBeNull();
-  expect(ensureHistory).toHaveBeenCalledTimes(1);
+  expect(p.ensureHistory).toHaveBeenCalledTimes(1);
+  expect(p.ensureCurrencyData).toHaveBeenCalledTimes(1);
 });
 
-test("if the fetch fails (history unchanged), it draws what it has instead of waiting forever", async () => {
-  const ensureHistory = vi.fn(async () => {}); // ensureHistory swallows errors and keeps the old history
-  render(<CurrencyView {...props({ ensureHistory })} />);
+test("data already held (opened as the first view): draws at once; the ensure calls are no-ops it can make freely", async () => {
+  const p = props({});
+  render(<CurrencyView {...p} />);
   await waitFor(() => expect(screen.getByText("現在残高")).toBeTruthy());
-  expect(ensureHistory).toHaveBeenCalledTimes(1); // asked once, not in a loop
+  expect(screen.queryByRole("status")).toBeNull();
 });
 
-test("a history that already reaches the boundary fetches nothing extra", async () => {
-  const ensureHistory = vi.fn(async () => {});
-  render(<CurrencyView {...props({ ensureHistory, history: fullHistory, historyDays: 90 })} />);
-  await waitFor(() => expect(screen.getByText("現在残高")).toBeTruthy());
-  expect(ensureHistory).not.toHaveBeenCalled();
+test("stETH with a window that stops short of the boundary: asks for the full history in one request, loading meanwhile", async () => {
+  let resolve!: (ok: boolean) => void;
+  const p = props({ history: shortHistory, ensureHistory: vi.fn(() => new Promise<boolean>((r) => { resolve = r; })) });
+  render(<CurrencyView {...p} />);
+  await waitFor(() => expect(p.ensureHistory).toHaveBeenCalledTimes(1));
+  expect(p.ensureHistory).toHaveBeenCalledWith("all", true);
+  expect(screen.getByRole("status")).toBeTruthy();
+  expect(screen.queryByText("現在残高")).toBeNull(); // no chart from the incomplete history
+  await act(async () => { resolve(true); });
 });
 
-test("the full history (Infinity) never triggers a fetch, even if it starts late", async () => {
-  const ensureHistory = vi.fn(async () => {});
-  render(<CurrencyView {...props({ ensureHistory, history: shortHistory, historyDays: Infinity })} />);
+test("stETH: once the full history arrives the chart is drawn, with no second request", async () => {
+  const p = props({ history: shortHistory });
+  const view = render(<CurrencyView {...p} />);
+  await waitFor(() => expect(p.ensureHistory).toHaveBeenCalledWith("all", true));
+  view.rerender(<CurrencyView {...p} history={fullHistory} historyDays={Infinity} />);
   await waitFor(() => expect(screen.getByText("現在残高")).toBeTruthy());
-  expect(ensureHistory).not.toHaveBeenCalled();
+  expect(p.ensureHistory).toHaveBeenCalledTimes(1);
+});
+
+test("stETH short of the boundary and the fetch fails: draws what it has instead of waiting forever", async () => {
+  const p = props({ history: shortHistory, ensureHistory: vi.fn(async () => false) });
+  render(<CurrencyView {...p} />);
+  await waitFor(() => expect(screen.getByText("現在残高")).toBeTruthy());
+  expect(p.ensureHistory).toHaveBeenCalledTimes(1); // asked once, not in a loop
+});
+
+test("no full rows and the fetch fails: says so, and a retry asks again", async () => {
+  const ensureHistory = vi.fn<Props["ensureHistory"]>().mockResolvedValueOnce(false).mockResolvedValue(true);
+  const p = props({ historyDetail: false, lidoRewards: null, usdJpyRates: null, ensureHistory });
+  render(<CurrencyView {...p} />);
+  await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("読み込めませんでした"));
+  fireEvent.click(screen.getByRole("button", { name: "再試行" }));
+  await waitFor(() => expect(ensureHistory).toHaveBeenCalledTimes(2));
+  expect(screen.queryByRole("alert")).toBeNull();
+});
+
+test("a history that already reaches the boundary needs no extra request", async () => {
+  const p = props({ history: fullHistory, historyDays: 90 });
+  render(<CurrencyView {...p} />);
+  await waitFor(() => expect(screen.getByText("現在残高")).toBeTruthy());
+  expect(p.ensureHistory).toHaveBeenCalledWith("7", true); // the ordinary period, not "all"
+});
+
+test("the full history (Infinity) never asks for more, even if it starts late", async () => {
+  const p = props({ history: shortHistory, historyDays: Infinity });
+  render(<CurrencyView {...p} />);
+  await waitFor(() => expect(screen.getByText("現在残高")).toBeTruthy());
+  expect(p.ensureHistory).toHaveBeenCalledWith("7", true);
 });

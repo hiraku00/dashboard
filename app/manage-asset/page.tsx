@@ -13,6 +13,7 @@ export default async function ManageAssetPage() {
       initialView="overview"
       initialState={initial?.state ?? null}
       initialHistory={initial?.history ?? null}
+      initialHistoryDetail={initial?.historyDetail ?? false}
       initialLidoRewards={initial?.lidoRewards ?? null}
       initialUsdJpyRates={initial?.usdJpyRates ?? null}
       initialLatestSyncRun={initial?.latestSyncRun ?? null}

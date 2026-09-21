@@ -55,19 +55,28 @@ export function CurrencyView({
   state,
   history,
   historyDays,
+  historyDetail,
+  active,
   lidoRewards,
   usdJpyRates,
   today,
   ensureHistory,
+  ensureCurrencyData,
 }: {
   state: AssetStateData | null;
   history: AssetHistoryData | null;
   /** The window `history` was fetched for (Infinity = everything). */
   historyDays: number;
+  /** Whether `history` holds full rows. Until this view is opened it is only the overview's summary form. */
+  historyDetail: boolean;
+  /** Whether this view is the one on screen. Every view stays mounted, so this is what tells it to start loading. */
+  active: boolean;
   lidoRewards: AssetRow[] | null;
   usdJpyRates: AssetRow[] | null;
   today: string;
-  ensureHistory: (period: Period) => Promise<void>;
+  /** Resolves true when the history asked for (full rows when `detail`) is held. */
+  ensureHistory: (period: Period, detail?: boolean) => Promise<boolean>;
+  ensureCurrencyData: () => Promise<void>;
 }) {
   const [symbolOverride, setSymbolOverride] = useState<string | null>(null);
   const [mode, setMode] = useState<"change" | "balance">("change");
@@ -82,30 +91,48 @@ export function CurrencyView({
   const selected = symbolOverride && symbols.includes(symbolOverride) ? symbolOverride : symbols.includes("stETH") ? "stETH" : (symbols[0] ?? "");
   const isSteth = selected.toLowerCase() === "steth";
 
-  // stETH joins the Lido CSV to the snapshots at STETH_CUTOVER_DATE, so a history
-  // window that starts after it would leave a gap the chart shows as one huge
-  // "reward" (see historyMissesCutover). Fetch the full history first, and show
-  // nothing until it is in rather than the wrong chart. If the fetch fails
-  // (ensureHistory keeps the old history and resolves), draw what we have --
-  // as before -- instead of waiting forever.
-  const needsFullHistory = isSteth && historyMissesCutover(history, historyDays, STETH_CUTOVER_DATE);
-  const [fullHistoryTried, setFullHistoryTried] = useState(false);
-  const fullHistoryRequested = useRef(false);
+  // This view reads things the others do not: the history with every token and
+  // position, the Lido rewards and the FX rates. None of that is loaded with the
+  // page (the overview needs a fraction of it); it is fetched the first time this
+  // view is shown, then kept, so coming back to the tab costs nothing.
+  //
+  // stETH also joins the Lido CSV to the snapshots at STETH_CUTOVER_DATE, so a
+  // history window that starts after it would leave a gap the chart shows as one
+  // huge "reward" (see historyMissesCutover). For stETH the full history is asked
+  // for straight away -- one request, not a window and then the rest -- and only
+  // when the window in hand really is short of the boundary.
+  const missesCutover = isSteth && historyMissesCutover(history, historyDays, STETH_CUTOVER_DATE);
+  // Once the full history has been asked for it stays asked for: dropping back to the chosen period
+  // when it arrives would re-run the effect below for nothing.
+  const [wantsFullHistory, setWantsFullHistory] = useState(false);
+  if (missesCutover && !wantsFullHistory) setWantsFullHistory(true);
+  const wantedPeriod: Period = wantsFullHistory ? "all" : period;
+  const dataReady = historyDetail && lidoRewards !== null && usdJpyRates !== null;
+  const [failedAttempt, setFailedAttempt] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
+  const attemptKey = `${wantedPeriod}:${attempt}`;
   useEffect(() => {
-    if (!needsFullHistory || fullHistoryRequested.current) return;
-    fullHistoryRequested.current = true;
-    void ensureHistory("all").finally(() => setFullHistoryTried(true));
-  }, [needsFullHistory, ensureHistory]);
-  const loadingFullHistory = needsFullHistory && !fullHistoryTried;
+    if (!active) return;
+    let cancelled = false;
+    void Promise.all([ensureHistory(wantedPeriod, true), ensureCurrencyData()]).then(([loaded]) => {
+      if (!cancelled && !loaded) setFailedAttempt(attemptKey);
+    });
+    return () => { cancelled = true; };
+  }, [active, wantedPeriod, attemptKey, ensureHistory, ensureCurrencyData]);
+  const loadFailed = failedAttempt === attemptKey;
+  // Without the full rows there is nothing to draw, so a failure is an error with a way to retry. With
+  // them but short of the stETH boundary, a failure draws what we have (as before) rather than waiting.
+  const loading = !loadFailed && (!dataReady || missesCutover);
+  const cannotDraw = !dataReady;
 
   async function selectPeriod(next: Period) {
     setPeriod(next);
     setPage(0);
-    await ensureHistory(next);
+    await ensureHistory(next, true);
   }
 
   const view = useMemo(() => {
-    if (!selected) return null;
+    if (!selected || !dataReady) return null;
     const wallets = history?.snapshots ?? [];
     const exchanges = history?.exchange_snapshots ?? [];
     const rates = usdJpyRates ?? [];
@@ -151,7 +178,7 @@ export function CurrencyView({
       deltaYen = shown.length ? shown.reduce((sum, row) => sum + (row.balanceChangeYen ?? 0), 0) : null;
     }
     return { calculated, shown, last, balanceMode, periodLabel, delta, deltaUsd, deltaYen };
-  }, [state, history, lidoRewards, usdJpyRates, selected, isSteth, today, period, mode]);
+  }, [state, history, lidoRewards, usdJpyRates, selected, isSteth, today, period, mode, dataReady]);
 
   return (
     <>
@@ -177,8 +204,13 @@ export function CurrencyView({
         </div>
       </section>
 
-      {loadingFullHistory ? (
-        <div className="asset-panel" role="status"><p className="muted-copy">stETHの履歴を読み込み中…</p></div>
+      {loading ? (
+        <div className="asset-panel" role="status"><p className="muted-copy">通貨推移のデータを読み込み中…</p></div>
+      ) : loadFailed && cannotDraw ? (
+        <div className="asset-panel" role="alert">
+          <p className="muted-copy">通貨推移のデータを読み込めませんでした。</p>
+          <button type="button" onClick={() => setAttempt((count) => count + 1)}>再試行</button>
+        </div>
       ) : !view ? (
         <div className="asset-panel"><p className="muted-copy">表示できる通貨がありません。</p></div>
       ) : (
