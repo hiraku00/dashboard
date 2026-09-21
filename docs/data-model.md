@@ -4,7 +4,7 @@
 
 ### Watch List
 
-- `items`: 項目本体、ステータス、優先度、出典、削除日時
+- `items`: 項目本体、ステータス、優先度、出典、削除日時、サムネイル画像のURL（`thumbnail_url`）
 - `item_links`: 項目に紐づくリンク
 - `import_runs`: インポート単位の件数・エラー履歴
 

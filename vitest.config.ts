@@ -84,6 +84,7 @@ export default defineConfig({
             "tests/shared-helpers.test.mjs",
             "tests/sync-summary.test.mjs",
             "tests/text-tube-query.test.mjs",
+            "tests/thumbnail.test.mjs",
             "tests/text-tube-video-input.test.mjs",
             "tests/todo-task-input.test.mjs",
             "tests/usage-window.test.mjs",

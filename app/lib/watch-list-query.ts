@@ -4,14 +4,13 @@
  *  manage-asset-core.ts, access.ts and the other app/lib/*.ts modules do;
  *  a module that imports "cloudflare:workers" at the top level cannot be
  *  loaded outside the Workers runtime at all, let alone unit tested. */
-// Deliberately not importing app/lib/text.ts's clean() here, even though the
-// logic is identical: a cross-file import (relative or "@/...") cannot be
-// resolved by plain Node without an explicit extension that in turn breaks
-// tsc (`allowImportingTsExtensions` is off), and this module has to load
-// under vitest's plain-Node "node" project. Every other pure app/lib/*.ts module (e.g.
-// manage-asset-core.ts, access.ts) has zero imports for the same reason.
-// This one-liner is small enough that duplicating it is safer than fighting
-// module resolution -- keep it in sync with clean() in app/lib/text.ts.
+import { youTubeThumbnailFromLinks } from "./thumbnail.ts";
+
+// clean() below duplicates app/lib/text.ts's on purpose -- keep it in sync.
+// Cross-file imports do work here (thumbnail.ts above uses an explicit .ts
+// extension, which tsconfig's allowImportingTsExtensions permits and plain
+// Node's ESM resolver needs); this one-liner is just small enough that a
+// second copy is cheaper than another import.
 function clean(value: unknown, max = 4000): string {
   return typeof value === "string" ? value.trim().slice(0, max) : "";
 }
@@ -36,6 +35,8 @@ export type WatchListItem = {
   comment: unknown;
   sourceSystem: unknown;
   externalId: unknown;
+  /** A YouTube link's derived thumbnail, else the stored og:image, else "". */
+  thumbnailUrl: string;
   version: unknown;
   createdAt: unknown;
   updatedAt: unknown;
@@ -45,11 +46,12 @@ export type WatchListItem = {
 /** Maps a raw D1 row (snake_case columns) plus its links into the camelCase
  *  shape the API and the page both render. */
 export function toItem(row: Record<string, unknown>, links: Array<Record<string, unknown>>): WatchListItem {
+  const storedThumbnail = typeof row.thumbnail_url === "string" ? row.thumbnail_url : "";
   return {
     id: row.id, contentType: row.content_type, creatorName: row.creator_name, seriesTitle: row.series_title,
     title: row.title, description: row.description, priority: row.priority, status: row.status,
     addedOn: row.added_on, watchedOn: row.watched_on, comment: row.comment, sourceSystem: row.source_system,
-    externalId: row.external_id, version: row.version, createdAt: row.created_at, updatedAt: row.updated_at,
+    externalId: row.external_id, thumbnailUrl: youTubeThumbnailFromLinks(links) || storedThumbnail, version: row.version, createdAt: row.created_at, updatedAt: row.updated_at,
     links: links.map((link) => ({ id: link.id, label: link.label, url: link.url, linkType: link.link_type, position: link.position })),
   };
 }
