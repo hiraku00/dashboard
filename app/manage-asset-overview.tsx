@@ -31,7 +31,7 @@ export function AssetOverview({
   state: AssetStateData | null;
   history: AssetHistoryData | null;
   today: string;
-  ensureHistory: (period: Period) => Promise<void>;
+  ensureHistory: (period: Period) => Promise<unknown>;
 }) {
   const [period, setPeriod] = useState<Period>("7");
   const [showDust, setShowDust] = useState(false);
