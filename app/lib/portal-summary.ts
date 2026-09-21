@@ -11,19 +11,36 @@ export type PortalSummary = {
   todo: { total: number; completed: number };
 };
 
-/** A snapshot's own total_usd/total_jpy wins when non-zero (the normal
- *  case); falling back to summing that snapshot's positions covers the
- *  older rows from before totals were stored on the snapshot itself. */
-export function combineAssetTotals(
-  snapshots: Array<Record<string, unknown>>,
-  positionsBySnapshot: Map<string, { usd: number; jpy: number }>,
-): { usd: number; jpy: number } {
-  return snapshots.reduce<{ usd: number; jpy: number }>((totals, row) => {
-    const positionTotals = positionsBySnapshot.get(String(row.id));
-    const storedUsd = Number(row.total_usd ?? 0);
-    const storedJpy = Number(row.total_jpy ?? 0);
-    totals.usd += storedUsd || positionTotals?.usd || 0;
-    totals.jpy += storedJpy || positionTotals?.jpy || 0;
-    return totals;
-  }, { usd: 0, jpy: 0 });
+/** The home page's asset totals, by the SAME definition Manage Asset uses, so the
+ *  two screens can never show different numbers for "total assets".
+ *
+ *  - USD is the sum of every source's latest snapshot's own stored total
+ *    (manage-asset-core's total()): "the snapshot's declared total is the truth".
+ *    A snapshot whose stored total is 0 counts as 0 -- this used to fall back to
+ *    summing that snapshot's positions, which made the home page higher by a few
+ *    cents whenever DeBank's integer rounding stored a tiny wallet as $0
+ *    (found on production: $0.65 across four such wallets).
+ *  - JPY is that USD total times ONE rate, the newest snapshot's fx_usdjpy
+ *    (manage-asset-core's latestFx()), which is how Manage Asset's "円換算" is
+ *    computed. It used to sum each snapshot's own stored JPY, each converted at
+ *    its own capture-time rate, which differed by ~10,000 yen on ~53M. Only when
+ *    no snapshot carries a rate does it fall back to the sum of the stored JPY.
+ *
+ *  The rows are the same "latest snapshot per source" rows assetState() reads
+ *  (source_id, display_name, source_type, captured_at, as_of_date, fx_usdjpy,
+ *  total_usd, total_jpy), passed through the same legacy mappers so wallets and
+ *  exchanges are split and read exactly as the Manage Asset page reads them.
+ *  Imports use explicit .ts extensions for the same reason as
+ *  app/lib/watch-list-item-input.ts. */
+import { latestFx, total as totalUsdOf } from "./manage-asset-core.ts";
+import { toLegacyExchangeSnapshot, toLegacyWalletSnapshot } from "./manage-asset-legacy.ts";
+
+export function assetTotals(snapshots: Array<Record<string, unknown>>): { usd: number; jpy: number } {
+  const isWallet = (row: Record<string, unknown>) => String(row.source_type).toLowerCase() === "wallet";
+  const wallets = snapshots.filter(isWallet).map((row) => toLegacyWalletSnapshot(row, []));
+  const exchanges = snapshots.filter((row) => !isWallet(row)).map((row) => toLegacyExchangeSnapshot(row, []));
+  const usd = totalUsdOf(wallets, exchanges);
+  const fx = latestFx(wallets, exchanges);
+  if (fx) return { usd, jpy: usd * fx.rate };
+  return { usd, jpy: snapshots.reduce((sum, row) => sum + (Number(row.total_jpy) || 0), 0) };
 }

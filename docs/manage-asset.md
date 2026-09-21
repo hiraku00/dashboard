@@ -17,6 +17,13 @@ Manage Assetは既存アプリの表示仕様を基準にした資産ダッシ�
 - グラフ（`app/manage-asset-overview.tsx`・`manage-asset-currency.tsx`）は、軸ラベルを画面上で常に約11pxに保つため、幅が狭いほどSVGのuser-space上ではラベルが大きくなります。`app/manage-asset-chart-tooltip.tsx`の`axisLayout()`が、表示倍率が0.85未満のときだけ、y軸の左余白・ラベルとの隙間（約8px）・縦方向の寸法を画面px基準で広げます。0.85以上（PC相当）は従来の固定値のままです。軸ラベルや余白を変更する場合は、PC幅で描画が変わらないことと、375px幅でラベルがカード内に収まることの両方を確認します。
 - 表は`.table-scroll`で横スクロールします。監視リストの`content-table`用にモバイル幅（760px以下）で`.table-scroll`をカード表示へ切り替えるルールがあるため、資産管理側は`.asset-workspace .table-scroll`でスクロールを戻し、先頭列（資産名・日付・保管場所名）を固定しています。
 
+## 総資産の定義（ホームとManage Assetで共通）
+
+ホームの資産合計と、Manage Assetの「総資産」は、同じ定義で計算します（`app/lib/portal-summary.ts`が、Manage Assetと同じ`total()` / `latestFx()`を使います）。
+
+- USD: 各保管場所の最新スナップショットが保存している合計（`total_usd`）の和。保存された合計が0のスナップショットは0として数えます（ポジション明細の合計で代用しません）。小さなウォレットは、DeBankの整数丸めで合計が`$0`と保存されることがあり、明細と数セントずれますが、これは仕様です。
+- JPY: 上のUSD合計に、最新のスナップショットが持つ1つのUSD/JPYレート（`fx_usdjpy`）を掛けた値。どのスナップショットにもレートがないときだけ、保存されたJPYの和を使います。
+
 ## データ取得の責務
 
 外部APIを使う取得処理はMacのcollectorが担当します。Workerは外部APIキーを持たず、受信したスナップショットの検証・保存・表示だけを行います。
