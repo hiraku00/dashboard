@@ -59,7 +59,17 @@ export function WatchListApp({
   // normally. See the comment on the effect itself.
   const skippedInitialFetch = useRef(false);
 
-  const refresh = useCallback(async () => {
+  // Counts every list request, so a slow response that arrives after a newer
+  // one (page 2 clicked, then page 3) cannot overwrite the newer view.
+  const latestRequest = useRef(0);
+
+  /** Loads the current page of the list. The summary counts are NOT fetched
+   *  here: they do not depend on the page or the filters, so paging and
+   *  filtering used to wait on a second, serial /api/stats round trip for
+   *  nothing. They are reloaded only after something changes them (see
+   *  `refresh`). */
+  const refreshItems = useCallback(async () => {
+    const requestId = ++latestRequest.current;
     setLoading(true);
     try {
       const params = new URLSearchParams();
@@ -72,22 +82,32 @@ export function WatchListApp({
       const itemsResponse = await fetch(`/api/items?${params}`);
       if (!itemsResponse.ok) throw new Error("一覧を読み込めませんでした。再読み込みしてください。");
       const itemPayload = await readJson<{ items: Item[]; pagination?: { total?: number } }>(itemsResponse);
+      if (requestId !== latestRequest.current) return;
       setItems(itemPayload.items);
       setTotalResults(itemPayload.pagination?.total ?? itemPayload.items.length);
-      const statsResponse = await fetch("/api/stats");
-      if (statsResponse.ok) setStats(await readJson<Stats>(statsResponse));
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : "読み込みに失敗しました。");
+      if (requestId === latestRequest.current) setNotice(error instanceof Error ? error.message : "読み込みに失敗しました。");
     } finally {
-      setLoading(false);
+      if (requestId === latestRequest.current) setLoading(false);
     }
   }, [query, type, status, creator, page]);
+
+  const refreshStats = useCallback(async () => {
+    try {
+      const statsResponse = await fetch("/api/stats");
+      if (statsResponse.ok) setStats(await readJson<Stats>(statsResponse));
+    } catch { /* The counts are secondary; keep showing the previous ones. */ }
+  }, []);
+
+  /** After a save, delete, status change or thumbnail fetch: the page and the
+   *  counts may both have changed, and the two requests are independent. */
+  const refresh = useCallback(async () => { await Promise.all([refreshItems(), refreshStats()]); }, [refreshItems, refreshStats]);
 
   useEffect(() => {
     // Skip exactly one invocation -- the one that runs on mount -- when the
     // server already rendered this same default-filter view. Every
     // subsequent invocation (the user changing query/type/status/creator/
-    // page, which is what actually re-triggers this effect since `refresh`
+    // page, which is what actually re-triggers this effect since `refreshItems`
     // is recreated on each of those) must still fetch normally; the ref
     // flips permanently on its first check so a later change is never
     // mistaken for the initial mount.
@@ -95,14 +115,14 @@ export function WatchListApp({
       skippedInitialFetch.current = true;
       return;
     }
-    const timer = setTimeout(refresh, query ? 180 : 0);
+    const timer = setTimeout(refreshItems, query ? 180 : 0);
     return () => clearTimeout(timer);
     // `initialItems` is intentionally omitted below: it is a prop from the
     // server that does not change across this component's lifetime, so
     // adding it as a dep would never itself re-trigger the effect -- only
     // the ref actually gates behavior, and that is read, not depended on.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query, refresh]);
+  }, [query, refreshItems]);
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape" && (editing || isNew)) closeEditor();
@@ -121,7 +141,7 @@ export function WatchListApp({
   const totalPages = Math.max(1, Math.ceil(totalResults / pageSize));
   const activeEditor = isNew || editing;
   const paginationPages = [...new Set([1, page, totalPages])].sort((a, b) => a - b);
-  const pagination = !loading && totalPages > 1 ? <nav className="pagination" aria-label="ページ移動"><button type="button" aria-label="前のページ" disabled={page === 1} onClick={() => setPage((current) => current - 1)}>‹</button>{paginationPages.map((value, index) => <span className="page-number" key={value}>{index > 0 && value - paginationPages[index - 1] > 1 && <i aria-hidden="true">…</i>}<button type="button" className={value === page ? "current-page" : ""} aria-current={value === page ? "page" : undefined} onClick={() => setPage(value)}>{value}</button></span>)}<button type="button" aria-label="次のページ" disabled={page === totalPages} onClick={() => setPage((current) => current + 1)}>›</button></nav> : null;
+  const pagination = totalPages > 1 ? <nav className="pagination" aria-label="ページ移動"><button type="button" aria-label="前のページ" disabled={page === 1} onClick={() => setPage((current) => current - 1)}>‹</button>{paginationPages.map((value, index) => <span className="page-number" key={value}>{index > 0 && value - paginationPages[index - 1] > 1 && <i aria-hidden="true">…</i>}<button type="button" className={value === page ? "current-page" : ""} aria-current={value === page ? "page" : undefined} onClick={() => setPage(value)}>{value}</button></span>)}<button type="button" aria-label="次のページ" disabled={page === totalPages} onClick={() => setPage((current) => current + 1)}>›</button></nav> : null;
 
   function openNew() { setDraft(emptyDraft()); setYouTubeUrl(""); setYouTubeNotice(""); setEditing(null); setIsNew(true); setNotice(""); }
   function openEdit(item: Item) { setDraft({ ...item, links: item.links.map((link) => ({ ...link })) }); setYouTubeUrl(""); setYouTubeNotice(""); setEditing(item); setIsNew(false); setNotice(""); }
@@ -212,7 +232,7 @@ export function WatchListApp({
       </div>
       <div className="item-list">
         {!loading && items.length === 0 && <div className="empty-state"><strong>該当するコンテンツはありません。</strong><p>条件を変えるか、新しく追加してください。</p><button onClick={openNew}>コンテンツを追加</button></div>}
-        {!loading && items.length > 0 && <div className="table-scroll"><table className="content-table">
+        {items.length > 0 && <div className={loading ? "table-scroll is-loading" : "table-scroll"} aria-busy={loading}><table className="content-table">
           <thead><tr><th scope="col"><span className="sr-only">種別</span></th><th scope="col">人物・媒体</th><th scope="col">タイトル</th><th scope="col"><span className="sr-only">サムネイル</span></th><th scope="col">追加日</th><th scope="col">状態</th><th scope="col">リンク</th><th scope="col">削除</th></tr></thead>
           <tbody>{items.map((item) => {
             return <tr className={item.status === "completed" ? "is-completed" : ""} key={item.id}>

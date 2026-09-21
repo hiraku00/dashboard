@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 
-import { buildItemsFilter, toItem } from "../app/lib/watch-list-query.ts";
+import { buildItemsFilter, ITEMS_ORDER_BY, toItem } from "../app/lib/watch-list-query.ts";
 
 // buildItemsFilter() is the pure "which WHERE clause and binds does this
 // request produce" decision extracted out of listItems() so it can be tested
@@ -93,4 +93,12 @@ test("toItem maps snake_case D1 columns to the camelCase API shape", () => {
 test("toItem returns an empty links array for a row with no links, not undefined", () => {
   const item = toItem({ id: "item-2" }, []);
   expect(item.links).toEqual([]);
+});
+
+// The list's sort must end in a unique key. Without one, LIMIT/OFFSET pages can
+// repeat or skip items that tie on added_on and created_at (a bulk import stamps
+// them alike), and listItems()'s links subquery can pick different rows than
+// the page query. See tests/workers/watch-list-list.test.ts for the D1 side.
+test("the list order ends in the id, after the date keys", () => {
+  expect(ITEMS_ORDER_BY).toBe("ORDER BY added_on IS NULL ASC, added_on DESC, created_at DESC, id ASC");
 });
