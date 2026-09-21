@@ -225,7 +225,7 @@ export function WatchListApp({
     <section className="library-panel" aria-labelledby="library-title">
       <div className="library-heading"><h2 id="library-title">ライブラリ</h2><span className="result-count">{loading ? "読み込み中" : `${totalResults} 件中 ${Math.min((page - 1) * pageSize + 1, totalResults || 0)}–${Math.min(page * pageSize, totalResults)}`}</span></div>
       <div className="filters">
-        <label className="search"><span aria-hidden="true">⌕</span><input value={query} onChange={(event) => { setQuery(event.target.value); setPage(1); }} placeholder="タイトル、人物、内容を検索" aria-label="検索" /></label>
+        <label className="search"><span aria-hidden="true">⌕</span><input value={query} onChange={(event) => { setQuery(event.target.value); setPage(1); }} placeholder="タイトル、人物、内容、リンクを検索" aria-label="検索" /></label>
         <label><span className="sr-only">種別</span><select value={type} onChange={(event) => { setType(event.target.value as typeof type); setPage(1); }}><option value="all">すべての種別</option>{(Object.keys(typeLabel) as ContentType[]).map((key) => <option key={key} value={key}>{typeLabel[key]}</option>)}</select></label>
         <label><span className="sr-only">状態</span><select value={status} onChange={(event) => { setStatus(event.target.value as typeof status); setPage(1); }}><option value="all">すべての状態</option>{(Object.keys(statusLabel) as Status[]).map((key) => <option key={key} value={key}>{statusLabel[key]}</option>)}</select></label>
         <label><span className="sr-only">人物・媒体</span><select value={creator} onChange={(event) => { setCreator(event.target.value); setPage(1); }}><option value="all">すべての人物・媒体</option>{creators.map((value) => <option key={value}>{value}</option>)}</select></label>

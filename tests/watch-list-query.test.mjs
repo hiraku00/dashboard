@@ -22,10 +22,16 @@ test("include_deleted drops the deleted_at clause entirely, not just widens it",
   expect(filter.values).toEqual([]);
 });
 
-test("q searches title/description/creator/series with the same wildcarded term", () => {
+test("q searches title/description/creator/series and the links' url/label with the same wildcarded term", () => {
   const filter = buildItemsFilter({ q: "steth" });
-  expect(filter.where).toBe("WHERE deleted_at IS NULL AND (title LIKE ? OR description LIKE ? OR creator_name LIKE ? OR series_title LIKE ?)");
-  expect(filter.values).toEqual(["%steth%", "%steth%", "%steth%", "%steth%"]);
+  expect(filter.where).toBe("WHERE deleted_at IS NULL AND (title LIKE ? OR description LIKE ? OR creator_name LIKE ? OR series_title LIKE ? OR EXISTS (SELECT 1 FROM item_links l WHERE l.item_id = items.id AND (l.url LIKE ? OR l.label LIKE ?)))");
+  expect(filter.values).toEqual(Array(6).fill("%steth%"));
+});
+
+test("the link match is an EXISTS on an aliased table, so it neither duplicates an item nor clashes with listItems()'s links query", () => {
+  const { where } = buildItemsFilter({ q: "x" });
+  expect(where).toContain("EXISTS (SELECT 1 FROM item_links l WHERE l.item_id = items.id");
+  expect(where).not.toMatch(/JOIN/i);
 });
 
 test("an unrecognized content type or status is dropped rather than passed through to SQL", () => {
@@ -62,7 +68,7 @@ test("a missing limit/offset falls back to the same defaults as an explicit unde
 
 test("q, creator and other free-text fields are trimmed and length-capped like clean() elsewhere", () => {
   const filter = buildItemsFilter({ q: "  padded  " });
-  expect(filter.values).toEqual(["%padded%", "%padded%", "%padded%", "%padded%"]);
+  expect(filter.values).toEqual(Array(6).fill("%padded%"));
 });
 
 // toItem() maps a raw D1 row (snake_case columns) plus its links into the

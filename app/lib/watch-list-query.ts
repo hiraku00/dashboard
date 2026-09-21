@@ -95,7 +95,14 @@ export function buildItemsFilter(query: ListItemsQuery = {}): ItemsFilter {
   const clauses: string[] = [];
   const values: string[] = [];
   if (!includeDeleted) clauses.push("deleted_at IS NULL");
-  if (q) { clauses.push("(title LIKE ? OR description LIKE ? OR creator_name LIKE ? OR series_title LIKE ?)"); values.push(`%${q}%`, `%${q}%`, `%${q}%`, `%${q}%`); }
+  // The links are matched with EXISTS rather than a JOIN, so an item with
+  // several matching links is still one row (and one count). The subquery's
+  // table is aliased because listItems() nests this whole WHERE inside a query
+  // on item_links.
+  if (q) {
+    clauses.push("(title LIKE ? OR description LIKE ? OR creator_name LIKE ? OR series_title LIKE ? OR EXISTS (SELECT 1 FROM item_links l WHERE l.item_id = items.id AND (l.url LIKE ? OR l.label LIKE ?)))");
+    values.push(...Array<string>(6).fill(`%${q}%`));
+  }
   if (contentTypes.has(type as ContentType)) { clauses.push("content_type = ?"); values.push(type); }
   if (statuses.has(status as WatchStatus)) { clauses.push("status = ?"); values.push(status); }
   if (creator) { clauses.push("creator_name = ?"); values.push(creator); }
