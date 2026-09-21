@@ -19,6 +19,17 @@ export const SAMPLE_YOUTUBE_WATCH_PAGE_HTML = `<!doctype html><html><head>
 <script>var ytInitialData = {"foo":{"ownerChannelName":"Sample Channel"}};</script>
 </head><body></body></html>`;
 
+/** YouTube's answer to a request from a flagged egress IP: HTTP 200, but a
+ *  "confirm you're not a bot" page with no og:title or ownerChannelName. Video
+ *  ids below opt into it, since the mock cannot vary per test. */
+export const SAMPLE_YOUTUBE_BOT_CHECK_PAGE_HTML = `<!doctype html><html><head><title>YouTube</title>
+<script>var ytInitialPlayerResponse = {"playabilityStatus":{"status":"LOGIN_REQUIRED","reason":"Sign in to confirm you're not a bot"}};</script>
+</head><body></body></html>`;
+export const BOT_CHECKED_VIDEO_ID = "botChecked1"; // watch page bot-checked, oEmbed works
+export const UNAVAILABLE_VIDEO_ID = "unavailab1e"; // watch page bot-checked, oEmbed 404
+
+export const SAMPLE_YOUTUBE_OEMBED_RESPONSE = JSON.stringify({ title: "Fallback Video Title", author_name: "Fallback Channel", provider_name: "YouTube" });
+
 export const SAMPLE_YOUTUBE_DATA_API_VIDEOS_RESPONSE = JSON.stringify({
   items: [
     {
@@ -45,7 +56,15 @@ export const SAMPLE_SUPADATA_TRANSCRIPT_RESPONSE = JSON.stringify({
 export function mockOutboundResponse(request: Request): Response {
   const url = new URL(request.url);
   if (url.hostname === "m.youtube.com") {
+    const videoId = url.searchParams.get("v");
+    if (videoId === BOT_CHECKED_VIDEO_ID || videoId === UNAVAILABLE_VIDEO_ID) {
+      return new Response(SAMPLE_YOUTUBE_BOT_CHECK_PAGE_HTML, { status: 200, headers: { "content-type": "text/html" } });
+    }
     return new Response(SAMPLE_YOUTUBE_WATCH_PAGE_HTML, { status: 200, headers: { "content-type": "text/html" } });
+  }
+  if (url.hostname === "www.youtube.com" && url.pathname === "/oembed") {
+    if (url.searchParams.get("url")?.includes(UNAVAILABLE_VIDEO_ID)) return new Response("Not Found", { status: 404 });
+    return new Response(SAMPLE_YOUTUBE_OEMBED_RESPONSE, { status: 200, headers: { "content-type": "application/json" } });
   }
   if (url.hostname === "www.googleapis.com" && url.pathname.includes("/videos")) {
     return new Response(SAMPLE_YOUTUBE_DATA_API_VIDEOS_RESPONSE, { status: 200, headers: { "content-type": "application/json" } });
