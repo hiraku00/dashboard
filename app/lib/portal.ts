@@ -11,10 +11,19 @@ export async function sha256(body: ArrayBuffer) {
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
+/** The SQL and row mapping behind currentStorageBytes(), exported so
+ *  d1BackedUsage() can run the same statement inside its own batch without a
+ *  second copy of it drifting. */
+export const STORAGE_BYTES_SQL = "SELECT COALESCE(SUM(size_bytes),0) AS bytes, COUNT(*) AS count FROM storage_objects WHERE deleted_at IS NULL";
+
+export function storageBytesFromRow(row: { bytes?: unknown; count?: unknown } | undefined) {
+  return { bytes: Number(row?.bytes ?? 0), count: Number(row?.count ?? 0) };
+}
+
 export async function currentStorageBytes() {
   await ensureSchema({ seed: false });
-  const row = (await env.DB.prepare("SELECT COALESCE(SUM(size_bytes),0) AS bytes, COUNT(*) AS count FROM storage_objects WHERE deleted_at IS NULL").all<{ bytes: number; count: number }>()).results?.[0];
-  return { bytes: Number(row?.bytes ?? 0), count: Number(row?.count ?? 0) };
+  const row = (await env.DB.prepare(STORAGE_BYTES_SQL).all<{ bytes: number; count: number }>()).results?.[0];
+  return storageBytesFromRow(row);
 }
 
 export async function putPortalObject(args: { key: string; body: ArrayBuffer; category: string; contentType: string; sha?: string; expiresAt?: string | null; knownUsedBytes?: number }) {
