@@ -5,7 +5,7 @@ import { assetHistory, assetState, latestSyncRun, lidoRewards, usdJpyRates } fro
 export type ManageAssetInitial = {
   state: AssetStateData;
   history: AssetHistoryData;
-  /** true: full rows (tokens, positions -- what the per-currency history reads).
+  /** true: the rows with the tokens and positions the per-currency history reads.
    *  false: the asset overview's summary form (ids, dates, totals), ~1/6 the size. */
   historyDetail: boolean;
   /** null unless the currency view asked for them (see `currency` below). */
@@ -31,7 +31,7 @@ export async function fetchManageAssetInitial({ currency = false }: { currency?:
   // comment in app/watch-list/page.tsx.
   try {
     if (currency) {
-      const [state, history, rewards, rates, run] = await Promise.all([assetState(), assetHistory("90"), lidoRewards(), usdJpyRates(), latestSyncRun()]);
+      const [state, history, rewards, rates, run] = await Promise.all([assetState(), assetHistory("90", { fields: "currency" }), lidoRewards(), usdJpyRates(), latestSyncRun()]);
       return { state: state as unknown as AssetStateData, history: history as unknown as AssetHistoryData, historyDetail: true, lidoRewards: rewards, usdJpyRates: rates, latestSyncRun: run };
     }
     const [state, history, run] = await Promise.all([assetState(), assetHistory("90", { summary: true }), latestSyncRun()]);

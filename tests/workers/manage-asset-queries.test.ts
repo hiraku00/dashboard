@@ -2,7 +2,7 @@ import { env } from "cloudflare:test";
 import { beforeAll, describe, expect, test, vi } from "vitest";
 import { ensureSchema } from "@/db";
 import { assetHistory, assetState } from "@/app/lib/queries/manage-asset";
-import { historyPoints, previousOpeningPoint } from "@/app/lib/manage-asset-core";
+import { currencyHistory, historyPoints, previousOpeningPoint, stethRewardHistory, walletPositions, exchangePositions } from "@/app/lib/manage-asset-core";
 import { referenceAssetHistory, referenceAssetState } from "./fixtures/manage-asset-reference";
 
 // assetState() and assetHistory() feed /manage-asset (through the page and the
@@ -85,6 +85,10 @@ describe("with no data at all", () => {
 
   test.each(WINDOWS)("the summary read of %s is empty too", async (days) => {
     expect(await assetHistory(days, { summary: true })).toEqual({ snapshots: [], exchange_snapshots: [] });
+  });
+
+  test.each(WINDOWS)("the currency-fields read of %s is empty too", async (days) => {
+    expect(await assetHistory(days, { fields: "currency" })).toEqual({ snapshots: [], exchange_snapshots: [] });
   });
 });
 
@@ -224,6 +228,59 @@ describe("assetHistory summary form", () => {
       expect(batch).toHaveBeenCalledTimes(1);
       expect(prepare).toHaveBeenCalledTimes(2);
       vi.restoreAllMocks();
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// `fields: "currency"`: the full rows cut down to what the per-currency history
+// reads (app/lib/manage-asset-history-fields.ts). What matters is that the readers
+// -- run on these rows -- give exactly the answers they give on the full rows.
+
+describe("assetHistory currency fields", () => {
+  describe("with seeded data", () => {
+    const symbolsIn = (h: { snapshots: Row[]; exchange_snapshots: Row[] }) => [...new Set([...h.snapshots.flatMap((r) => walletPositions([r]).map((p) => p.symbol)), ...h.exchange_snapshots.flatMap((r) => exchangePositions([r]).map((p) => p.symbol))])];
+
+    test.each(WINDOWS)("currency-fields(%s): the same rows in the same order, and every reader answers as it does on the full rows", async (days) => {
+      const full = await referenceAssetHistory(days);
+      const cut = await assetHistory(days, { fields: "currency" });
+      // the same records were chosen (ids, dates, capture times, order)
+      const ids = (h: typeof full) => [h.snapshots.map((r) => [r.wallet_id, r.as_of_date, r.captured_at]), h.exchange_snapshots.map((r) => [r.source_id, r.as_of_date, r.captured_at])];
+      expect(ids(cut)).toEqual(ids(full));
+      // ... and the per-currency readers read them alike
+      const symbols = symbolsIn(full);
+      expect(symbols.length).toBeGreaterThan(0);
+      for (const symbol of symbols) {
+        expect(currencyHistory(cut.snapshots as never[], cut.exchange_snapshots as never[], symbol, []), symbol).toEqual(currencyHistory(full.snapshots as never[], full.exchange_snapshots as never[], symbol, []));
+      }
+      const rewards = [{ date: "2026-07-13", type: "reward", change: 0.001, change_USD: 3, balance: 1, apr: 2 }] as never[];
+      expect(stethRewardHistory(rewards, cut.snapshots as never[], cut.exchange_snapshots as never[], [], "2026-07-12")).toEqual(stethRewardHistory(rewards, full.snapshots as never[], full.exchange_snapshots as never[], [], "2026-07-12"));
+      // ... and so does the overview when it reads them
+      expect(historyPoints(cut.snapshots as never[], cut.exchange_snapshots as never[])).toEqual(historyPoints(full.snapshots as never[], full.exchange_snapshots as never[]));
+    });
+
+    test("is smaller than the full rows, and cuts what nobody reads", async () => {
+      const full = await referenceAssetHistory("90");
+      const cut = await assetHistory("90", { fields: "currency" });
+      expect(JSON.stringify(cut).length).toBeLessThan(JSON.stringify(full).length);
+      expect(JSON.stringify(cut)).not.toMatch(/"address"|"input_sha256"|"chains"|"schema_version"/);
+    });
+
+    test("does not change the read: still one batch of three after the window lookup", async () => {
+      await assetHistory("90", { fields: "currency" });
+      const batch = vi.spyOn(env.DB, "batch");
+      await assetHistory("90", { fields: "currency" });
+      expect(batch).toHaveBeenCalledTimes(1);
+      expect(batch.mock.calls[0][0]).toHaveLength(3);
+      vi.restoreAllMocks();
+    });
+
+    test("the default read (no fields) is still the full rows, untouched", async () => {
+      expect(await assetHistory("90")).toEqual(await referenceAssetHistory("90"));
+    });
+
+    test("summary takes precedence over fields when both are asked for", async () => {
+      expect(await assetHistory("90", { summary: true, fields: "currency" })).toEqual(await assetHistory("90", { summary: true }));
     });
   });
 });

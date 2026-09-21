@@ -78,6 +78,7 @@ export default defineConfig({
             "tests/access.test.mjs",
             "tests/history-window.test.mjs",
             "tests/manage-asset-core.test.mjs",
+            "tests/manage-asset-history-fields.test.mjs",
             "tests/manage-asset-steth-history.test.mjs",
             "tests/portal-summary.test.mjs",
             "tests/portfolio-core.test.mjs",
