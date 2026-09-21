@@ -3,8 +3,6 @@ import { route } from "@/app/lib/route";
 
 type YouTubePreview = {
   item: {
-    contentType: "movie";
-    creatorName: string;
     seriesTitle: string;
     title: string;
     links: Array<{ label: string; url: string; linkType: "reference" }>;
@@ -94,6 +92,6 @@ export const POST = route(async (request: Request) => {
     metadata = fallback;
   }
 
-  const preview: YouTubePreview = { item: { contentType: "movie", creatorName: "", seriesTitle: metadata.seriesTitle, title: metadata.title, links: [{ label: "YouTube", url, linkType: "reference" }] } };
+  const preview: YouTubePreview = { item: { seriesTitle: metadata.seriesTitle, title: metadata.title, links: [{ label: "YouTube", url, linkType: "reference" }] } };
   return Response.json(preview);
 });

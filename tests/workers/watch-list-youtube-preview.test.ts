@@ -21,8 +21,10 @@ test("scrapes the title and channel name from the public YouTube watch page", as
     }),
   );
   expect(response.status).toBe(200);
-  const body = (await response.json()) as { item: { contentType: string; title: string; seriesTitle: string; links: Array<{ label: string; url: string }> } };
-  expect(body.item.contentType).toBe("movie");
+  const body = (await response.json()) as { item: { title: string; seriesTitle: string; links: Array<{ label: string; url: string }> } };
+  // Only what the page told us: the route must not send placeholders (creatorName "",
+  // contentType "movie") that the editor would then write over the user's own values.
+  expect(Object.keys(body.item).sort()).toEqual(["links", "seriesTitle", "title"]);
   expect(body.item.title).toBe("Sample Video Title");
   expect(body.item.seriesTitle).toBe("Sample Channel");
   expect(body.item.links).toEqual([{ label: "YouTube", url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ", linkType: "reference" }]);

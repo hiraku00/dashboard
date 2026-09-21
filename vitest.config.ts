@@ -88,6 +88,7 @@ export default defineConfig({
             "tests/todo-task-input.test.mjs",
             "tests/usage-window.test.mjs",
             "tests/watch-list-item-input.test.mjs",
+            "tests/watch-list-youtube-import.test.mjs",
             "tests/watch-list-query.test.mjs",
           ],
         },
