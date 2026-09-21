@@ -56,6 +56,13 @@ export function toItem(row: Record<string, unknown>, links: Array<Record<string,
   };
 }
 
+/** The list's sort. `id` is the last key so two items with the same
+ *  `added_on` and `created_at` (a bulk import stamps them alike) still have one
+ *  fixed order: without it, LIMIT/OFFSET pages could repeat or skip such an
+ *  item, and the list query and the links subquery in listItems() could
+ *  disagree about which rows are on the page. */
+export const ITEMS_ORDER_BY = "ORDER BY added_on IS NULL ASC, added_on DESC, created_at DESC, id ASC";
+
 export type ListItemsQuery = {
   q?: string | null;
   type?: string | null;

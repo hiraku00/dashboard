@@ -12,7 +12,7 @@
  *  app/api/items/route.ts と app/api/items/[id]/route.ts に残したまま。 */
 import { env } from "cloudflare:workers";
 import { ensureSchema } from "@/db";
-import { buildItemsFilter, toItem, type ListItemsQuery, type WatchListItem } from "@/app/lib/watch-list-query";
+import { buildItemsFilter, ITEMS_ORDER_BY, toItem, type ListItemsQuery, type WatchListItem } from "@/app/lib/watch-list-query";
 
 export type { ListItemsQuery, WatchListItem };
 
@@ -25,12 +25,19 @@ export async function attachLinks(rows: Array<Record<string, unknown>>): Promise
   const ids = rows.map((row) => row.id as string);
   const placeholders = ids.map(() => "?").join(",");
   const { results } = await env.DB.prepare(`SELECT * FROM item_links WHERE item_id IN (${placeholders}) ORDER BY position ASC`).bind(...ids).all<Record<string, unknown>>();
-  const byItem = new Map<string, Array<Record<string, unknown>>>();
-  for (const link of results ?? []) {
-    const itemId = String(link.item_id);
-    byItem.set(itemId, [...(byItem.get(itemId) ?? []), link]);
-  }
+  const byItem = groupLinksByItem(results ?? []);
   return rows.map((row) => toItem(row, byItem.get(String(row.id)) ?? []));
+}
+
+function groupLinksByItem(links: Array<Record<string, unknown>>) {
+  const byItem = new Map<string, Array<Record<string, unknown>>>();
+  for (const link of links) {
+    const itemId = String(link.item_id);
+    const group = byItem.get(itemId);
+    if (group) group.push(link);
+    else byItem.set(itemId, [link]);
+  }
+  return byItem;
 }
 
 export type ListItemsResult = {
@@ -38,16 +45,25 @@ export type ListItemsResult = {
   pagination: { total: number; limit: number; offset: number; hasMore: boolean };
 };
 
-/** app/api/items の GET と、Watch List ページの初期表示が両方呼ぶ。 */
+/** app/api/items の GET と、Watch List ページの初期表示が両方呼ぶ。
+ *
+ *  一覧・総数・リンクを D1 への1往復（1回の batch）で取る。以前はリンクを
+ *  一覧の取得後に別の問い合わせで引いており、ページ送りのたびに D1 へ
+ *  2往復していた（D1 の1往復は SQL 自体の実行より桁違いに長い）。リンクは
+ *  ページ内の id をまだ知らないので、一覧と同じ WHERE / ORDER BY / LIMIT の
+ *  サブクエリで絞る。ORDER BY が id まで決め切っているので、両者は必ず
+ *  同じ行を選ぶ。 */
 export async function listItems(query: ListItemsQuery = {}): Promise<ListItemsResult> {
   await ensureSchema();
   const { where, values, limit, offset } = buildItemsFilter(query);
-  const [rows, totalResult] = await env.DB.batch([
-    env.DB.prepare(`SELECT * FROM items ${where} ORDER BY added_on IS NULL ASC, added_on DESC, created_at DESC LIMIT ? OFFSET ?`).bind(...values, limit, offset),
+  const page = `SELECT id FROM items ${where} ${ITEMS_ORDER_BY} LIMIT ? OFFSET ?`;
+  const [rows, totalResult, linkResult] = await env.DB.batch([
+    env.DB.prepare(`SELECT * FROM items ${where} ${ITEMS_ORDER_BY} LIMIT ? OFFSET ?`).bind(...values, limit, offset),
     env.DB.prepare(`SELECT COUNT(*) AS count FROM items ${where}`).bind(...values),
+    env.DB.prepare(`SELECT * FROM item_links WHERE item_id IN (${page}) ORDER BY position ASC`).bind(...values, limit, offset),
   ]);
-  const results = rows.results as Array<Record<string, unknown>> | undefined;
-  const items = await attachLinks(results ?? []);
+  const linksByItem = groupLinksByItem((linkResult.results ?? []) as Array<Record<string, unknown>>);
+  const items = ((rows.results ?? []) as Array<Record<string, unknown>>).map((row) => toItem(row, linksByItem.get(String(row.id)) ?? []));
   const total = Number((totalResult.results?.[0] as { count?: number } | undefined)?.count ?? 0);
   return { items, pagination: { total, limit, offset, hasMore: offset + items.length < total } };
 }
