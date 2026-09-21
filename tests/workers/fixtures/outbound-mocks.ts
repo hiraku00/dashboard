@@ -39,6 +39,9 @@ export const THUMBNAIL_PAGE_HTML = `<!doctype html><html><head><title>Post</titl
 export const THUMBNAIL_NO_IMAGE_HTML = `<!doctype html><html><head><title>Post</title></head><body></body></html>`;
 export const THUMBNAIL_INTERNAL_HTML = `<!doctype html><html><head><meta property="og:image" content="https://evil.example.net/internal.png"></head></html>`;
 
+/** t.co answers a browser with a tiny page whose only content is a meta refresh. */
+export const refreshPageHtml = (target: string) => `<head><noscript><META http-equiv="refresh" content="0;URL=${target}"></noscript><title>${target}</title></head><script>location.replace("${target}")</script>`;
+
 export const SAMPLE_YOUTUBE_DATA_API_VIDEOS_RESPONSE = JSON.stringify({
   items: [
     {
@@ -80,6 +83,15 @@ export function mockOutboundResponse(request: Request): Response {
   }
   if (url.hostname === "noimage.example.org") {
     return new Response(THUMBNAIL_NO_IMAGE_HTML, { status: 200, headers: { "content-type": "text/html" } });
+  }
+  if (url.hostname === "short.example.org") {
+    return new Response(refreshPageHtml("https://blog.example.org/post"), { status: 200, headers: { "content-type": "text/html; charset=utf-8" } });
+  }
+  if (url.hostname === "loop.example.org") {
+    return new Response(refreshPageHtml("https://loop.example.org/again"), { status: 200, headers: { "content-type": "text/html" } });
+  }
+  if (url.hostname === "refresh-internal.example.org") {
+    return new Response(refreshPageHtml("http://192.168.0.1/admin"), { status: 200, headers: { "content-type": "text/html" } });
   }
   if (url.hostname === "hop.example.org") {
     return new Response(null, { status: 302, headers: { location: "https://blog.example.org/post" } });

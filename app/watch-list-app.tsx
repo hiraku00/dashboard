@@ -46,7 +46,6 @@ export function WatchListApp({
   const [isNew, setIsNew] = useState(false);
   const [draft, setDraft] = useState<Draft>(emptyDraft());
   const [saving, setSaving] = useState(false);
-  const [backfilling, setBackfilling] = useState(false);
   const [youTubeUrl, setYouTubeUrl] = useState("");
   const [youTubeLoading, setYouTubeLoading] = useState(false);
   const [youTubeNotice, setYouTubeNotice] = useState("");
@@ -148,29 +147,6 @@ export function WatchListApp({
   function closeEditor() { setEditing(null); setIsNew(false); }
   function patchDraft(patch: Partial<Draft>) { setDraft((current) => ({ ...current, ...patch })); }
 
-  /** Walks the server's backfill cursor so existing items get their preview
-   *  image (see app/api/watch-list/thumbnails/backfill/route.ts). */
-  async function fetchThumbnails() {
-    setBackfilling(true);
-    let after = "";
-    let processed = 0;
-    let found = 0;
-    try {
-      for (;;) {
-        setNotice(`サムネイルを取得中… ${processed}件確認、${found}件取得`);
-        const response = await fetch("/api/watch-list/thumbnails/backfill", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ after }) });
-        if (!response.ok) throw new Error(await readErrorMessage(response, "サムネイルを取得できませんでした。"));
-        const data = await readJson<{ processed: number; found: number; next: string | null }>(response);
-        processed += data.processed; found += data.found;
-        if (!data.next) break;
-        after = data.next;
-      }
-      setNotice(found ? `サムネイルを${found}件取得しました。` : "取得できるサムネイルはありませんでした。");
-      await refresh();
-    } catch (error) { setNotice(error instanceof Error ? error.message : "サムネイルを取得できませんでした。"); }
-    finally { setBackfilling(false); }
-  }
-
   async function importYouTube() {
     setYouTubeLoading(true); setYouTubeNotice("");
     try {
@@ -219,7 +195,7 @@ export function WatchListApp({
         <article className="summary-card"><span>映像</span><strong>{stats.movie}</strong><small>件</small></article>
         <article className="summary-card"><span>読む・聴く</span><strong>{stats.text + stats.audio}</strong><small>件</small></article>
       </section>
-      <div className="toolbar-actions"><button type="button" className="ghost-button" onClick={fetchThumbnails} disabled={backfilling} title="サムネイルのない項目のリンク先から画像を取得します">{backfilling ? "取得中…" : "サムネイルを取得"}</button><button className="add-button" onClick={openNew}><span aria-hidden="true">＋</span> 追加</button></div>
+      <button className="add-button" onClick={openNew}><span aria-hidden="true">＋</span> 追加</button>
     </div>
 
     <section className="library-panel" aria-labelledby="library-title">
