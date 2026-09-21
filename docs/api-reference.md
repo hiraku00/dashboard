@@ -6,12 +6,13 @@
 
 | パス                                   | 用途                                                                                                                              |
 | -------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| `GET /api/items`                       | 検索、絞り込み、ページング付き一覧                                                                                                |
+| `GET /api/items`                       | 検索、絞り込み、ページング付き一覧。各項目に`thumbnailUrl`（サムネイル画像のURL、なければ空文字）を含む。                         |
 | `POST /api/items`                      | 項目作成                                                                                                                          |
 | `POST /api/watch-list/youtube-preview` | 公開YouTube動画URLから、チャンネル名・タイトル・正規化リンクを取得して入力用データを返す。返す項目は`seriesTitle`・`title`・`links`のみ。動画ページを読み取り、YouTubeにbot判定されて取れない場合はoEmbedで補う。YouTube Data APIやAPIキーは使用しない。 |
 | `GET /api/items/:id`                   | 項目詳細                                                                                                                          |
 | `PATCH /api/items/:id`                 | 項目更新                                                                                                                          |
 | `DELETE /api/items/:id`                | 論理削除                                                                                                                          |
+| `POST /api/watch-list/thumbnails/backfill` | サムネイル未取得の項目を`id`順に4件ずつ処理し、リンク先の画像を保存する。`{ after }`に前回の`next`を渡して続きを処理し、`next`が`null`で終了。 |
 | `GET /api/stats`                       | 一覧用集計                                                                                                                        |
 | `POST /api/imports`                    | Watch Listデータのインポート                                                                                                      |
 | `GET /api/exports`                     | バックアップ用エクスポート                                                                                                        |

@@ -4,6 +4,8 @@ import { canonicalUrl } from "@/app/lib/text";
 import { attachLinks } from "@/app/lib/queries/watch-list";
 import { normalizeItem } from "../route";
 import { route } from "@/app/lib/route";
+import { resolveStoredThumbnail } from "@/app/lib/thumbnail-fetch";
+import { sameLinkSet } from "@/app/lib/thumbnail";
 
 // Delegates the row->API-shape mapping to attachLinks()/toItem() in
 // app/lib/queries/watch-list.ts -- the same functions listItems() (used by
@@ -40,6 +42,18 @@ export const PATCH = route(async (request: Request, { params }: { params: Promis
   if (!Number.isInteger(expectedVersion)) return Response.json({ error: "ほかの画面で更新されています。再読み込みしてください。" }, { status: 409 });
   const item = normalized.value;
   const now = new Date().toISOString();
+  // The stored thumbnail is derived from the links, so it is looked up again
+  // only when the links themselves changed -- not on every save (a status
+  // change PATCHes the whole item). Items whose thumbnail could not be found
+  // are retried by /api/watch-list/thumbnails/backfill instead of on each edit.
+  const [previousItem, previousLinks] = await env.DB.batch<{ thumbnail_url?: string; canonical_url?: string }>([
+    env.DB.prepare("SELECT thumbnail_url FROM items WHERE id = ? AND deleted_at IS NULL").bind(id),
+    env.DB.prepare("SELECT canonical_url FROM item_links WHERE item_id = ? ORDER BY position ASC").bind(id),
+  ]);
+  const nextUrls = (item.links ?? []).map((link) => link.url);
+  const previousThumbnail = previousItem.results?.[0]?.thumbnail_url ?? "";
+  const linksUnchanged = sameLinkSet((previousLinks.results ?? []).map((row) => row.canonical_url ?? ""), nextUrls.map(canonicalUrl));
+  const thumbnailUrl = !previousItem.results?.length || linksUnchanged ? previousThumbnail : await resolveStoredThumbnail(nextUrls);
   // The version check lives in this UPDATE's WHERE clause (AND version=?),
   // not in a separate SELECT-then-compare beforehand: a prior version of
   // this handler read the current row, compared versions in application
@@ -49,8 +63,8 @@ export const PATCH = route(async (request: Request, { params }: { params: Promis
   // land. Checking result.meta.changes here is the only point that can
   // actually tell whether this request's version was the one still current
   // at write time.
-  const updateResult = await env.DB.prepare(`UPDATE items SET content_type=?, creator_name=?, series_title=?, title=?, description=?, priority=?, status=?, added_on=?, watched_on=?, comment=?, source_system=?, external_id=?, raw_source=?, version=version+1, updated_at=? WHERE id=? AND version=? AND deleted_at IS NULL`)
-    .bind(item.contentType, item.creatorName ?? "", item.seriesTitle ?? "", item.title, item.description ?? "", item.priority, item.status ?? "backlog", item.addedOn, item.watchedOn, item.comment ?? "", item.sourceSystem ?? "manual", item.externalId, item.rawSource, now, id, expectedVersion).run();
+  const updateResult = await env.DB.prepare(`UPDATE items SET content_type=?, creator_name=?, series_title=?, title=?, description=?, priority=?, status=?, added_on=?, watched_on=?, comment=?, source_system=?, external_id=?, raw_source=?, thumbnail_url=?, version=version+1, updated_at=? WHERE id=? AND version=? AND deleted_at IS NULL`)
+    .bind(item.contentType, item.creatorName ?? "", item.seriesTitle ?? "", item.title, item.description ?? "", item.priority, item.status ?? "backlog", item.addedOn, item.watchedOn, item.comment ?? "", item.sourceSystem ?? "manual", item.externalId, item.rawSource, thumbnailUrl, now, id, expectedVersion).run();
   if (!updateResult.meta.changes) {
     // meta.changes === 0 means either the id doesn't exist, or it exists but
     // its version has already moved on -- distinguish them with one cheap

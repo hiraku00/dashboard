@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Image from "next/image";
 import { PortalHeader } from "./portal-nav";
 import { readErrorMessage, readJson } from "./lib/json";
 import { applyYouTubePreview, type YouTubePreviewItem } from "./lib/watch-list-youtube-import.ts";
@@ -8,11 +9,11 @@ import { applyYouTubePreview, type YouTubePreviewItem } from "./lib/watch-list-y
 export type ContentType = "text" | "audio" | "movie" | "other";
 export type Status = "backlog" | "in_progress" | "completed" | "dropped";
 export type Link = { id?: string; label: string; url: string; linkType?: string };
-export type Item = { id: string; contentType: ContentType; creatorName: string; seriesTitle: string; title: string; description: string; priority: number | null; status: Status; addedOn: string | null; watchedOn: string | null; comment: string; version: number; links: Link[] };
+export type Item = { id: string; contentType: ContentType; creatorName: string; seriesTitle: string; title: string; description: string; priority: number | null; status: Status; addedOn: string | null; watchedOn: string | null; comment: string; thumbnailUrl: string; version: number; links: Link[] };
 type Draft = Omit<Item, "id" | "version">;
 export type Stats = { total: number; completed: number; movie: number; audio: number; text: number };
 
-const emptyDraft = (): Draft => ({ contentType: "movie", creatorName: "", seriesTitle: "", title: "", description: "", priority: null, status: "backlog", addedOn: new Date().toISOString().slice(0, 10), watchedOn: null, comment: "", links: [{ label: "", url: "", linkType: "reference" }] });
+const emptyDraft = (): Draft => ({ contentType: "movie", creatorName: "", seriesTitle: "", title: "", description: "", priority: null, status: "backlog", addedOn: new Date().toISOString().slice(0, 10), watchedOn: null, comment: "", thumbnailUrl: "", links: [{ label: "", url: "", linkType: "reference" }] });
 const typeLabel: Record<ContentType, string> = { movie: "映像", audio: "音声", text: "テキスト", other: "その他" };
 const statusLabel: Record<Status, string> = { backlog: "未着手", in_progress: "鑑賞中", completed: "完了", dropped: "見送り" };
 const dateLabel = (value: string | null) => value ? value.replaceAll("-", ".") : "未設定";
@@ -45,6 +46,7 @@ export function WatchListApp({
   const [isNew, setIsNew] = useState(false);
   const [draft, setDraft] = useState<Draft>(emptyDraft());
   const [saving, setSaving] = useState(false);
+  const [backfilling, setBackfilling] = useState(false);
   const [youTubeUrl, setYouTubeUrl] = useState("");
   const [youTubeLoading, setYouTubeLoading] = useState(false);
   const [youTubeNotice, setYouTubeNotice] = useState("");
@@ -126,6 +128,29 @@ export function WatchListApp({
   function closeEditor() { setEditing(null); setIsNew(false); }
   function patchDraft(patch: Partial<Draft>) { setDraft((current) => ({ ...current, ...patch })); }
 
+  /** Walks the server's backfill cursor so existing items get their preview
+   *  image (see app/api/watch-list/thumbnails/backfill/route.ts). */
+  async function fetchThumbnails() {
+    setBackfilling(true);
+    let after = "";
+    let processed = 0;
+    let found = 0;
+    try {
+      for (;;) {
+        setNotice(`サムネイルを取得中… ${processed}件確認、${found}件取得`);
+        const response = await fetch("/api/watch-list/thumbnails/backfill", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ after }) });
+        if (!response.ok) throw new Error(await readErrorMessage(response, "サムネイルを取得できませんでした。"));
+        const data = await readJson<{ processed: number; found: number; next: string | null }>(response);
+        processed += data.processed; found += data.found;
+        if (!data.next) break;
+        after = data.next;
+      }
+      setNotice(found ? `サムネイルを${found}件取得しました。` : "取得できるサムネイルはありませんでした。");
+      await refresh();
+    } catch (error) { setNotice(error instanceof Error ? error.message : "サムネイルを取得できませんでした。"); }
+    finally { setBackfilling(false); }
+  }
+
   async function importYouTube() {
     setYouTubeLoading(true); setYouTubeNotice("");
     try {
@@ -174,7 +199,7 @@ export function WatchListApp({
         <article className="summary-card"><span>映像</span><strong>{stats.movie}</strong><small>件</small></article>
         <article className="summary-card"><span>読む・聴く</span><strong>{stats.text + stats.audio}</strong><small>件</small></article>
       </section>
-      <button className="add-button" onClick={openNew}><span aria-hidden="true">＋</span> 追加</button>
+      <div className="toolbar-actions"><button type="button" className="ghost-button" onClick={fetchThumbnails} disabled={backfilling} title="サムネイルのない項目のリンク先から画像を取得します">{backfilling ? "取得中…" : "サムネイルを取得"}</button><button className="add-button" onClick={openNew}><span aria-hidden="true">＋</span> 追加</button></div>
     </div>
 
     <section className="library-panel" aria-labelledby="library-title">
@@ -188,9 +213,10 @@ export function WatchListApp({
       <div className="item-list">
         {!loading && items.length === 0 && <div className="empty-state"><strong>該当するコンテンツはありません。</strong><p>条件を変えるか、新しく追加してください。</p><button onClick={openNew}>コンテンツを追加</button></div>}
         {!loading && items.length > 0 && <div className="table-scroll"><table className="content-table">
-          <thead><tr><th scope="col"><span className="sr-only">種別</span></th><th scope="col">人物・媒体</th><th scope="col">タイトル</th><th scope="col">追加日</th><th scope="col">状態</th><th scope="col">リンク</th><th scope="col">削除</th></tr></thead>
+          <thead><tr><th scope="col"><span className="sr-only">サムネイル</span></th><th scope="col"><span className="sr-only">種別</span></th><th scope="col">人物・媒体</th><th scope="col">タイトル</th><th scope="col">追加日</th><th scope="col">状態</th><th scope="col">リンク</th><th scope="col">削除</th></tr></thead>
           <tbody>{items.map((item) => {
             return <tr className={item.status === "completed" ? "is-completed" : ""} key={item.id}>
+              <td className="thumb-cell">{item.thumbnailUrl && <Image src={item.thumbnailUrl} alt="" width={72} height={40} unoptimized referrerPolicy="no-referrer" onError={(event) => { event.currentTarget.hidden = true; }} />}</td>
               <td className="type-cell"><span className={`type-mark type-${item.contentType}`} title={typeLabel[item.contentType]} aria-label={typeLabel[item.contentType]}>{typeLabel[item.contentType].slice(0, 1)}</span></td>
               <td className="creator-cell"><strong>{item.creatorName || "—"}</strong>{item.seriesTitle && <span>{item.seriesTitle}</span>}</td>
               <td className="title-cell"><button type="button" className="title-button" onClick={() => openEdit(item)} title={`${item.title} を編集`}>{item.title}</button><p className="description" title={item.description}>{item.description || " "}</p></td>

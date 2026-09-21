@@ -4,6 +4,7 @@ import { canonicalUrl } from "@/app/lib/text";
 import { attachLinks, listItems } from "@/app/lib/queries/watch-list";
 import { normalizeItem } from "@/app/lib/watch-list-item-input";
 import { route } from "@/app/lib/route";
+import { resolveStoredThumbnail } from "@/app/lib/thumbnail-fetch";
 
 // Re-exported for app/api/items/[id]/route.ts and app/api/imports/route.ts,
 // which both import this from here rather than from
@@ -34,9 +35,11 @@ export const POST = route(async (request: Request) => {
   const item = normalized.value;
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
-  const statements = [env.DB.prepare(`INSERT INTO items (id, content_type, creator_name, series_title, title, description, priority, status, added_on, watched_on, comment, source_system, external_id, raw_source, version, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`)
-    .bind(id, item.contentType, item.creatorName ?? "", item.seriesTitle ?? "", item.title, item.description ?? "", item.priority, item.status ?? "backlog", item.addedOn, item.watchedOn, item.comment ?? "", item.sourceSystem ?? "manual", item.externalId, item.rawSource, now, now)];
+  // The client never supplies a thumbnail: it is derived from the links.
+  const thumbnailUrl = await resolveStoredThumbnail((item.links ?? []).map((link) => link.url));
+  const statements = [env.DB.prepare(`INSERT INTO items (id, content_type, creator_name, series_title, title, description, priority, status, added_on, watched_on, comment, source_system, external_id, raw_source, thumbnail_url, version, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`)
+    .bind(id, item.contentType, item.creatorName ?? "", item.seriesTitle ?? "", item.title, item.description ?? "", item.priority, item.status ?? "backlog", item.addedOn, item.watchedOn, item.comment ?? "", item.sourceSystem ?? "manual", item.externalId, item.rawSource, thumbnailUrl, now, now)];
   for (const [position, link] of (item.links ?? []).entries()) {
     statements.push(env.DB.prepare("INSERT INTO item_links (id, item_id, label, url, link_type, position, canonical_url) VALUES (?, ?, ?, ?, ?, ?, ?)")
       .bind(crypto.randomUUID(), id, link.label ?? "", link.url, link.linkType ?? "reference", position, canonicalUrl(link.url)));

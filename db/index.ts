@@ -28,7 +28,7 @@ let schemaReady = false;
  *  than reconciled, since the drizzle ORM was never actually used to query. */
 /** Bump whenever the DDL below changes, so existing databases re-run it once.
  *  A database whose schema_meta row already matches skips the whole batch. */
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 
 /** Reads the recorded schema version. A database that predates schema_meta (or
  *  a brand new one) has no table, and the query fails rather than returning a
@@ -67,7 +67,7 @@ export async function ensureSchema({ seed = true }: { seed?: boolean } = {}) {
       comment TEXT NOT NULL DEFAULT '', source_system TEXT NOT NULL DEFAULT 'manual', external_id TEXT,
       raw_source TEXT, version INTEGER NOT NULL DEFAULT 1,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      deleted_at TEXT,
+      deleted_at TEXT, thumbnail_url TEXT NOT NULL DEFAULT '',
       CHECK(content_type IN ('text','audio','movie','other')),
       CHECK(status IN ('backlog','in_progress','completed','dropped')),
       CHECK(priority IS NULL OR priority BETWEEN 1 AND 5)
@@ -219,6 +219,10 @@ export async function ensureSchema({ seed = true }: { seed?: boolean } = {}) {
     env.DB.prepare("CREATE INDEX IF NOT EXISTS todo_task_events_task_idx ON todo_task_events(task_id, occurred_at)"),
   ]);
   await env.DB.prepare("ALTER TABLE todo_routines ADD COLUMN default_due_time TEXT").run().catch(() => {});
+  // Schema version 3. SQLite has no ADD COLUMN IF NOT EXISTS, so a database that
+  // already has the column (a fresh one, from the CREATE above) throws and the
+  // error is the expected "nothing to do".
+  await env.DB.prepare("ALTER TABLE items ADD COLUMN thumbnail_url TEXT NOT NULL DEFAULT ''").run().catch(() => {});
   // One snapshot per source and date. The collector syncs 8-20 times a day and
   // both readers only ever use the newest row per source and date, so appending
   // the rest only grew the table that every request scans. The sync route's
