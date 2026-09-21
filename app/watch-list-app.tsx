@@ -3,6 +3,7 @@
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PortalHeader } from "./portal-nav";
 import { readErrorMessage, readJson } from "./lib/json";
+import { applyYouTubePreview, type YouTubePreviewItem } from "./lib/watch-list-youtube-import.ts";
 
 export type ContentType = "text" | "audio" | "movie" | "other";
 export type Status = "backlog" | "in_progress" | "completed" | "dropped";
@@ -130,8 +131,8 @@ export function WatchListApp({
     try {
       const response = await fetch("/api/watch-list/youtube-preview", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ url: youTubeUrl }) });
       if (!response.ok) throw new Error(await readErrorMessage(response, "YouTubeから情報を取得できませんでした。"));
-      const data = await readJson<{ item: Partial<Draft> }>(response);
-      patchDraft(data.item);
+      const data = await readJson<{ item: YouTubePreviewItem }>(response);
+      setDraft((current) => applyYouTubePreview(current, data.item));
       setYouTubeNotice("チャンネル名・タイトル・リンクを入力しました。内容を確認して保存してください。");
     } catch (error) { setYouTubeNotice(error instanceof Error ? error.message : "YouTubeから情報を取得できませんでした。"); }
     finally { setYouTubeLoading(false); }
