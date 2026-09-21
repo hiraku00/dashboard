@@ -65,8 +65,31 @@ export const SAMPLE_SUPADATA_TRANSCRIPT_RESPONSE = JSON.stringify({
   content: [{ text: "sample caption line", offset: 1000 }],
 });
 
+/** Hosts that refuse a page a fixed number of times before serving it, keyed by
+ *  the full URL, so a test can tell how many attempts a lookup made: a lookup
+ *  that gives up after N attempts leaves the (N+1)th to the next lookup. The
+ *  counter lives in this module, which the outbound service keeps across
+ *  requests. Use a fresh path per test. */
+const flakySeen = new Map<string, number>();
+const FLAKY_REFUSALS: Record<string, { status: number; times: number }> = {
+  once: { status: 403, times: 1 },
+  twice: { status: 403, times: 2 },
+  thrice: { status: 403, times: 3 },
+  throttled: { status: 429, times: 1 },
+  unavailable: { status: 503, times: 1 },
+  gone: { status: 404, times: 1 },
+  always: { status: 403, times: Number.POSITIVE_INFINITY },
+};
+
 export function mockOutboundResponse(request: Request): Response {
   const url = new URL(request.url);
+  if (url.hostname === "flaky.example.org") {
+    const refusal = FLAKY_REFUSALS[url.pathname.split("/")[1]];
+    const count = (flakySeen.get(request.url) ?? 0) + 1;
+    flakySeen.set(request.url, count);
+    if (refusal && count <= refusal.times) return new Response("refused", { status: refusal.status });
+    return new Response(THUMBNAIL_PAGE_HTML, { status: 200, headers: { "content-type": "text/html; charset=utf-8" } });
+  }
   if (url.hostname === "m.youtube.com") {
     const videoId = url.searchParams.get("v");
     if (videoId === BOT_CHECKED_VIDEO_ID || videoId === UNAVAILABLE_VIDEO_ID) {

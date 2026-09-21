@@ -13,6 +13,16 @@ const TIMEOUT_MS = 4000;
 const MAX_REDIRECTS = 3;
 /** Preview tags live in <head>; there is no reason to read a whole page. */
 const MAX_HTML_BYTES = 128 * 1024;
+/** Statuses that mean "not right now" rather than "not here". NHK, for one,
+ *  answers Cloudflare's egress IPs with 403 only some of the time -- measured at
+ *  the edge, the same page failed once and then succeeded twice in a row -- so a
+ *  single refusal is not a reason to give up on a page. 404 and the like are not
+ *  in the list: those pages are gone. */
+const RETRY_STATUSES = new Set([403, 429, 500, 502, 503, 504]);
+/** Waits before the 2nd and 3rd attempt. Short, because the whole lookup shares
+ *  one 4s deadline and a save is waiting on it. */
+const RETRY_DELAYS_MS = [300, 700];
+
 /** Links tried per item, so one save makes at most this many subrequests. */
 const MAX_LINKS = 2;
 
@@ -35,17 +45,29 @@ async function readHead(response: Response) {
   return html;
 }
 
+/** One page fetch, retried a couple of times when the answer is a transient
+ *  refusal. Every attempt is a subrequest, which a Worker has few of; that is
+ *  why only those statuses are retried and only twice. */
+async function fetchPage(url: string, signal: AbortSignal): Promise<Response> {
+  for (let attempt = 0; ; attempt++) {
+    const response = await fetch(url, {
+      redirect: "manual",
+      signal,
+      headers: { "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15", accept: "text/html" },
+    });
+    if (!RETRY_STATUSES.has(response.status) || attempt >= RETRY_DELAYS_MS.length) return response;
+    await response.body?.cancel().catch(() => {});
+    await new Promise((resolve) => setTimeout(resolve, RETRY_DELAYS_MS[attempt]));
+  }
+}
+
 async function lookup(url: string, signal: AbortSignal): Promise<string> {
   try {
     let current = url;
     for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
       // Checked on every hop: a public page can redirect to an internal host.
       if (!isPublicHttpUrl(current)) return "";
-      const response = await fetch(current, {
-        redirect: "manual",
-        signal,
-        headers: { "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15", accept: "text/html" },
-      });
+      const response = await fetchPage(current, signal);
       const location = response.headers.get("location");
       if (response.status >= 300 && response.status < 400 && location) {
         current = new URL(location, current).href;
