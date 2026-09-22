@@ -60,7 +60,7 @@ test("opening the currency tab fetches the full history, the Lido rewards and th
   app();
   fireEvent.click(tab("通貨推移"));
   await waitFor(() => expect(screen.getAllByText("現在残高").length).toBeGreaterThan(0));
-  expect(urls().filter((u) => u.startsWith("/api/manage-asset/history"))).toEqual(["/api/manage-asset/history?days=90"]); // no summary=1: the full rows
+  expect(urls().filter((u) => u.startsWith("/api/manage-asset/history"))).toEqual(["/api/manage-asset/history?days=90&fields=currency"]); // not summary=1: the rows the currency view reads
   expect(urls().filter((u) => u.startsWith("/api/lido-rewards"))).toHaveLength(1);
   expect(urls().filter((u) => u.startsWith("/api/usd-jpy-rates"))).toHaveLength(1);
 });
@@ -144,7 +144,7 @@ test("stETH with a summary window short of the boundary: the currency tab makes 
   app({ initialHistory: truncatedSummary });
   fireEvent.click(tab("通貨推移"));
   await waitFor(() => expect(screen.getAllByText("現在残高").length).toBeGreaterThan(0));
-  expect(urls().filter((u) => u.startsWith("/api/manage-asset/history"))).toEqual(["/api/manage-asset/history?days=all"]);
+  expect(urls().filter((u) => u.startsWith("/api/manage-asset/history"))).toEqual(["/api/manage-asset/history?days=all&fields=currency"]);
 });
 
 test("rendered as the currency view with everything already held (the /manage-asset/currencies route): no fetch at all", async () => {

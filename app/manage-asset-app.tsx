@@ -82,7 +82,7 @@ export function ManageAssetApp({
       try {
         const [nextState, nextHistory, rewards, rates, sync] = await Promise.all([
           fetch("/api/manage-asset/state", { cache: "no-store" }).then((response) => response.json()),
-          fetch(`/api/manage-asset/history?days=90${currencyFirst ? "" : "&summary=1"}`, { cache: "no-store" }).then((response) => response.json()),
+          fetch(`/api/manage-asset/history?days=90${currencyFirst ? "&fields=currency" : "&summary=1"}`, { cache: "no-store" }).then((response) => response.json()),
           currencyFirst ? fetchRows("/api/lido-rewards") : Promise.resolve(null),
           currencyFirst ? fetchRows("/api/usd-jpy-rates") : Promise.resolve(null),
           fetch("/api/manage-asset/sync", { cache: "no-store" }).then((response) => (response.ok ? response.json() : { latest: null })).catch(() => ({ latest: null })),
@@ -125,7 +125,8 @@ export function ManageAssetApp({
     const days = Math.max(need, held.days);
     const wantDetail = detail || held.detail;
     try {
-      const response = await fetch(`/api/manage-asset/history?days=${days === Infinity ? "all" : days}${wantDetail ? "" : "&summary=1"}`, { cache: "no-store" });
+      // Full rows only in the shape the currency view reads (`fields=currency`, about half the bytes).
+      const response = await fetch(`/api/manage-asset/history?days=${days === Infinity ? "all" : days}${wantDetail ? "&fields=currency" : "&summary=1"}`, { cache: "no-store" });
       if (!response.ok) return false;
       const next = await response.json() as AssetHistoryData;
       const now = coverage.current;

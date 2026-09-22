@@ -12,6 +12,7 @@
 import { env } from "cloudflare:workers";
 import { ensureSchema } from "@/db";
 import { toLegacyExchangeSnapshot, toLegacyWalletSnapshot } from "@/app/lib/manage-asset-legacy";
+import { currencyFields } from "@/app/lib/manage-asset-history-fields";
 
 type Row = Record<string, unknown>;
 
@@ -130,8 +131,11 @@ function newestPerSourceAndDate(wallets: Row[], exchanges: Row[]): AssetHistory 
 }
 
 /** app/api/manage-asset/history の GET と、/manage-asset ページの初期表示が
- *  両方呼ぶ。`days` は "7"/"30"/"90"/"all"/null（= 全期間）。 */
-export async function assetHistory(days: string | null, options: { summary?: boolean } = {}): Promise<AssetHistory> {
+ *  両方呼ぶ。`days` は "7"/"30"/"90"/"all"/null（= 全期間）。
+ *
+ *  形は3つ: 指定なし = 全項目、`summary` = 資産概要が使う ID・日付・合計だけ、
+ *  `fields: "currency"` = 通貨推移が読む項目だけ（全項目の約半分）。 */
+export async function assetHistory(days: string | null, options: { summary?: boolean; fields?: "currency" } = {}): Promise<AssetHistory> {
   await ensureSchema({ seed: false });
   const cutoff = await cutoffDate(days);
   if (options.summary) return assetHistorySummary(cutoff);
@@ -177,7 +181,9 @@ export async function assetHistory(days: string | null, options: { summary?: boo
     if (String(row.source_type).toLowerCase() === "wallet") snapshots.push(toLegacyWalletSnapshot(row, positions));
     else exchangeSnapshots.push(toLegacyExchangeSnapshot(row, positions));
   }
-  return newestPerSourceAndDate(snapshots, exchangeSnapshots);
+  const merged = newestPerSourceAndDate(snapshots, exchangeSnapshots);
+  // `fields: "currency"`: only what the per-currency history reads (see manage-asset-history-fields.ts).
+  return options.fields === "currency" ? currencyFields(merged) : merged;
 }
 
 /** app/api/lido-rewards の GET と、通貨推移ページの初期表示が両方呼ぶ。 */

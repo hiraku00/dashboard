@@ -45,7 +45,7 @@
 | パス                                    | 用途                             |
 | --------------------------------------- | -------------------------------- |
 | `GET /api/manage-asset/state`           | 最新スナップショットと表示用集計 |
-| `GET /api/manage-asset/history`         | 日次・通貨・保管場所別履歴。`days`で期間を絞る。`summary=1`を付けると、資産概要が使う項目（ID・日付・合計）だけを返す（約1/6のサイズ） |
+| `GET /api/manage-asset/history`         | 日次・通貨・保管場所別履歴。`days`で期間を絞る。`summary=1`を付けると、資産概要が使う項目（ID・日付・合計）だけを返す（約1/6のサイズ）。`fields=currency`を付けると、通貨推移が読む項目だけに削った行を返す（約半分のサイズ） |
 | `POST /api/manage-asset/history-import` | 履歴データの移行                 |
 | `POST /api/manage-asset/sync`           | collectorスナップショットの同期  |
 | `GET /api/lido-rewards`                 | Lido報酬データ                   |
