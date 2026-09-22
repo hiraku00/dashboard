@@ -84,6 +84,7 @@ export default defineConfig({
             "tests/portfolio-core.test.mjs",
             "tests/schema-parity.test.mjs",
             "tests/shared-helpers.test.mjs",
+            "tests/sql-text.test.mjs",
             "tests/sync-summary.test.mjs",
             "tests/text-tube-query.test.mjs",
             "tests/thumbnail.test.mjs",

@@ -32,6 +32,15 @@ test("q is trimmed and length-capped like clean() elsewhere", () => {
   expect(filter.values).toEqual(["%padded%", "%padded%"]);
 });
 
+test("a search term longer than D1's LIKE pattern limit is cut to fit, rather than making the query fail", () => {
+  // Same D1 limit as watch-list-query.ts's equivalent test -- see sql-text.ts.
+  const term = "BSスペシャル 禁じられる物語  愛国教育をめぐる攻防";
+  const filter = buildVideosFilter({ q: term });
+  const pattern = filter.values[0];
+  expect(new TextEncoder().encode(pattern).length).toBeLessThanOrEqual(50);
+  expect(term.startsWith(pattern.slice(1, -1))).toBe(true);
+});
+
 test("a blank or whitespace-only q behaves like no query at all", () => {
   expect(buildVideosFilter({ q: "" }).where).toBe("WHERE deleted_at IS NULL");
   expect(buildVideosFilter({ q: "   " }).where).toBe("WHERE deleted_at IS NULL");

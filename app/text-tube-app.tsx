@@ -4,6 +4,7 @@ import Image from "next/image";
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PortalHeader } from "./portal-nav";
 import { ApiError, readJson } from "./lib/json";
+import { MAX_LIKE_TERM_BYTES, truncateUtf8Bytes, utf8ByteLength } from "./lib/sql-text.ts";
 
 export type Video = {
   id: string;
@@ -245,9 +246,11 @@ export function TextTubeApp({
         <div className="tt-head-controls">
           <input
             value={q}
-            onChange={(e) => setQ(e.target.value)}
+            onChange={(e) => setQ(truncateUtf8Bytes(e.target.value, MAX_LIKE_TERM_BYTES))}
             placeholder="タイトル・チャンネルを検索"
+            title={`検索語は${MAX_LIKE_TERM_BYTES}バイトまでです（半角英数字は1文字1バイト、日本語などの全角文字は1文字3バイト）`}
           />
+          {q && <span className="tt-query-limit">{utf8ByteLength(q)}/{MAX_LIKE_TERM_BYTES}</span>}
           <select value={sort} onChange={(e) => setSort(e.target.value)}>
             <option value="created_at-desc">最新順（記事作成日）</option>
             <option value="view_count-desc">人気順（閲覧数）</option>

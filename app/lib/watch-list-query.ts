@@ -5,6 +5,7 @@
  *  a module that imports "cloudflare:workers" at the top level cannot be
  *  loaded outside the Workers runtime at all, let alone unit tested. */
 import { youTubeThumbnailFromLinks } from "./thumbnail.ts";
+import { MAX_LIKE_TERM_BYTES, truncateUtf8Bytes } from "./sql-text.ts";
 
 // clean() below duplicates app/lib/text.ts's on purpose -- keep it in sync.
 // Cross-file imports do work here (thumbnail.ts above uses an explicit .ts
@@ -84,7 +85,10 @@ export function buildItemsFilter(query: ListItemsQuery = {}): ItemsFilter {
   // clean() is the same helper app/api/items/route.ts used to sanitize these
   // before this function existed -- keep it here rather than trusting the
   // caller so a page.tsx that forgets to sanitize can't diverge from the API.
-  const q = clean(query.q, 200);
+  // Truncated to a byte-safe length in addition to clean()'s 200-JS-char cap --
+  // see sql-text.ts for why: a longer term inside `%${q}%` makes D1 reject the
+  // whole query rather than just matching fewer rows.
+  const q = truncateUtf8Bytes(clean(query.q, 200), MAX_LIKE_TERM_BYTES);
   const type = clean(query.type);
   const status = clean(query.status);
   const creator = clean(query.creator, 250);

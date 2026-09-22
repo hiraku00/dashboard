@@ -4,6 +4,7 @@
  *  module that imports "cloudflare:workers" at the top level cannot be
  *  loaded outside the Workers runtime at all, let alone unit tested under
  *  vitest's plain-Node "node" project. */
+import { MAX_LIKE_TERM_BYTES, truncateUtf8Bytes } from "./sql-text.ts";
 
 // Deliberately not importing app/lib/text.ts's clean() here -- see the
 // matching comment in app/lib/watch-list-query.ts for why. Keep in sync with
@@ -20,7 +21,10 @@ export type VideosFilter = { where: string; values: string[] };
  *  無く、ページネーションも無い（呼び出し元のSQLに固定 LIMIT 100 がある）
  *  ので、ここでの仕事はWHERE句の組み立てだけ。 */
 export function buildVideosFilter(query: VideosQuery = {}): VideosFilter {
-  const q = clean(query.q, 200);
+  // Truncated to a byte-safe length in addition to clean()'s 200-JS-char cap --
+  // see sql-text.ts for why: a longer term inside `%${q}%` makes D1 reject the
+  // whole query rather than just matching fewer rows.
+  const q = truncateUtf8Bytes(clean(query.q, 200), MAX_LIKE_TERM_BYTES);
   if (!q) return { where: "WHERE deleted_at IS NULL", values: [] };
   return {
     where: "WHERE deleted_at IS NULL AND (title LIKE ? OR channel_name LIKE ?)",
