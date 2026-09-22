@@ -166,9 +166,19 @@ export function TextTubeApp({
   // Guards only the very first run of the effect below -- see the matching
   // comment and effect in app/watch-list-app.tsx for the full rationale.
   const skippedInitialFetch = useRef(false);
+  // Counts every list request, so a slow response for an earlier query (e.g.
+  // typing "a" pauses just long enough for its own debounced fetch to start,
+  // then "aaaaaaaa" is typed and its fetch resolves first) cannot overwrite
+  // the newer, narrower result with a stale, broader one -- same guard as
+  // app/watch-list-app.tsx's refreshItems().
+  const latestRequest = useRef(0);
   const load = useCallback(async () => {
+    const requestId = ++latestRequest.current;
     const r = await fetch(`/api/text-tube/videos?q=${encodeURIComponent(q)}`);
-    if (r.ok) setVideos((await readJson<{ videos: Video[] }>(r)).videos);
+    if (!r.ok) return;
+    const videos = (await readJson<{ videos: Video[] }>(r)).videos;
+    if (requestId !== latestRequest.current) return;
+    setVideos(videos);
   }, [q]);
   useEffect(() => {
     if (initialVideos && !skippedInitialFetch.current) {
@@ -244,13 +254,15 @@ export function TextTubeApp({
           <h1>おすすめの要約</h1>
         </div>
         <div className="tt-head-controls">
-          <input
-            value={q}
-            onChange={(e) => setQ(truncateUtf8Bytes(e.target.value, MAX_LIKE_TERM_BYTES))}
-            placeholder="タイトル・チャンネルを検索"
-            title={`検索語は${MAX_LIKE_TERM_BYTES}バイトまでです（半角英数字は1文字1バイト、日本語などの全角文字は1文字3バイト）`}
-          />
-          {q && <span className="tt-query-limit">{utf8ByteLength(q)}/{MAX_LIKE_TERM_BYTES}</span>}
+          <span className="tt-query-field">
+            <input
+              value={q}
+              onChange={(e) => setQ(truncateUtf8Bytes(e.target.value, MAX_LIKE_TERM_BYTES))}
+              placeholder="タイトル・チャンネルを検索"
+              title={`検索語は${MAX_LIKE_TERM_BYTES}バイトまでです（半角英数字は1文字1バイト、日本語などの全角文字は1文字3バイト）`}
+            />
+            {q && <span className="tt-query-limit" aria-hidden="true">{utf8ByteLength(q)}/{MAX_LIKE_TERM_BYTES}</span>}
+          </span>
           <select value={sort} onChange={(e) => setSort(e.target.value)}>
             <option value="created_at-desc">最新順（記事作成日）</option>
             <option value="view_count-desc">人気順（閲覧数）</option>
