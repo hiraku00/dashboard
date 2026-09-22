@@ -28,6 +28,19 @@ test("q searches title/description/creator/series and the links' url/label with 
   expect(filter.values).toEqual(Array(6).fill("%steth%"));
 });
 
+test("a search term longer than D1's LIKE pattern limit is cut to fit, rather than making the query fail", () => {
+  // D1 (Cloudflare's SQLite) rejects a LIKE pattern over 50 UTF-8 bytes with "LIKE
+  // or GLOB pattern too complex" -- confirmed against production D1. This term (27
+  // chars, 71 UTF-8 bytes) reproduced the report: the search silently failed and
+  // app/watch-list-app.tsx showed "一覧を読み込めませんでした".
+  const term = "BSスペシャル 禁じられる物語  愛国教育をめぐる攻防";
+  const filter = buildItemsFilter({ q: term });
+  const pattern = filter.values[0];
+  expect(new TextEncoder().encode(pattern).length).toBeLessThanOrEqual(50);
+  expect(term.startsWith(pattern.slice(1, -1))).toBe(true); // still a prefix match, not silently dropped
+  expect(filter.values.every((value) => value === pattern)).toBe(true); // every LIKE gets the same, safe term
+});
+
 test("the link match is an EXISTS on an aliased table, so it neither duplicates an item nor clashes with listItems()'s links query", () => {
   const { where } = buildItemsFilter({ q: "x" });
   expect(where).toContain("EXISTS (SELECT 1 FROM item_links l WHERE l.item_id = items.id");

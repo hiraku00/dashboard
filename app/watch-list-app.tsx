@@ -5,6 +5,7 @@ import Image from "next/image";
 import { PortalHeader } from "./portal-nav";
 import { readErrorMessage, readJson } from "./lib/json";
 import { applyYouTubePreview, type YouTubePreviewItem } from "./lib/watch-list-youtube-import.ts";
+import { MAX_LIKE_TERM_BYTES, truncateUtf8Bytes, utf8ByteLength } from "./lib/sql-text.ts";
 
 export type ContentType = "text" | "audio" | "movie" | "other";
 export type Status = "backlog" | "in_progress" | "completed" | "dropped";
@@ -201,7 +202,7 @@ export function WatchListApp({
     <section className="library-panel" aria-labelledby="library-title">
       <div className="library-heading"><h2 id="library-title">ライブラリ</h2><span className="result-count">{loading ? "読み込み中" : `${totalResults} 件中 ${Math.min((page - 1) * pageSize + 1, totalResults || 0)}–${Math.min(page * pageSize, totalResults)}`}</span></div>
       <div className="filters">
-        <label className="search"><span aria-hidden="true">⌕</span><input value={query} onChange={(event) => { setQuery(event.target.value); setPage(1); }} placeholder="タイトル、人物、内容、リンクを検索" aria-label="検索" /></label>
+        <label className="search"><span aria-hidden="true">⌕</span><input value={query} onChange={(event) => { setQuery(truncateUtf8Bytes(event.target.value, MAX_LIKE_TERM_BYTES)); setPage(1); }} placeholder="タイトル、人物、内容、リンクを検索" aria-label="検索" title={`検索語は${MAX_LIKE_TERM_BYTES}バイトまでです（半角英数字は1文字1バイト、日本語などの全角文字は1文字3バイト）`} />{query && <span className="search-limit" aria-hidden="true">{utf8ByteLength(query)}/{MAX_LIKE_TERM_BYTES}</span>}</label>
         <label><span className="sr-only">種別</span><select value={type} onChange={(event) => { setType(event.target.value as typeof type); setPage(1); }}><option value="all">すべての種別</option>{(Object.keys(typeLabel) as ContentType[]).map((key) => <option key={key} value={key}>{typeLabel[key]}</option>)}</select></label>
         <label><span className="sr-only">状態</span><select value={status} onChange={(event) => { setStatus(event.target.value as typeof status); setPage(1); }}><option value="all">すべての状態</option>{(Object.keys(statusLabel) as Status[]).map((key) => <option key={key} value={key}>{statusLabel[key]}</option>)}</select></label>
         <label><span className="sr-only">人物・媒体</span><select value={creator} onChange={(event) => { setCreator(event.target.value); setPage(1); }}><option value="all">すべての人物・媒体</option>{creators.map((value) => <option key={value}>{value}</option>)}</select></label>
