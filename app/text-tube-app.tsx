@@ -1,6 +1,7 @@
 "use client";
 import Link from "next/link";
 import Image from "next/image";
+import { createPortal } from "react-dom";
 import { FormEvent, useCallback, useMemo, useState } from "react";
 import { PortalHeader } from "./portal-nav";
 import { ApiError, readJson } from "./lib/json";
@@ -419,7 +420,15 @@ export function VideoEditor({
       setImporting(false);
     }
   }
-  return (
+  // Rendered via a portal straight onto document.body: TextTubeChrome wraps
+  // this in `.tt-original-frame`, which has `overflow:hidden` for its own
+  // rounded-corner card look, and that clips a position:fixed descendant
+  // (this modal's backdrop) to the frame's own box instead of the viewport
+  // -- so without the portal, the top of this dialog renders hidden above
+  // wherever the frame happens to start on the page. `open` (the only state
+  // this ever mounts under) starts false, so this never has to render
+  // during SSR and `document` is always available here.
+  return createPortal(
     <div className="tt-modal-backdrop" role="presentation" onClick={onClose}>
       <section
         className="tt-editor"
@@ -522,6 +531,7 @@ export function VideoEditor({
           </div>
         </form>
       </section>
-    </div>
+    </div>,
+    document.body,
   );
 }
