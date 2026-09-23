@@ -1,8 +1,9 @@
 import { Suspense } from "react";
 import { PortalHeader } from "../../portal-nav";
 import { dailyResetWindows } from "../../lib/usage-window";
-import { R2_SOFT_LIMIT_BYTES } from "@/app/lib/portal";
+import { R2_SOFT_LIMIT_BYTES } from "@/app/lib/r2-storage";
 import { cloudflareAnalyticsUsage, d1BackedUsage, type D1BackedUsage } from "@/app/lib/queries/storage-usage";
+import { TODO_TIMEZONE } from "@/app/lib/todo-date";
 
 const D1_DAILY_ROWS_READ_LIMIT = 5_000_000;
 const D1_DAILY_ROWS_WRITTEN_LIMIT = 100_000;
@@ -105,7 +106,7 @@ export default async function StoragePage() {
                 // already assume it) and labeled explicitly so a viewer
                 // reading this from a different timezone is not misled into
                 // thinking it's their own local time.
-                ? `${new Intl.DateTimeFormat("ja-JP", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Bangkok" }).format(new Date(transcript.lastUsedAt))}（バンコク時間）`
+                ? `${new Intl.DateTimeFormat("ja-JP", { dateStyle: "medium", timeStyle: "short", timeZone: TODO_TIMEZONE }).format(new Date(transcript.lastUsedAt))}（バンコク時間）`
                 : "まだありません"}
             </strong></div>
           </div>

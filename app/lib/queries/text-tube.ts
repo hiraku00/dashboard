@@ -9,7 +9,7 @@
 import { env } from "cloudflare:workers";
 import { ensureSchema } from "@/db";
 import { buildVideosFilter, type VideosQuery } from "@/app/lib/text-tube-query";
-import { getPortalObject } from "@/app/lib/portal";
+import { getPortalObject } from "@/app/lib/r2-storage";
 
 export type Video = {
   id: unknown;

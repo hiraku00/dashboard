@@ -1,11 +1,13 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import { PortalHeader } from "./portal-nav";
 import { readErrorMessage, readJson } from "./lib/json";
 import { applyYouTubePreview, type YouTubePreviewItem } from "./lib/watch-list-youtube-import.ts";
 import { MAX_LIKE_TERM_BYTES, truncateUtf8Bytes, utf8ByteLength } from "./lib/sql-text.ts";
+import { useSearchReload } from "./lib/use-search-reload";
+import { useLatestRequest } from "./lib/use-latest-request";
 
 export type ContentType = "text" | "audio" | "movie" | "other";
 export type Status = "backlog" | "in_progress" | "completed" | "dropped";
@@ -52,16 +54,9 @@ export function WatchListApp({
   const [youTubeNotice, setYouTubeNotice] = useState("");
   const [page, setPage] = useState(1);
   const [totalResults, setTotalResults] = useState(initialItems?.pagination?.total ?? initialItems?.items.length ?? 0);
-  // Guards only the very first run of the effect below: this page has
-  // filters, unlike the portal top page, so only the *initial* mount fetch
-  // can be skipped when the server already rendered the default view --
-  // every later change to query/type/status/creator/page must still fetch
-  // normally. See the comment on the effect itself.
-  const skippedInitialFetch = useRef(false);
-
   // Counts every list request, so a slow response that arrives after a newer
   // one (page 2 clicked, then page 3) cannot overwrite the newer view.
-  const latestRequest = useRef(0);
+  const { begin, isCurrent } = useLatestRequest();
 
   /** Loads the current page of the list. The summary counts are NOT fetched
    *  here: they do not depend on the page or the filters, so paging and
@@ -69,7 +64,7 @@ export function WatchListApp({
    *  nothing. They are reloaded only after something changes them (see
    *  `refresh`). */
   const refreshItems = useCallback(async () => {
-    const requestId = ++latestRequest.current;
+    const requestId = begin();
     setLoading(true);
     try {
       const params = new URLSearchParams();
@@ -82,15 +77,15 @@ export function WatchListApp({
       const itemsResponse = await fetch(`/api/items?${params}`);
       if (!itemsResponse.ok) throw new Error("一覧を読み込めませんでした。再読み込みしてください。");
       const itemPayload = await readJson<{ items: Item[]; pagination?: { total?: number } }>(itemsResponse);
-      if (requestId !== latestRequest.current) return;
+      if (!isCurrent(requestId)) return;
       setItems(itemPayload.items);
       setTotalResults(itemPayload.pagination?.total ?? itemPayload.items.length);
     } catch (error) {
-      if (requestId === latestRequest.current) setNotice(error instanceof Error ? error.message : "読み込みに失敗しました。");
+      if (isCurrent(requestId)) setNotice(error instanceof Error ? error.message : "読み込みに失敗しました。");
     } finally {
-      if (requestId === latestRequest.current) setLoading(false);
+      if (isCurrent(requestId)) setLoading(false);
     }
-  }, [query, type, status, creator, page]);
+  }, [query, type, status, creator, page, begin, isCurrent]);
 
   const refreshStats = useCallback(async () => {
     try {
@@ -103,26 +98,11 @@ export function WatchListApp({
    *  counts may both have changed, and the two requests are independent. */
   const refresh = useCallback(async () => { await Promise.all([refreshItems(), refreshStats()]); }, [refreshItems, refreshStats]);
 
-  useEffect(() => {
-    // Skip exactly one invocation -- the one that runs on mount -- when the
-    // server already rendered this same default-filter view. Every
-    // subsequent invocation (the user changing query/type/status/creator/
-    // page, which is what actually re-triggers this effect since `refreshItems`
-    // is recreated on each of those) must still fetch normally; the ref
-    // flips permanently on its first check so a later change is never
-    // mistaken for the initial mount.
-    if (initialItems && !skippedInitialFetch.current) {
-      skippedInitialFetch.current = true;
-      return;
-    }
-    const timer = setTimeout(refreshItems, query ? 180 : 0);
-    return () => clearTimeout(timer);
-    // `initialItems` is intentionally omitted below: it is a prop from the
-    // server that does not change across this component's lifetime, so
-    // adding it as a dep would never itself re-trigger the effect -- only
-    // the ref actually gates behavior, and that is read, not depended on.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query, refreshItems]);
+  // Skips exactly the mount-time reload when the server already rendered
+  // this same default-filter view; every subsequent change to
+  // query/type/status/creator/page (which recreates `refreshItems`) still
+  // fetches normally. See app/lib/use-search-reload.ts.
+  useSearchReload(refreshItems, query, Boolean(initialItems));
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape" && (editing || isNew)) closeEditor();

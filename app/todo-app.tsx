@@ -3,14 +3,14 @@
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PortalHeader } from "./portal-nav";
 import { readErrorMessage, readJson } from "./lib/json";
+import { TODO_TIMEZONE, todoDate as isoDate } from "./lib/todo-date";
 
 export type Column = { id: string; name: string; kind: "inbox" | "today" | "doing" | "done" };
 export type Task = { id: string; columnId: string; routineId: string | null; occurrenceDate: string | null; title: string; description: string; priority: number | null; dueTime: string | null; completedAt: string | null; version: number };
 export type Routine = { id: string; title: string; description: string; schedule_type: "daily" | "weekdays"; weekdays: string; priority: number | null; default_due_time: string | null; active: number; version: number };
 type Draft = { title: string; description: string; priority: string; dueTime: string; occurrenceDate: string; columnId: string };
 const weekdayLabels = ["日", "月", "火", "水", "木", "金", "土"];
-const isoDate = (date: Date) => { const parts = new Intl.DateTimeFormat("en", { timeZone: "Asia/Bangkok", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(date); const value = (type: string) => parts.find((part) => part.type === type)?.value ?? ""; return `${value("year")}-${value("month")}-${value("day")}`; };
-const formatDate = (value: string) => new Intl.DateTimeFormat("ja-JP", { timeZone: "Asia/Bangkok", month: "long", day: "numeric", weekday: "short" }).format(new Date(`${value}T12:00:00Z`));
+const formatDate = (value: string) => new Intl.DateTimeFormat("ja-JP", { timeZone: TODO_TIMEZONE, month: "long", day: "numeric", weekday: "short" }).format(new Date(`${value}T12:00:00Z`));
 const emptyDraft = (date: string): Draft => ({ title: "", description: "", priority: "", dueTime: "", occurrenceDate: date, columnId: "todo-today" });
 
 export function TodoApp({

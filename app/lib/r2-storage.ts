@@ -1,7 +1,13 @@
+/** R2-backed object storage (put/get) plus the storage_objects bookkeeping
+ *  that tracks it -- the size accounting behind /settings/storage and the
+ *  8GB soft limit sync/document uploads are stopped by. Named for what it
+ *  does; this was previously app/lib/portal.ts, a name that gave no hint
+ *  its contents were R2 storage rather than, say, the portal home page's
+ *  own data (that lives in app/lib/queries/portal.ts and
+ *  app/lib/portal-summary.ts, unrelated modules with a confusingly similar
+ *  name to this file's old one). */
 import { env } from "cloudflare:workers";
 import { ensureSchema } from "@/db";
-
-export { clean } from "@/app/lib/text";
 
 export const R2_SOFT_LIMIT_BYTES = 8 * 1024 * 1024 * 1024;
 const MAX_OBJECT_BYTES = 25 * 1024 * 1024;

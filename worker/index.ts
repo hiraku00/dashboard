@@ -3,7 +3,7 @@ import { handleImageOptimization, DEFAULT_DEVICE_SIZES, DEFAULT_IMAGE_SIZES } fr
 import handler from "vinext/server/app-router-entry";
 import { reconcileStorageUsage } from "../app/lib/storage-usage";
 import { guardRequest } from "../app/lib/access";
-import { initTodo, materializeRoutines, todoDate } from "../app/api/todos/_lib";
+import { initTodo, materializeRoutines, todoDate } from "../app/lib/todo-lib";
 
 interface Env {
   ASSETS: Fetcher;

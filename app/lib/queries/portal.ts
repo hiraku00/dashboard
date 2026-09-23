@@ -9,20 +9,15 @@
 import { env } from "cloudflare:workers";
 import { ensureSchema } from "@/db";
 import { assetTotals, type PortalSummary } from "@/app/lib/portal-summary";
+import { LATEST_SNAPSHOT_JOIN } from "@/app/lib/manage-asset-latest-snapshot";
 
 export type { PortalSummary };
 
-/** "Latest snapshot per source", the same rule and the same columns assetState()
- *  reads in app/lib/queries/manage-asset.ts, so the totals come out of the same
- *  rows Manage Asset totals. asset_snapshots has UNIQUE(source_id, as_of_date),
- *  so a source's newest date identifies exactly one row, and the grouping is
- *  answered from that index (covering) instead of ranking every snapshot ever
- *  taken with ROW_NUMBER(). */
+/** "Latest snapshot per source", via the same JOIN assetState() uses in
+ *  app/lib/queries/manage-asset.ts, so the totals come out of the same rows
+ *  Manage Asset totals -- see manage-asset-latest-snapshot.ts. */
 const LATEST_SNAPSHOTS = `SELECT s.id, s.source_id, s.captured_at, s.as_of_date, s.fx_usdjpy, s.total_usd, s.total_jpy, a.source_type, a.display_name
-  FROM asset_snapshots s
-  JOIN (SELECT source_id, MAX(as_of_date) AS as_of_date FROM asset_snapshots GROUP BY source_id) latest
-    ON latest.source_id = s.source_id AND latest.as_of_date = s.as_of_date
-  JOIN asset_sources a ON a.id = s.source_id
+  ${LATEST_SNAPSHOT_JOIN}
   ORDER BY s.total_usd DESC`;
 
 export async function portalSummary(): Promise<PortalSummary> {

@@ -1,7 +1,7 @@
 import { env } from "cloudflare:workers";
 import { ensureSchema } from "@/db";
-import { getPortalObject } from "@/app/lib/portal";
-import { putPortalObject, sha256 } from "@/app/lib/portal";
+import { getPortalObject } from "@/app/lib/r2-storage";
+import { putPortalObject, sha256 } from "@/app/lib/r2-storage";
 import { route } from "@/app/lib/route";
 
 type Context = { params: Promise<{ id: string }> };

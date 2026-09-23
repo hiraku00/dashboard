@@ -147,7 +147,29 @@ export const POST = route(async (request: Request) => {
       id,
       part: "snippet,contentDetails",
     }).toString();
-    const data = (await (await fetch(videosUrl)).json()) as {
+    const videosResponse = await fetch(videosUrl, {
+      signal: AbortSignal.timeout(10_000),
+    });
+    // Checked before reading the body: a quota/auth failure (403) or a bad
+    // request (400) comes back as HTTP 200 items:[] would never distinguish
+    // from "no such video id" -- both used to fall through to the generic
+    // 422 below, so a revoked API key looked identical to a typo'd URL.
+    if (!videosResponse.ok) {
+      const errorBody = (await videosResponse.json().catch(() => null)) as {
+        error?: { message?: string };
+      } | null;
+      return Response.json(
+        {
+          error:
+            videosResponse.status === 403
+              ? "YouTube Data APIの利用上限に達しているか、APIキーが無効です。"
+              : (errorBody?.error?.message ??
+                "YouTubeから動画情報を取得できませんでした。"),
+        },
+        { status: 502 },
+      );
+    }
+    const data = (await videosResponse.json()) as {
       items?: Array<{
         snippet?: {
           title?: string;
@@ -163,7 +185,7 @@ export const POST = route(async (request: Request) => {
     const snippet = video?.snippet;
     if (!snippet?.title || !snippet.channelId)
       return Response.json(
-        { error: "動画情報を取得できませんでした。" },
+        { error: "動画情報を取得できませんでした。公開中の動画URLか確認してください。" },
         { status: 422 },
       );
     const channelsUrl = new URL(
@@ -174,7 +196,14 @@ export const POST = route(async (request: Request) => {
       id: snippet.channelId,
       part: "snippet",
     }).toString();
-    const channel = (await (await fetch(channelsUrl)).json()) as {
+    // Channel thumbnail is decorative -- a failure here shouldn't fail the
+    // whole preview, so its response is read leniently rather than checked
+    // like videosResponse above.
+    const channel = (await (
+      await fetch(channelsUrl, { signal: AbortSignal.timeout(10_000) })
+    )
+      .json()
+      .catch(() => ({}))) as {
       items?: Array<{
         snippet?: { thumbnails?: Record<string, { url?: string }> };
       }>;

@@ -1,6 +1,6 @@
 /** Small string/URL helpers shared by the API routes that accept user input.
- *  These were duplicated near-verbatim in app/lib/portal.ts, app/api/items/route.ts
- *  and app/api/todos/_lib.ts (clean/validDate identical in all three), and
+ *  These were duplicated near-verbatim in app/lib/r2-storage.ts, app/api/items/route.ts
+ *  and app/lib/todo-lib.ts (clean/validDate identical in all three), and
  *  canonicalUrl existed in three different forms with three different rules
  *  (items/route.ts stripped tracking params, app/api/imports/route.ts and the
  *  db/index.ts seed loop stripped only the hash) -- so a URL imported or seeded
