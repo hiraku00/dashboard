@@ -8,13 +8,21 @@ import { applyYouTubePreview, type YouTubePreviewItem } from "./lib/watch-list-y
 import { MAX_LIKE_TERM_BYTES, truncateUtf8Bytes, utf8ByteLength } from "./lib/sql-text.ts";
 import { useSearchReload } from "./lib/use-search-reload";
 import { useLatestRequest } from "./lib/use-latest-request";
+import { youTubeVideoId } from "./lib/youtube.ts";
 
 export type ContentType = "text" | "audio" | "movie" | "other";
 export type Status = "backlog" | "in_progress" | "completed" | "dropped";
-export type Link = { id?: string; label: string; url: string; linkType?: string };
+// "none" covers both "not imported yet" and "imported, then deleted from
+// TextTube" -- either way, the editor offers the same manual button.
+export type TextTubeLinkStatus = { status: "reflected"; videoId: string } | { status: "running" } | { status: "failed"; error: string } | { status: "none" };
+export type Link = { id?: string; label: string; url: string; linkType?: string; textTube?: TextTubeLinkStatus };
 export type Item = { id: string; contentType: ContentType; creatorName: string; seriesTitle: string; title: string; description: string; priority: number | null; status: Status; addedOn: string | null; watchedOn: string | null; comment: string; thumbnailUrl: string; version: number; links: Link[] };
 type Draft = Omit<Item, "id" | "version">;
 export type Stats = { total: number; completed: number; movie: number; audio: number; text: number };
+export type PendingTextTubeImport = { id: string; youtubeVideoId: string; itemId: string | null; itemTitle: string | null; status: "failed" | "stuck"; error: string };
+type TextTubeRunResult = { status: "reflected" | "running" | "done" | "failed"; videoId?: string; error?: string };
+
+const textTubeStatusLabel: Record<TextTubeLinkStatus["status"], string> = { reflected: "反映済", running: "登録中", failed: "失敗", none: "未反映" };
 
 const emptyDraft = (): Draft => ({ contentType: "movie", creatorName: "", seriesTitle: "", title: "", description: "", priority: null, status: "backlog", addedOn: new Date().toISOString().slice(0, 10), watchedOn: null, comment: "", thumbnailUrl: "", links: [{ label: "", url: "", linkType: "reference" }] });
 const typeLabel: Record<ContentType, string> = { movie: "映像", audio: "音声", text: "テキスト", other: "その他" };
@@ -52,6 +60,15 @@ export function WatchListApp({
   const [youTubeUrl, setYouTubeUrl] = useState("");
   const [youTubeLoading, setYouTubeLoading] = useState(false);
   const [youTubeNotice, setYouTubeNotice] = useState("");
+  // Keyed by YouTube video id: which "TextTubeへ反映" runs are in flight
+  // right now (auto, right after save, or manual from the editor/banner).
+  const [textTubeBusy, setTextTubeBusy] = useState<Record<string, boolean>>({});
+  // Failed or stuck (running for 10+ minutes) imports that need a person's
+  // attention -- shown as a dismissable banner above the library, not tied
+  // to any one editor session, since the whole point is surfacing work left
+  // over from a closed tab. See app/lib/text-tube-import.ts's
+  // pendingTextTubeImports().
+  const [attention, setAttention] = useState<PendingTextTubeImport[]>([]);
   const [page, setPage] = useState(1);
   const [totalResults, setTotalResults] = useState(initialItems?.pagination?.total ?? initialItems?.items.length ?? 0);
   // Counts every list request, so a slow response that arrives after a newer
@@ -117,6 +134,11 @@ export function WatchListApp({
   }, [notice]);
 
   const creators = useMemo(() => [...new Set(items.map((item) => item.creatorName).filter(Boolean))].sort((a, b) => a.localeCompare(b, "ja")), [items]);
+  // 保存済みのリンク（editing.links、下書きではなく）のうちYouTubeのもの
+  // だけ。「TextTubeへ反映」欄は保存済みの状態に対して動くので、まだ
+  // 保存していない下書きの追加・編集中のリンクは含めない -- 新規追加
+  // 画面(editingがnull)でも出さない。
+  const youtubeLinksWithStatus = useMemo(() => editing ? editing.links.filter((link) => Boolean(youTubeVideoId(link.url))) : [], [editing]);
   const progress = stats.total ? Math.round((stats.completed / stats.total) * 100) : 0;
   const totalPages = Math.max(1, Math.ceil(totalResults / pageSize));
   const activeEditor = isNew || editing;
@@ -140,12 +162,70 @@ export function WatchListApp({
     finally { setYouTubeLoading(false); }
   }
 
+  /** app/lib/text-tube-import.ts の runTextTubeImport() を呼ぶ、唯一の
+   *  窓口。保存直後の自動登録（save()内）、編集画面の「TextTubeへ反映」
+   *  ボタン、上部の帯の「再試行」ボタンのすべてがこれを使う -- 自動と
+   *  手動で呼び先が分かれることはない。 */
+  async function runTextTubeImport(videoId: string, itemId: string): Promise<TextTubeRunResult | null> {
+    setTextTubeBusy((current) => ({ ...current, [videoId]: true }));
+    try {
+      const response = await fetch("/api/text-tube/imports/run", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ youtubeVideoId: videoId, itemId }) });
+      return await readJson<TextTubeRunResult>(response).catch(() => null);
+    } catch { return null; }
+    finally { setTextTubeBusy((current) => { const next = { ...current }; delete next[videoId]; return next; }); }
+  }
+
+  const refreshAttention = useCallback(async () => {
+    try {
+      const response = await fetch("/api/text-tube/imports/attention");
+      if (response.ok) setAttention((await readJson<{ items: PendingTextTubeImport[] }>(response)).items);
+    } catch { /* The banner is best-effort; keep showing whatever it had. */ }
+  }, []);
+
+  async function dismissAttention(id: string) {
+    setAttention((current) => current.filter((entry) => entry.id !== id));
+    await fetch(`/api/text-tube/imports/${id}/dismiss`, { method: "POST" }).catch(() => {});
+  }
+
+  /** 編集画面を開いたまま手動でTextTubeへ反映したとき、その画面自身の
+   *  バッジ（editing.links[].textTube）を最新化する。一覧側は
+   *  refresh()が別途面倒を見る。 */
+  async function reloadEditingStatus(itemId: string) {
+    try {
+      const response = await fetch(`/api/items/${itemId}`);
+      if (response.ok) setEditing((await readJson<{ item: Item }>(response)).item);
+    } catch { /* best effort */ }
+  }
+
+  useEffect(() => {
+    // Inlined (not just `refreshAttention()`) so the setState this does
+    // stays behind the fetch's `.then()`, matching app/portal-home.tsx's
+    // mount-fetch pattern -- calling a named async helper that eventually
+    // calls setState trips react-hooks/set-state-in-effect even though the
+    // actual setState here, like there, only ever runs after the fetch
+    // resolves.
+    fetch("/api/text-tube/imports/attention")
+      .then((response) => (response.ok ? readJson<{ items: PendingTextTubeImport[] }>(response) : null))
+      .then((data) => { if (data) setAttention(data.items); })
+      .catch(() => {});
+  }, []);
+
   async function save(event: FormEvent) {
     event.preventDefault(); setSaving(true); setNotice("");
     try {
       const response = await fetch(editing ? `/api/items/${editing.id}` : "/api/items", { method: editing ? "PATCH" : "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...draft, version: editing?.version }) });
       if (!response.ok) throw new Error(await readErrorMessage(response, "保存できませんでした。"));
+      const data = await readJson<{ item: Item; textTubeCandidates?: string[] }>(response);
+      const savedItemId = data.item.id;
       closeEditor(); setNotice(editing ? "変更を保存しました。" : "コンテンツを追加しました。"); await refresh();
+      // 新しく追加されたYouTubeリンクだけが対象 -- 既にTextTubeにある
+      // ものは runTextTubeImport() 自身が確認して何もしない(無駄な
+      // Supadataリクエストは発生しない)。
+      const candidates = data.textTubeCandidates ?? [];
+      if (candidates.length) {
+        await Promise.allSettled(candidates.map((videoId) => runTextTubeImport(videoId, savedItemId)));
+        await refresh(); await refreshAttention();
+      }
     } catch (error) { setNotice(error instanceof Error ? error.message : "保存に失敗しました。"); }
     finally { setSaving(false); }
   }
@@ -169,6 +249,13 @@ export function WatchListApp({
   return <main className="app-shell">
     <PortalHeader title="Watch List" active="/watch-list" />
     {notice && <p className="notice toast-notice" role="status">{notice}</p>}
+    {attention.length > 0 && <div className="texttube-attention" role="alert">{attention.map((entry) => <div className="texttube-attention-row" key={entry.id}>
+      <span>TextTubeへの登録に失敗：{entry.itemTitle ?? "（削除済みの項目）"} — {entry.error}</span>
+      <div className="texttube-attention-actions">
+        <button type="button" disabled={textTubeBusy[entry.youtubeVideoId]} onClick={async () => { await runTextTubeImport(entry.youtubeVideoId, entry.itemId ?? ""); await refresh(); await refreshAttention(); }}>{textTubeBusy[entry.youtubeVideoId] ? "再試行中…" : "再試行"}</button>
+        <button type="button" onClick={() => dismissAttention(entry.id)}>閉じる</button>
+      </div>
+    </div>)}</div>}
     <div className="page-toolbar watch-list-toolbar">
       <section className="summary-grid" aria-label="鑑賞の状況">
         <article className="summary-card"><span>すべて</span><strong>{stats.total}</strong><small>件</small></article>
@@ -190,9 +277,10 @@ export function WatchListApp({
       <div className="item-list">
         {!loading && items.length === 0 && <div className="empty-state"><strong>該当するコンテンツはありません。</strong><p>条件を変えるか、新しく追加してください。</p><button onClick={openNew}>コンテンツを追加</button></div>}
         {items.length > 0 && <div className={loading ? "table-scroll is-loading" : "table-scroll"} aria-busy={loading}><table className="content-table">
-          <colgroup><col className="col-type" /><col className="col-creator" /><col className="col-thumb" /><col className="col-title" /><col className="col-date" /><col className="col-status" /><col className="col-links" /><col className="col-action" /></colgroup>
-          <thead><tr><th scope="col"><span className="sr-only">種別</span></th><th scope="col">人物・媒体</th><th scope="col" colSpan={2}>タイトル</th><th scope="col">追加日</th><th scope="col">状態</th><th scope="col">リンク</th><th scope="col">削除</th></tr></thead>
+          <colgroup><col className="col-type" /><col className="col-creator" /><col className="col-thumb" /><col className="col-title" /><col className="col-date" /><col className="col-status" /><col className="col-links" /><col className="col-texttube" /><col className="col-action" /></colgroup>
+          <thead><tr><th scope="col"><span className="sr-only">種別</span></th><th scope="col">人物・媒体</th><th scope="col" colSpan={2}>タイトル</th><th scope="col">追加日</th><th scope="col">状態</th><th scope="col">リンク</th><th scope="col">TextTube</th><th scope="col">削除</th></tr></thead>
           <tbody>{items.map((item) => {
+            const youtubeLinks = item.links.filter((link) => link.textTube);
             return <tr className={item.status === "completed" ? "is-completed" : ""} key={item.id}>
               <td className="type-cell"><span className={`type-mark type-${item.contentType}`} title={typeLabel[item.contentType]} aria-label={typeLabel[item.contentType]}>{typeLabel[item.contentType].slice(0, 1)}</span></td>
               <td className="creator-cell"><strong>{item.creatorName || "—"}</strong>{item.seriesTitle && <span>{item.seriesTitle}</span>}</td>
@@ -201,6 +289,12 @@ export function WatchListApp({
               <td className="date-cell"><time dateTime={item.addedOn ?? undefined}>{dateLabel(item.addedOn)}</time>{item.status === "completed" && item.watchedOn && <span>完了 {dateLabel(item.watchedOn)}</span>}</td>
               <td className="status-cell"><select value={item.status} onChange={(event) => updateStatus(item, event.target.value as Status)} aria-label={`${item.title} の状態`}>{(Object.keys(statusLabel) as Status[]).map((key) => <option key={key} value={key}>{statusLabel[key]}</option>)}</select>{item.priority && <span className="priority">優先 {item.priority}</span>}</td>
               <td className="links-cell">{item.links.length > 0 ? <div className="item-links" aria-label={`${item.title} のリンク`}>{item.links.map((link, index) => <a key={`${link.id ?? link.url}-${index}`} href={link.url} target="_blank" rel="noreferrer">{link.label || `リンク ${index + 1}`} <span aria-hidden="true">↗</span></a>)}</div> : <span className="empty-cell">—</span>}</td>
+              <td className="texttube-cell">{youtubeLinks.length > 0 ? youtubeLinks.map((link, index) => {
+                const tt = link.textTube!;
+                return tt.status === "reflected"
+                  ? <a key={`${link.id ?? link.url}-${index}`} className="texttube-badge texttube-reflected" href={`/text-tube/watch/${tt.videoId}`} target="_blank" rel="noreferrer">{textTubeStatusLabel.reflected}</a>
+                  : <span key={`${link.id ?? link.url}-${index}`} className={`texttube-badge texttube-${tt.status}`} title={tt.status === "failed" ? tt.error : undefined}>{textTubeStatusLabel[tt.status]}</span>;
+              }) : <span className="empty-cell">—</span>}</td>
               <td className="action-cell"><button className="icon-button danger" onClick={() => remove(item)}>削除</button></td>
             </tr>;
           })}</tbody>
@@ -211,6 +305,22 @@ export function WatchListApp({
 
     {activeEditor && <div className="modal-backdrop" role="presentation" onClick={closeEditor}><section className="editor" role="dialog" aria-modal="true" aria-labelledby="editor-title" onClick={(event) => event.stopPropagation()}><div className="editor-heading"><div><p className="app-kicker">{editing ? "EDIT CONTENT" : "NEW CONTENT"}</p><h2 id="editor-title">{editing ? "コンテンツを編集" : "コンテンツを追加"}</h2></div><button className="close-button" onClick={closeEditor} aria-label="閉じる">×</button></div><form className="editor-form" onSubmit={save}>
       <section className="youtube-import" aria-labelledby="youtube-import-title"><div><strong id="youtube-import-title">YouTubeから入力</strong><p>動画URLからチャンネル名、タイトル、リンクを入力します。</p></div><div className="youtube-import-controls"><input type="url" value={youTubeUrl} onChange={(event) => setYouTubeUrl(event.target.value)} placeholder="https://www.youtube.com/watch?v=..." aria-label="YouTube動画URL" /><button type="button" onClick={importYouTube} disabled={youTubeLoading || !youTubeUrl.trim()}>{youTubeLoading ? "取得中…" : "情報を取得"}</button></div>{youTubeNotice && <p className="youtube-import-notice" role="status">{youTubeNotice}</p>}</section>
+      {editing && youtubeLinksWithStatus.length > 0 && <section className="texttube-panel" aria-labelledby="texttube-panel-title">
+        <strong id="texttube-panel-title">TextTube</strong>
+        <p>保存すると、YouTubeリンクの動画はTextTubeにも自動で登録されます（動画情報と字幕。要約は含みません）。登録に失敗したときや、登録中に画面を閉じたときは、下のボタンで手動で登録できます。</p>
+        {youtubeLinksWithStatus.map((link, index) => {
+          const videoId = youTubeVideoId(link.url);
+          const tt = link.textTube ?? { status: "none" as const };
+          const busy = Boolean(textTubeBusy[videoId]);
+          return <div className="texttube-row" key={link.id ?? `${videoId}-${index}`}>
+            <span className="texttube-url">{link.url}</span>
+            <span className={`texttube-badge texttube-${tt.status}`}>{textTubeStatusLabel[tt.status]}</span>
+            {tt.status === "reflected"
+              ? <a href={`/text-tube/watch/${tt.videoId}`} target="_blank" rel="noreferrer">開く ↗</a>
+              : <button type="button" disabled={busy || tt.status === "running"} onClick={async () => { await runTextTubeImport(videoId, editing.id); await refresh(); await refreshAttention(); await reloadEditingStatus(editing.id); }}>{busy ? "登録中…" : "TextTubeへ反映"}</button>}
+          </div>;
+        })}
+      </section>}
       <div className="form-grid compact first-grid"><label>種別<select value={draft.contentType} onChange={(event) => patchDraft({ contentType: event.target.value as ContentType })}>{(Object.keys(typeLabel) as ContentType[]).map((key) => <option key={key} value={key}>{typeLabel[key]}</option>)}</select></label><label>状態<select value={draft.status} onChange={(event) => patchDraft({ status: event.target.value as Status })}>{(Object.keys(statusLabel) as Status[]).map((key) => <option key={key} value={key}>{statusLabel[key]}</option>)}</select></label></div>
       <div className="form-grid"><label>人物・媒体<input value={draft.creatorName} onChange={(event) => patchDraft({ creatorName: event.target.value })} placeholder="例：NHK、ちきりん" /></label><label>番組・連載名<input value={draft.seriesTitle} onChange={(event) => patchDraft({ seriesTitle: event.target.value })} placeholder="例：WBS" /></label></div>
       <label className="title-field"><span>タイトル <b>必須</b></span><input required value={draft.title} onChange={(event) => patchDraft({ title: event.target.value })} placeholder="鑑賞したいコンテンツの名前" /></label>

@@ -28,7 +28,7 @@ let schemaReady = false;
  *  than reconciled, since the drizzle ORM was never actually used to query. */
 /** Bump whenever the DDL below changes, so existing databases re-run it once.
  *  A database whose schema_meta row already matches skips the whole batch. */
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 4;
 
 /** Reads the recorded schema version. A database that predates schema_meta (or
  *  a brand new one) has no table, and the query fails rather than returning a
@@ -115,7 +115,8 @@ export async function ensureSchema({ seed = true }: { seed?: boolean } = {}) {
       summary TEXT NOT NULL DEFAULT '', detailed_script_object_key TEXT,
       detailed_script_sha256 TEXT, detailed_script_size INTEGER, published_at TEXT,
       view_count INTEGER NOT NULL DEFAULT 0, channel_thumbnail_url TEXT NOT NULL DEFAULT '',
-      duration TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+      duration TEXT NOT NULL DEFAULT '', youtube_video_id TEXT,
+      created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
       deleted_at TEXT
     )`),
     env.DB.prepare(`CREATE TABLE IF NOT EXISTS text_tube_video_revisions (
@@ -129,6 +130,30 @@ export async function ensureSchema({ seed = true }: { seed?: boolean } = {}) {
     ),
     env.DB.prepare(
       "CREATE INDEX IF NOT EXISTS text_tube_videos_channel_idx ON text_tube_videos(channel_name)",
+    ),
+    // text_tube_videos_youtube_idx is NOT created here: on an existing
+    // database this CREATE TABLE IF NOT EXISTS is a no-op, so an index on
+    // youtube_video_id here would run against a table that doesn't have
+    // that column yet (it's added by the ALTER below, outside this batch)
+    // and fail with "no such column" -- taking every table's DDL in this
+    // batch down with it (confirmed against a real pre-this-change local
+    // D1: every route started 500ing with exactly that error). Created
+    // instead right after the ALTER succeeds, further down.
+    // Watch Listに保存されたYouTubeリンクをTextTubeへ自動で取り込む処理
+    // (app/lib/text-tube-import.ts) の実行記録。1つのyoutube_video_idに
+    // 対して複数行残り得る(失敗後の再試行、削除後の再取り込みなど) --
+    // 「今の状態」は最新の1行(updated_at最大)で判断する。UNIQUE制約は
+    // 付けない: TextTube側で削除した動画をWatch Listから再取り込みできる
+    // ようにするため。
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS text_tube_imports (
+      id TEXT PRIMARY KEY, youtube_video_id TEXT NOT NULL, item_id TEXT,
+      status TEXT NOT NULL, video_id TEXT, attempts INTEGER NOT NULL DEFAULT 1,
+      last_error TEXT NOT NULL DEFAULT '', dismissed_at TEXT,
+      created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+      CHECK(status IN ('running','done','failed'))
+    )`),
+    env.DB.prepare(
+      "CREATE INDEX IF NOT EXISTS text_tube_imports_video_idx ON text_tube_imports(youtube_video_id, updated_at DESC)",
     ),
     env.DB.prepare(`CREATE TABLE IF NOT EXISTS asset_sources (
       id TEXT PRIMARY KEY, source_type TEXT NOT NULL, provider TEXT NOT NULL,
@@ -223,6 +248,21 @@ export async function ensureSchema({ seed = true }: { seed?: boolean } = {}) {
   // already has the column (a fresh one, from the CREATE above) throws and the
   // error is the expected "nothing to do".
   await env.DB.prepare("ALTER TABLE items ADD COLUMN thumbnail_url TEXT NOT NULL DEFAULT ''").run().catch(() => {});
+  // Schema version 4. app/lib/text-tube-import.ts matches a Watch List
+  // YouTube link to an already-imported video by this column, so an
+  // existing database needs it backfilled once, not just created empty on
+  // new rows. This app always writes original_url as exactly
+  // "https://www.youtube.com/watch?v=<11-char id>" (see
+  // app/lib/youtube-video-fetch.ts), so a fixed-offset substr() after "v="
+  // is reliable here -- unlike the general-purpose parsing
+  // youTubeVideoId() does for arbitrary user input elsewhere.
+  await env.DB.prepare("ALTER TABLE text_tube_videos ADD COLUMN youtube_video_id TEXT").run().catch(() => {});
+  await env.DB.prepare(
+    "CREATE INDEX IF NOT EXISTS text_tube_videos_youtube_idx ON text_tube_videos(youtube_video_id)",
+  ).run().catch(() => {});
+  await env.DB.prepare(
+    "UPDATE text_tube_videos SET youtube_video_id = substr(original_url, instr(original_url, 'v=') + 2, 11) WHERE youtube_video_id IS NULL AND original_url LIKE '%watch?v=%'",
+  ).run().catch(() => {});
   // One snapshot per source and date. The collector syncs 8-20 times a day and
   // both readers only ever use the newest row per source and date, so appending
   // the rest only grew the table that every request scans. The sync route's

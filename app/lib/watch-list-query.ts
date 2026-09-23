@@ -6,6 +6,7 @@
  *  loaded outside the Workers runtime at all, let alone unit tested. */
 import { youTubeThumbnailFromLinks } from "./thumbnail.ts";
 import { MAX_LIKE_TERM_BYTES, truncateUtf8Bytes } from "./sql-text.ts";
+import { youTubeVideoId } from "./youtube.ts";
 
 // clean() below duplicates app/lib/text.ts's on purpose -- keep it in sync.
 // Cross-file imports do work here (thumbnail.ts above uses an explicit .ts
@@ -21,6 +22,16 @@ export type WatchStatus = "backlog" | "in_progress" | "completed" | "dropped";
 
 export const contentTypes = new Set<ContentType>(["text", "audio", "movie", "other"]);
 export const statuses = new Set<WatchStatus>(["backlog", "in_progress", "completed", "dropped"]);
+
+/** A link's TextTube auto-import status, attached only to links that are a
+ *  YouTube video URL (see attachTextTubeStatus()). "none" covers both "not
+ *  imported yet" and "imported, then deleted from TextTube" -- either way,
+ *  the Watch List UI offers the same manual "TextTubeへ反映" action. */
+export type TextTubeLinkStatus =
+  | { status: "reflected"; videoId: string }
+  | { status: "running" }
+  | { status: "failed"; error: string }
+  | { status: "none" };
 
 export type WatchListItem = {
   id: unknown;
@@ -41,7 +52,7 @@ export type WatchListItem = {
   version: unknown;
   createdAt: unknown;
   updatedAt: unknown;
-  links: Array<{ id: unknown; label: unknown; url: unknown; linkType: unknown; position: unknown }>;
+  links: Array<{ id: unknown; label: unknown; url: unknown; linkType: unknown; position: unknown; textTube?: TextTubeLinkStatus }>;
 };
 
 /** Maps a raw D1 row (snake_case columns) plus its links into the camelCase
@@ -112,4 +123,60 @@ export function buildItemsFilter(query: ListItemsQuery = {}): ItemsFilter {
   if (creator) { clauses.push("creator_name = ?"); values.push(creator); }
   const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
   return { where, values, limit, offset };
+}
+
+/** Decides one YouTube link's TextTube badge from the D1 rows
+ *  app/lib/queries/watch-list.ts's attachTextTubeStatus() looked up for it
+ *  -- pure so it's covered by this file's plain-Node tests instead of only
+ *  by a D1-backed one.
+ *
+ *  `videoRow` wins outright: a live (non-deleted) text_tube_videos row
+ *  means "reflected", full stop, even if an older import row also exists.
+ *  Without one, the *latest* text_tube_imports row (by updated_at -- the
+ *  caller already picked it) decides: running within `staleCutoffIso` is
+ *  still in progress; running older than that is treated as stuck, i.e.
+ *  the same "none" a caller can retry from as an import that never
+ *  started; failed carries its error through; anything else (most notably
+ *  a stale "done" whose video was later deleted from TextTube) also falls
+ *  through to "none" -- deleted means not reflected, regardless of what a
+ *  past attempt recorded. */
+export function resolveTextTubeStatus(
+  videoRow: { id: unknown } | undefined,
+  importRow: { status: unknown; last_error?: unknown; updated_at: unknown } | undefined,
+  staleCutoffIso: string,
+): TextTubeLinkStatus {
+  if (videoRow) return { status: "reflected", videoId: String(videoRow.id) };
+  if (importRow?.status === "running" && String(importRow.updated_at) >= staleCutoffIso) return { status: "running" };
+  if (importRow?.status === "failed") return { status: "failed", error: String(importRow.last_error ?? "") };
+  return { status: "none" };
+}
+
+/** Attaches `textTube` to every link across `items` that is a YouTube video
+ *  URL, given the D1 rows app/lib/queries/watch-list.ts's
+ *  attachTextTubeStatus() looked up: the live text_tube_videos row (if
+ *  any) and the latest text_tube_imports row, each keyed by YouTube video
+ *  id. Links that are not a YouTube URL are returned unchanged (no
+ *  `textTube` field at all, so the UI can tell "not applicable" from "not
+ *  imported yet"). */
+export function attachTextTubeStatus(
+  items: WatchListItem[],
+  videoRowsByYoutubeId: Map<string, { id: unknown }>,
+  importRowsByYoutubeId: Map<string, { status: unknown; last_error?: unknown; updated_at: unknown }>,
+  staleCutoffIso: string,
+): WatchListItem[] {
+  return items.map((item) => ({
+    ...item,
+    links: item.links.map((link) => {
+      const videoId = youTubeVideoId(link.url);
+      if (!videoId) return link;
+      return {
+        ...link,
+        textTube: resolveTextTubeStatus(
+          videoRowsByYoutubeId.get(videoId),
+          importRowsByYoutubeId.get(videoId),
+          staleCutoffIso,
+        ),
+      };
+    }),
+  }));
 }

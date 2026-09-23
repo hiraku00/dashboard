@@ -102,6 +102,13 @@ export const SAMPLE_SUPADATA_TRANSCRIPT_MISMATCH_EN_RETRY_RESPONSE = JSON.string
   availableLangs: ["ar", "en"],
 });
 
+/** A video id for which the YouTube Data API mock answers with no items at
+ *  all (as it would for a private/deleted video) -- exercises
+ *  app/lib/text-tube-import.ts's failure path (fetchYouTubeVideoInfo()
+ *  returning `{ error }`, the import row ending up 'failed'). */
+export const MISSING_VIDEO_ID = "missingVid1";
+export const SAMPLE_YOUTUBE_DATA_API_VIDEOS_MISSING_RESPONSE = JSON.stringify({ items: [] });
+
 /** Hosts that refuse a page a fixed number of times before serving it, keyed by
  *  the full URL, so a test can tell how many attempts a lookup made: a lookup
  *  that gives up after N attempts leaves the (N+1)th to the next lookup. The
@@ -163,7 +170,8 @@ export function mockOutboundResponse(request: Request): Response {
     return new Response(THUMBNAIL_INTERNAL_HTML, { status: 200, headers: { "content-type": "text/html" } });
   }
   if (url.hostname === "www.googleapis.com" && url.pathname.includes("/videos")) {
-    const body = url.searchParams.get("id") === LANG_MISMATCH_VIDEO_ID ? SAMPLE_YOUTUBE_DATA_API_VIDEOS_LANG_MISMATCH_RESPONSE : SAMPLE_YOUTUBE_DATA_API_VIDEOS_RESPONSE;
+    const id = url.searchParams.get("id");
+    const body = id === LANG_MISMATCH_VIDEO_ID ? SAMPLE_YOUTUBE_DATA_API_VIDEOS_LANG_MISMATCH_RESPONSE : id === MISSING_VIDEO_ID ? SAMPLE_YOUTUBE_DATA_API_VIDEOS_MISSING_RESPONSE : SAMPLE_YOUTUBE_DATA_API_VIDEOS_RESPONSE;
     return new Response(body, { status: 200, headers: { "content-type": "application/json" } });
   }
   if (url.hostname === "www.googleapis.com" && url.pathname.includes("/channels")) {
