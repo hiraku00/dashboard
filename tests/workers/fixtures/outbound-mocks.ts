@@ -65,6 +65,25 @@ export const SAMPLE_SUPADATA_TRANSCRIPT_RESPONSE = JSON.stringify({
   content: [{ text: "sample caption line", offset: 1000 }],
 });
 
+/** A video id that makes the Supadata mock behave like the real bug report
+ *  behind app/api/text-tube/youtube-preview/route.ts's English retry: the
+ *  first request (lang=ja) comes back in a third, unrelated language
+ *  (Arabic) with English also available, rather than in the video's own
+ *  language. Branches on `lang` in the request itself rather than shared
+ *  mutable state (see this file's own top comment on why that's the only
+ *  way to vary a response within one test). */
+export const LANG_MISMATCH_VIDEO_ID = "langMismat1";
+export const SAMPLE_SUPADATA_TRANSCRIPT_MISMATCH_JA_RESPONSE = JSON.stringify({
+  content: [{ text: "arabic caption line", offset: 1000 }],
+  lang: "ar",
+  availableLangs: ["ar", "en"],
+});
+export const SAMPLE_SUPADATA_TRANSCRIPT_MISMATCH_EN_RESPONSE = JSON.stringify({
+  content: [{ text: "english caption line", offset: 1000 }],
+  lang: "en",
+  availableLangs: ["ar", "en"],
+});
+
 /** Hosts that refuse a page a fixed number of times before serving it, keyed by
  *  the full URL, so a test can tell how many attempts a lookup made: a lookup
  *  that gives up after N attempts leaves the (N+1)th to the next lookup. The
@@ -132,6 +151,10 @@ export function mockOutboundResponse(request: Request): Response {
     return new Response(SAMPLE_YOUTUBE_DATA_API_CHANNELS_RESPONSE, { status: 200, headers: { "content-type": "application/json" } });
   }
   if (url.hostname === "api.supadata.ai") {
+    if (url.searchParams.get("url")?.includes(LANG_MISMATCH_VIDEO_ID)) {
+      const body = url.searchParams.get("lang") === "en" ? SAMPLE_SUPADATA_TRANSCRIPT_MISMATCH_EN_RESPONSE : SAMPLE_SUPADATA_TRANSCRIPT_MISMATCH_JA_RESPONSE;
+      return new Response(body, { status: 200, headers: { "content-type": "application/json", "x-billable-requests": "1" } });
+    }
     return new Response(SAMPLE_SUPADATA_TRANSCRIPT_RESPONSE, { status: 200, headers: { "content-type": "application/json", "x-billable-requests": "1" } });
   }
   // Loud and diagnosable rather than a silent real network attempt (which
