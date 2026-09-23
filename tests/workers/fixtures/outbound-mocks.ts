@@ -65,20 +65,38 @@ export const SAMPLE_SUPADATA_TRANSCRIPT_RESPONSE = JSON.stringify({
   content: [{ text: "sample caption line", offset: 1000 }],
 });
 
-/** A video id that makes the Supadata mock behave like the real bug report
- *  behind app/api/text-tube/youtube-preview/route.ts's English retry: the
- *  first request (lang=ja) comes back in a third, unrelated language
- *  (Arabic) with English also available, rather than in the video's own
- *  language. Branches on `lang` in the request itself rather than shared
- *  mutable state (see this file's own top comment on why that's the only
- *  way to vary a response within one test). */
+/** A video id that makes both the YouTube Data API and Supadata mocks
+ *  behave like the real bug report behind
+ *  app/api/text-tube/youtube-preview/route.ts's English retry: the video
+ *  reports French (`defaultAudioLanguage: "fr"`) as its own language, but
+ *  has no French captions -- Supadata's first request (lang=fr) comes back
+ *  in a third, unrelated language (Arabic) with English also available,
+ *  rather than in the video's own language. Branches on the request's own
+ *  params (video id, `lang`) rather than shared mutable state (see this
+ *  file's own top comment on why that's the only way to vary a response
+ *  within one test). */
 export const LANG_MISMATCH_VIDEO_ID = "langMismat1";
-export const SAMPLE_SUPADATA_TRANSCRIPT_MISMATCH_JA_RESPONSE = JSON.stringify({
+export const SAMPLE_YOUTUBE_DATA_API_VIDEOS_LANG_MISMATCH_RESPONSE = JSON.stringify({
+  items: [
+    {
+      snippet: {
+        title: "French Video",
+        channelTitle: "Sample Channel",
+        channelId: "sample-channel-id",
+        publishedAt: "2026-01-01T00:00:00Z",
+        thumbnails: { high: { url: "https://example.com/thumb.jpg" } },
+        defaultAudioLanguage: "fr",
+      },
+      contentDetails: { duration: "PT5M30S" },
+    },
+  ],
+});
+export const SAMPLE_SUPADATA_TRANSCRIPT_MISMATCH_FIRST_RESPONSE = JSON.stringify({
   content: [{ text: "arabic caption line", offset: 1000 }],
   lang: "ar",
   availableLangs: ["ar", "en"],
 });
-export const SAMPLE_SUPADATA_TRANSCRIPT_MISMATCH_EN_RESPONSE = JSON.stringify({
+export const SAMPLE_SUPADATA_TRANSCRIPT_MISMATCH_EN_RETRY_RESPONSE = JSON.stringify({
   content: [{ text: "english caption line", offset: 1000 }],
   lang: "en",
   availableLangs: ["ar", "en"],
@@ -145,14 +163,15 @@ export function mockOutboundResponse(request: Request): Response {
     return new Response(THUMBNAIL_INTERNAL_HTML, { status: 200, headers: { "content-type": "text/html" } });
   }
   if (url.hostname === "www.googleapis.com" && url.pathname.includes("/videos")) {
-    return new Response(SAMPLE_YOUTUBE_DATA_API_VIDEOS_RESPONSE, { status: 200, headers: { "content-type": "application/json" } });
+    const body = url.searchParams.get("id") === LANG_MISMATCH_VIDEO_ID ? SAMPLE_YOUTUBE_DATA_API_VIDEOS_LANG_MISMATCH_RESPONSE : SAMPLE_YOUTUBE_DATA_API_VIDEOS_RESPONSE;
+    return new Response(body, { status: 200, headers: { "content-type": "application/json" } });
   }
   if (url.hostname === "www.googleapis.com" && url.pathname.includes("/channels")) {
     return new Response(SAMPLE_YOUTUBE_DATA_API_CHANNELS_RESPONSE, { status: 200, headers: { "content-type": "application/json" } });
   }
   if (url.hostname === "api.supadata.ai") {
     if (url.searchParams.get("url")?.includes(LANG_MISMATCH_VIDEO_ID)) {
-      const body = url.searchParams.get("lang") === "en" ? SAMPLE_SUPADATA_TRANSCRIPT_MISMATCH_EN_RESPONSE : SAMPLE_SUPADATA_TRANSCRIPT_MISMATCH_JA_RESPONSE;
+      const body = url.searchParams.get("lang") === "en" ? SAMPLE_SUPADATA_TRANSCRIPT_MISMATCH_EN_RETRY_RESPONSE : SAMPLE_SUPADATA_TRANSCRIPT_MISMATCH_FIRST_RESPONSE;
       return new Response(body, { status: 200, headers: { "content-type": "application/json", "x-billable-requests": "1" } });
     }
     return new Response(SAMPLE_SUPADATA_TRANSCRIPT_RESPONSE, { status: 200, headers: { "content-type": "application/json", "x-billable-requests": "1" } });

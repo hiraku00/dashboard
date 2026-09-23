@@ -54,6 +54,16 @@ function langLabel(code: string) {
   }
 }
 
+/** YouTube's `defaultAudioLanguage` is a BCP 47 tag (e.g. "en-US", "ja")
+ *  while Supadata's `lang` is a bare ISO 639-1 code -- take the primary
+ *  subtag. Returns "" for anything that isn't a 2-letter code up front
+ *  (missing field, or a script/region-only tag with no language part),
+ *  which callers treat as "unknown, fall back to English". */
+function primaryLangSubtag(tag: string | undefined) {
+  const code = (tag ?? "").split(/[-_]/)[0].toLowerCase();
+  return /^[a-z]{2}$/.test(code) ? code : "";
+}
+
 async function recordSupadataUsage(response: Response) {
   const credits = Math.max(
     0,
@@ -108,22 +118,38 @@ async function requestTranscript(
   return { response, body };
 }
 
-async function transcript(url: string, key: string | undefined) {
+async function transcript(
+  url: string,
+  key: string | undefined,
+  sourceLang: string | undefined,
+) {
   if (!key) return { script: "", notice: "字幕APIが未設定です。" };
   const headers = { "x-api-key": key.trim() };
-  let { response, body } = await requestTranscript(url, headers, "ja");
-  // mode=native with lang=ja does not fall back to the video's own
-  // language when it has no Japanese captions -- Supadata's own docs say
-  // it "returns a transcript in whichever language is available first",
-  // which is effectively arbitrary (observed: an English video's captions
-  // came back in Arabic). If that happened and an English track exists,
-  // retry once for English specifically -- far more likely to be usable to
-  // a Japanese reader than a third, unrelated language chosen for them.
+  // Request the video's own spoken-language track first, not a translated
+  // one: a native caption (human-written, or YouTube's own speech-to-text
+  // in that language) is more accurate than any machine translation of it,
+  // and that holds however this app's reader happens to read. `sourceLang`
+  // comes from YouTube Data API's snippet.defaultAudioLanguage (set by
+  // whoever uploaded the video); when YouTube has no answer for that,
+  // English is the most likely single guess to have a native track.
+  const preferredLang = primaryLangSubtag(sourceLang) || "en";
+  let { response, body } = await requestTranscript(url, headers, preferredLang);
+  // mode=native does not fall back to the video's own language when the
+  // requested one has no track -- Supadata's own docs say it "returns a
+  // transcript in whichever language is available first", which is
+  // effectively arbitrary (observed: requesting a language a video has no
+  // native captions in came back in Arabic, unrelated to either the
+  // request or the video). If that happened here, preferredLang wasn't
+  // already English (retrying the same request we just made would just
+  // repeat it), and an English track exists, retry once for English --
+  // still not the video's own language, but far more likely to be usable
+  // than a third, unrelated language chosen for us.
   if (
     response.ok &&
     body.content &&
     body.lang &&
-    body.lang !== "ja" &&
+    body.lang !== preferredLang &&
+    preferredLang !== "en" &&
     body.lang !== "en" &&
     body.availableLangs?.includes("en")
   ) {
@@ -161,13 +187,17 @@ async function transcript(url: string, key: string | undefined) {
     .filter((line) => !line.endsWith(" "));
   if (!lines.length)
     return { script: "", notice: "字幕本文を読み取れませんでした。" };
-  // Japanese/English were what we asked for; anything else means neither
-  // was available (or the retry above never fired, e.g. no English track
-  // either) and the reader should know the script isn't in a language they
-  // necessarily asked for.
+  // preferredLang (the video's own language, or English when that was
+  // unknown) and English (the retry above) were what we asked for; anything
+  // else means neither had a native track and the reader should know the
+  // script isn't in either language they'd expect. preferredLang is
+  // already "en" when the video's language was unknown, so that case names
+  // only one language rather than repeating "英語".
+  const askedFor =
+    preferredLang === "en" ? "英語" : `${langLabel(preferredLang)}・英語`;
   const notice =
-    body.lang && body.lang !== "ja" && body.lang !== "en"
-      ? `日本語・英語の字幕が見つからず、${langLabel(body.lang)}の字幕を取得しました。`
+    body.lang && body.lang !== preferredLang && body.lang !== "en"
+      ? `${askedFor}の字幕が見つからず、${langLabel(body.lang)}の字幕を取得しました。`
       : "";
   return { script: `# 字幕\n\n${lines.join("\n")}`, notice };
 }
@@ -226,6 +256,10 @@ export const POST = route(async (request: Request) => {
           channelId?: string;
           publishedAt?: string;
           thumbnails?: Record<string, { url?: string }>;
+          // BCP 47 (e.g. "en-US"), set by whoever uploaded the video, not
+          // always present -- transcript()'s primaryLangSubtag() normalizes
+          // it and falls back to English when it's missing.
+          defaultAudioLanguage?: string;
         };
         contentDetails?: { duration?: string };
       }>;
@@ -260,6 +294,7 @@ export const POST = route(async (request: Request) => {
     const captions = await transcript(
       `https://www.youtube.com/watch?v=${id}`,
       supadataKey,
+      snippet.defaultAudioLanguage,
     ).catch(() => ({
       script: "",
       notice: "字幕の取得に失敗しました。",

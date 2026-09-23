@@ -40,15 +40,16 @@ test("fetches video metadata and a transcript, and records Supadata usage in D1"
   expect(after!.c).toBe(before!.c + 1);
 });
 
-// Reproduces the real bug report this retry fixes: requesting lang=ja for a
-// video that has no Japanese captions does not fall back to the video's own
-// language -- Supadata returns "whichever language is available first"
-// (its own docs' wording), observed in production as an English video's
-// captions coming back in Arabic. See outbound-mocks.ts's
-// LANG_MISMATCH_VIDEO_ID fixture for the two-request exchange this test
-// exercises (lang=ja -> Arabic with English also available, then a retry
-// for lang=en -> English).
-test("retries in English when the Japanese-requested transcript comes back in an unrelated language", async () => {
+// Reproduces the real bug report this retry fixes: requesting a video's
+// own language (from YouTube Data API's snippet.defaultAudioLanguage) does
+// not fall back to it when that language has no captions -- Supadata
+// returns "whichever language is available first" (its own docs' wording),
+// observed in production as an English video's captions coming back in
+// Arabic. See outbound-mocks.ts's LANG_MISMATCH_VIDEO_ID fixture for the
+// two-request exchange this test exercises (a video whose own language is
+// French but has no French captions: lang=fr -> Arabic with English also
+// available, then a retry for lang=en -> English).
+test("retries in English when the transcript in the video's own language comes back in an unrelated language instead", async () => {
   const before = await env.DB.prepare("SELECT COUNT(*) AS c FROM text_tube_api_usage WHERE provider='supadata'").first<{ c: number }>();
 
   const response = await textTubePreviewPost(
