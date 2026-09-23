@@ -144,6 +144,15 @@ export function TextTubeChrome({
           <div className="tt-main">{children}</div>
         </div>
       </div>
+      {/* VideoEditor's modal portals here rather than into document.body:
+          this div is a sibling of .tt-original-frame (so it isn't clipped
+          by that frame's overflow:hidden), but -- unlike document.body --
+          it is still a descendant of .texttube-workspace, so the
+          `.texttube-workspace .tt-editor` / `.tt-youtube-import` rules
+          below that give the modal its light portal theme (as opposed to
+          the dark standalone-app look those classes fall back to outside
+          this scope) still match it. See VideoEditor's own comment. */}
+      <div id="tt-modal-root" />
     </main>
   );
 }
@@ -420,14 +429,32 @@ export function VideoEditor({
       setImporting(false);
     }
   }
-  // Rendered via a portal straight onto document.body: TextTubeChrome wraps
-  // this in `.tt-original-frame`, which has `overflow:hidden` for its own
-  // rounded-corner card look, and that clips a position:fixed descendant
-  // (this modal's backdrop) to the frame's own box instead of the viewport
-  // -- so without the portal, the top of this dialog renders hidden above
-  // wherever the frame happens to start on the page. `open` (the only state
-  // this ever mounts under) starts false, so this never has to render
-  // during SSR and `document` is always available here.
+  // Rendered via a portal into TextTubeChrome's #tt-modal-root, not in
+  // place: TextTubeChrome wraps this in `.tt-original-frame`, which has
+  // `overflow:hidden` for its own rounded-corner card look, and that clips
+  // a position:fixed descendant (this modal's backdrop) to the frame's own
+  // box instead of the viewport -- so without the portal, the top of this
+  // dialog renders hidden above wherever the frame happens to start on the
+  // page.
+  //
+  // The portal target is #tt-modal-root and not document.body: it still
+  // has to be a descendant of `.texttube-workspace` (TextTubeChrome's own
+  // top-level element), because the modal's light portal theme --
+  // `.texttube-workspace .tt-editor`, `.texttube-workspace
+  // .tt-youtube-import` and friends in app/globals.css -- is written as a
+  // descendant selector, not a self-contained class. Portaling straight to
+  // document.body escapes that scope too, along with the clipping frame,
+  // and silently drops back to the dark standalone-app styling those rules
+  // override (or, for `.tt-youtube-import`, which has no unscoped
+  // fallback at all, to unstyled browser defaults -- an invisible "動画情報
+  // を取得" button was exactly that regression).
+  //
+  // `open` (the only state this ever mounts under) starts false, so this
+  // never has to render during SSR and #tt-modal-root is always present by
+  // the time it does (TextTubeChrome renders it unconditionally, and
+  // VideoEditor is always a descendant of TextTubeChrome -- see its own
+  // comment). The `?? document.body` fallback is defensive only.
+  const portalTarget = document.getElementById("tt-modal-root") ?? document.body;
   return createPortal(
     <div className="tt-modal-backdrop" role="presentation" onClick={onClose}>
       <section
@@ -532,6 +559,6 @@ export function VideoEditor({
         </form>
       </section>
     </div>,
-    document.body,
+    portalTarget,
   );
 }
