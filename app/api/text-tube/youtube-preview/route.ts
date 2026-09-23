@@ -36,7 +36,23 @@ type SupadataTranscript = {
   message?: string;
   jobId?: string;
   status?: "queued" | "active" | "completed" | "failed";
+  // The language actually returned, and every language Supadata has a
+  // native track for -- present on both the immediate (200) and the
+  // completed-job (202 polling) response. See requestTranscript()'s
+  // comment for why these matter.
+  lang?: string;
+  availableLangs?: string[];
 };
+
+const preferredLangLabel = new Intl.DisplayNames(["ja"], { type: "language" });
+
+function langLabel(code: string) {
+  try {
+    return preferredLangLabel.of(code) ?? code;
+  } catch {
+    return code;
+  }
+}
 
 async function recordSupadataUsage(response: Response) {
   const credits = Math.max(
@@ -57,15 +73,18 @@ async function recordSupadataUsage(response: Response) {
     .run();
 }
 
-async function transcript(url: string, key: string | undefined) {
-  if (!key) return { script: "", notice: "字幕APIが未設定です。" };
+/** One Supadata request for `lang`, including the async job's polling loop
+ *  when it returns 202. Returns whatever HTTP response and body the request
+ *  (or its completed/failed job) ended on -- interpreting that is
+ *  transcript()'s job, not this one's, since it also has to decide whether
+ *  to retry with a different `lang`. */
+async function requestTranscript(
+  url: string,
+  headers: Record<string, string>,
+  lang: string,
+): Promise<{ response: Response; body: SupadataTranscript }> {
   const endpoint = new URL("https://api.supadata.ai/v1/transcript");
-  endpoint.search = new URLSearchParams({
-    url,
-    lang: "ja",
-    mode: "native",
-  }).toString();
-  const headers = { "x-api-key": key.trim() };
+  endpoint.search = new URLSearchParams({ url, lang, mode: "native" }).toString();
   const response = await fetch(endpoint, {
     headers,
     signal: AbortSignal.timeout(45_000),
@@ -80,17 +99,35 @@ async function transcript(url: string, key: string | undefined) {
         { headers, signal: AbortSignal.timeout(10_000) },
       );
       const job = (await jobResponse.json().catch(() => ({}))) as SupadataTranscript;
-      if (job.status === "completed") {
+      if (job.status === "completed" || job.status === "failed") {
         body = job;
         break;
       }
-      if (job.status === "failed") {
-        return {
-          script: "",
-          notice: job.message ?? job.error ?? "字幕の生成に失敗しました。",
-        };
-      }
     }
+  }
+  return { response, body };
+}
+
+async function transcript(url: string, key: string | undefined) {
+  if (!key) return { script: "", notice: "字幕APIが未設定です。" };
+  const headers = { "x-api-key": key.trim() };
+  let { response, body } = await requestTranscript(url, headers, "ja");
+  // mode=native with lang=ja does not fall back to the video's own
+  // language when it has no Japanese captions -- Supadata's own docs say
+  // it "returns a transcript in whichever language is available first",
+  // which is effectively arbitrary (observed: an English video's captions
+  // came back in Arabic). If that happened and an English track exists,
+  // retry once for English specifically -- far more likely to be usable to
+  // a Japanese reader than a third, unrelated language chosen for them.
+  if (
+    response.ok &&
+    body.content &&
+    body.lang &&
+    body.lang !== "ja" &&
+    body.lang !== "en" &&
+    body.availableLangs?.includes("en")
+  ) {
+    ({ response, body } = await requestTranscript(url, headers, "en"));
   }
   if (response.status === 206)
     return {
@@ -105,22 +142,34 @@ async function transcript(url: string, key: string | undefined) {
           ? "SupadataのAPIキーが認証されませんでした。キーを再確認してください。"
           : (body.message ?? body.error ?? "字幕APIから取得できませんでした。"),
     };
-  if (response.status === 202 && !body.content)
+  if (body.status === "failed")
+    return {
+      script: "",
+      notice: body.message ?? body.error ?? "字幕の生成に失敗しました。",
+    };
+  if (!body.content)
     return {
       script: "",
       notice: "字幕の処理が完了しませんでした。しばらくしてから再度お試しください。",
     };
-  const lines = (body.content ?? [])
+  const lines = body.content
     .map((segment) => {
       const seconds = Math.floor(Number(segment.offset ?? 0) / 1000);
       const timestamp = `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
       return `- ${timestamp} ${String(segment.text ?? "").trim()}`;
     })
     .filter((line) => !line.endsWith(" "));
-  return {
-    script: lines.length ? `# 字幕\n\n${lines.join("\n")}` : "",
-    notice: lines.length ? "" : "字幕本文を読み取れませんでした。",
-  };
+  if (!lines.length)
+    return { script: "", notice: "字幕本文を読み取れませんでした。" };
+  // Japanese/English were what we asked for; anything else means neither
+  // was available (or the retry above never fired, e.g. no English track
+  // either) and the reader should know the script isn't in a language they
+  // necessarily asked for.
+  const notice =
+    body.lang && body.lang !== "ja" && body.lang !== "en"
+      ? `日本語・英語の字幕が見つからず、${langLabel(body.lang)}の字幕を取得しました。`
+      : "";
+  return { script: `# 字幕\n\n${lines.join("\n")}`, notice };
 }
 
 export const POST = route(async (request: Request) => {
