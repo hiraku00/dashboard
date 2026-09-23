@@ -34,7 +34,7 @@ Studioの「動画情報を取得」は、YouTube Data API v3で動画メタデ�
 
 - Cloudflare Secret: `YOUTUBE_DATA_API_KEY`、`SUPADATA_API_KEY`
 - 字幕取得は `mode=native` に固定し、AI文字起こしへ自動フォールバックしません。
-- まず`lang=ja`で取得します。動画に日本語字幕が無い場合、Supadataは動画本来の言語ではなく「最初に見つかった言語」を返すため、その言語が英語以外で英語字幕が存在するときは`lang=en`で1回だけ再取得します（Supadataへのリクエストは合計2回、使用量もそのぶん記録されます）。日本語・英語のどちらも取得できなかった場合のみ、実際に取得できた言語のまま保存し、その旨を画面に通知します。
+- まず動画本来の言語（YouTube Data APIの`snippet.defaultAudioLanguage`、無ければ英語とみなす）で取得します。翻訳された字幕より、その言語のネイティブな字幕（人手またはYouTube自身の音声認識）のほうが精度が高いためです。動画本来の言語での取得に失敗した場合、Supadataは代わりに「最初に見つかった言語」を返す（動画の言語へはフォールバックしない）ため、それが英語以外で英語字幕が存在するときは`lang=en`で1回だけ再取得します（Supadataへのリクエストは合計2回、使用量もそのぶん記録されます）。動画本来の言語・英語のどちらも取得できなかった場合のみ、実際に取得できた言語のまま保存し、その旨を画面に通知します。
 - Supadataの応答ヘッダー `x-billable-requests` をD1の `text_tube_api_usage` に記録します。
 - `/settings/storage` の「字幕API 使用量」と [Supadataダッシュボード](https://dash.supadata.ai) で実消費を確認できます。
 
