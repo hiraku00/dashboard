@@ -2,7 +2,7 @@ import { env } from "cloudflare:test";
 import { beforeAll, describe, expect, test, vi } from "vitest";
 import { ensureSchema } from "@/db";
 import { d1BackedUsage } from "@/app/lib/queries/storage-usage";
-import { currentStorageBytes } from "@/app/lib/portal";
+import { currentStorageBytes } from "@/app/lib/r2-storage";
 
 // d1BackedUsage() is the D1 half of /settings/storage. The first block pins its
 // whole result so its queries can be regrouped into fewer round trips without

@@ -1,7 +1,7 @@
 import { env } from "cloudflare:test";
 import { beforeAll, expect, test } from "vitest";
 import { ensureSchema } from "@/db";
-import { BOARD_ID, materializeRoutines, now, todoDate } from "@/app/api/todos/_lib";
+import { BOARD_ID, materializeRoutines, now, todoDate } from "@/app/lib/todo-lib";
 import { GET as boardGet } from "@/app/api/todos/board/route";
 import { POST as routinesPost } from "@/app/api/todos/routines/route";
 import { PATCH as routinesPatch } from "@/app/api/todos/routines/[id]/route";

@@ -13,6 +13,7 @@ import { env } from "cloudflare:workers";
 import { ensureSchema } from "@/db";
 import { toLegacyExchangeSnapshot, toLegacyWalletSnapshot } from "@/app/lib/manage-asset-legacy";
 import { currencyFields } from "@/app/lib/manage-asset-history-fields";
+import { LATEST_SNAPSHOT_JOIN } from "@/app/lib/manage-asset-latest-snapshot";
 
 type Row = Record<string, unknown>;
 
@@ -38,10 +39,7 @@ export async function assetState(): Promise<AssetState> {
     // uniquely and the grouping can use asset_snapshots_source_date_idx instead
     // of scanning.
     env.DB.prepare(`SELECT s.*, a.source_type, a.display_name, a.provider, a.public_address
-    FROM asset_snapshots s
-    JOIN (SELECT source_id, MAX(as_of_date) AS as_of_date FROM asset_snapshots GROUP BY source_id) latest
-      ON latest.source_id = s.source_id AND latest.as_of_date = s.as_of_date
-    JOIN asset_sources a ON a.id = s.source_id
+    ${LATEST_SNAPSHOT_JOIN}
     ORDER BY s.total_usd DESC`),
   ]);
   const sources = sourceResult.results ?? [];

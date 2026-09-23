@@ -1,4 +1,4 @@
-import { todoDate, validDate } from "../_lib";
+import { todoDate, validDate } from "@/app/lib/todo-lib";
 import { boardSnapshot } from "@/app/lib/queries/todo";
 import { route } from "@/app/lib/route";
 

@@ -1,10 +1,12 @@
 "use client";
 import Link from "next/link";
 import Image from "next/image";
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, useCallback, useMemo, useState } from "react";
 import { PortalHeader } from "./portal-nav";
 import { ApiError, readJson } from "./lib/json";
 import { MAX_LIKE_TERM_BYTES, truncateUtf8Bytes, utf8ByteLength } from "./lib/sql-text.ts";
+import { useSearchReload } from "./lib/use-search-reload";
+import { useLatestRequest } from "./lib/use-latest-request";
 
 export type Video = {
   id: string;
@@ -163,34 +165,18 @@ export function TextTubeApp({
     [open, setOpen] = useState(false),
     [notice, setNotice] = useState(""),
     [form, setForm] = useState<VideoForm>(blankVideo);
-  // Guards only the very first run of the effect below -- see the matching
-  // comment and effect in app/watch-list-app.tsx for the full rationale.
-  const skippedInitialFetch = useRef(false);
-  // Counts every list request, so a slow response for an earlier query (e.g.
-  // typing "a" pauses just long enough for its own debounced fetch to start,
-  // then "aaaaaaaa" is typed and its fetch resolves first) cannot overwrite
-  // the newer, narrower result with a stale, broader one -- same guard as
-  // app/watch-list-app.tsx's refreshItems().
-  const latestRequest = useRef(0);
+  const { begin, isCurrent } = useLatestRequest();
   const load = useCallback(async () => {
-    const requestId = ++latestRequest.current;
+    const requestId = begin();
     const r = await fetch(`/api/text-tube/videos?q=${encodeURIComponent(q)}`);
     if (!r.ok) return;
     const videos = (await readJson<{ videos: Video[] }>(r)).videos;
-    if (requestId !== latestRequest.current) return;
+    if (!isCurrent(requestId)) return;
     setVideos(videos);
-  }, [q]);
-  useEffect(() => {
-    if (initialVideos && !skippedInitialFetch.current) {
-      skippedInitialFetch.current = true;
-      return;
-    }
-    const t = setTimeout(load, q ? 180 : 0);
-    return () => clearTimeout(t);
-    // `initialVideos` intentionally omitted -- see the matching comment in
-    // app/watch-list-app.tsx.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [load, q]);
+  }, [q, begin, isCurrent]);
+  // Skips exactly the mount-time reload when the server already rendered
+  // this same default (q="") view. See app/lib/use-search-reload.ts.
+  useSearchReload(load, q, Boolean(initialVideos));
   const channels = useMemo(
     () =>
       Array.from(
@@ -233,14 +219,29 @@ export function TextTubeApp({
         return;
       }
       const d = await readJson<{ id: string }>(r);
-      if (form.detailedScript)
-        await fetch(`/api/text-tube/videos/${d.id}/document`, {
-          method: "POST",
-          body: form.detailedScript,
-        });
+      let documentNotice = "";
+      if (form.detailedScript) {
+        const docResponse = await fetch(
+          `/api/text-tube/videos/${d.id}/document`,
+          { method: "POST", body: form.detailedScript },
+        );
+        if (!docResponse.ok) {
+          // The video itself was created successfully above -- only the
+          // body text failed to save. Surface that distinctly rather than
+          // silently dropping it: previously this fetch's result was never
+          // checked, so a failure here left "動画を追加しました。" showing
+          // for a video with no script attached.
+          const body = (await docResponse.json().catch(() => null)) as ApiError | null;
+          documentNotice = `(本文は保存できませんでした: ${body?.error ?? "不明なエラー"})`;
+        }
+      }
       setForm(blankVideo);
       setOpen(false);
-      setNotice("動画を追加しました。");
+      setNotice(
+        documentNotice
+          ? `動画を追加しました。${documentNotice}`
+          : "動画を追加しました。",
+      );
       load();
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "保存できませんでした。");

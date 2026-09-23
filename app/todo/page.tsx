@@ -1,6 +1,6 @@
 import { TodoApp, type Column, type Routine, type Task } from "../todo-app";
 import { boardSnapshot, listRoutines } from "@/app/lib/queries/todo";
-import { todoDate } from "@/app/api/todos/_lib";
+import { todoDate } from "@/app/lib/todo-lib";
 
 // Server Component: fetches today's board directly from D1 at render time,
 // the same way app/watch-list/page.tsx does (see app/lib/queries/todo.ts

@@ -5,12 +5,13 @@
  *  （app/lib/queries/watch-list.tsと同じ理由）。
  *
  *  書き込み系（POST/PATCH/DELETE、materializeRoutines）はここには置かない。
- *  app/api/todos/_lib.ts および各 route.ts に残したまま -- Issue #71で
+ *  app/lib/todo-lib.ts および各 route.ts に残したまま -- Issue #71で
  *  materializeRoutines()をGET経路から追い出したのは「読み取りは書き込まない」
  *  という原則を徹底するためで、この読み取り専用ファイルに書き込みを持ち込むと
  *  その原則が崩れる。 */
 import { env } from "cloudflare:workers";
-import { BOARD_ID, boardColumns, taskShape } from "@/app/api/todos/_lib";
+import { BOARD_ID, boardColumns, taskShape } from "@/app/lib/todo-lib";
+import { TODO_TIMEZONE } from "@/app/lib/todo-date";
 
 export type BoardSnapshot = {
   board: { id: string; name: string; timezone: string };
@@ -28,7 +29,7 @@ export async function boardSnapshot(date: string): Promise<BoardSnapshot> {
   const today = columns.find((column) => column.kind === "today")?.id;
   const done = columns.find((column) => column.kind === "done")?.id;
   return {
-    board: { id: BOARD_ID, name: "To Do", timezone: "Asia/Bangkok" },
+    board: { id: BOARD_ID, name: "To Do", timezone: TODO_TIMEZONE },
     date,
     columns,
     tasks,

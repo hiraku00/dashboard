@@ -53,7 +53,7 @@ const exchange = (date, over = {}) => ({
 const dates = ["2026-07-11", "2026-07-15", "2026-08-01", "2026-09-01", "2026-09-20", "2026-09-21"];
 const richHistory = () => ({
   snapshots: [
-    ...dates.map((d, i) => wallet(d, { total_usd: 9000 + i, tokens: wallet(d).tokens.map((t, j) => (t.symbol === "stETH" ? { ...t, amount_value: 3 + i * 0.01 } : t)) })),
+    ...dates.map((d, i) => wallet(d, { total_usd: 9000 + i, tokens: wallet(d).tokens.map((t) => (t.symbol === "stETH" ? { ...t, amount_value: 3 + i * 0.01 } : t)) })),
     wallet("2026-09-21", { captured_at: "2026-09-21T09:00:00Z", total_usd: 8999 }), // a second capture on the same day: which one is "latest" must not change
     wallet("2026-09-01", { wallet_id: "w2", wallet_name: "Other" }),
     wallet("2026-08-15", { fx_usdjpy: 148.5 }), // a day with a wallet row only: its own rate is the one used

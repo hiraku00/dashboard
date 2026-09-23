@@ -1,4 +1,4 @@
-import { R2_SOFT_LIMIT_BYTES } from "@/app/lib/portal";
+import { R2_SOFT_LIMIT_BYTES } from "@/app/lib/r2-storage";
 import { cloudflareAnalyticsUsage, d1BackedUsage } from "@/app/lib/queries/storage-usage";
 import { route } from "@/app/lib/route";
 

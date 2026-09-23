@@ -62,3 +62,9 @@ collectorは `collector/` にあり、外部APIキーをmacOS Keychainから読�
 - R2のキー形式を変える場合は既存revisionの読み取り互換性を維持する。
 - collectorのpayload変更はWorker APIと同時に検証する。
 - UIの表示変更はTextTubeの元デザインとの互換性を確認する。Manage Assetは`app/lib/manage-asset-core.ts`の純関数群と`tests/manage-asset-core.test.mjs`が計算ロジックの正であり、表示側の変更もこのテストで数値の同値性を担保する。
+
+## D1へのSQLの置き場所
+
+読み取りは `app/lib/queries/*.ts` に一本化する。API routeのGETと対応するServer Componentが同じ集計・一覧ロジックを呼ぶことで、「ページとAPIで表示がずれる」種類のバグ（例: PR #132）を防ぐのが目的（各ファイルの冒頭コメント参照）。`app/lib/queries/` に新しい読み取りを書き込みロジックと混ぜない（`app/lib/queries/todo.ts` の冒頭コメントに理由あり）。
+
+書き込み（POST/PATCH/DELETE、および同期・移行系エンドポイント）のSQLは、当面は各 `app/api/**/route.ts` に直接置いたままでよい。書き込みは読み取りと違い「複数の呼び出し元が同じ結果を期待する」場面が少なく、無理に共通化するとエンドポイントごとの細かい違い（バリデーション、レスポンス形）を吸収するためのオプション引数が増えて可読性が落ちる。書き込みロジックが2箇所以上から呼ばれる、あるいは1つのroute.ts内で明らかに肥大化した場合に、その時点で個別に切り出す。

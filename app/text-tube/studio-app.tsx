@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import Image from "next/image";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import {
   TextTubeChrome,
   Video,
@@ -9,6 +9,8 @@ import {
   formToPayload,
 } from "../text-tube-app";
 import { readJson } from "../lib/json";
+import { useSearchReload } from "../lib/use-search-reload";
+import { useLatestRequest } from "../lib/use-latest-request";
 const date = (v?: string | null) =>
   v ? new Date(v).toLocaleDateString("ja-JP") : "—";
 export function TextTubeStudioApp({
@@ -28,21 +30,20 @@ export function TextTubeStudioApp({
       (Video & { detailedScript?: string }) | null
     >(null),
     [notice, setNotice] = useState("");
-  const skippedInitialFetch = useRef(false);
+  const { begin, isCurrent } = useLatestRequest();
+  // This list previously reloaded on every keystroke with no debounce and no
+  // guard against an older, slower response overwriting a newer one -- the
+  // same race app/text-tube-app.tsx's search already guarded against.
+  // Sharing the hook here closes that gap rather than just moving it.
   const load = useCallback(async () => {
+    const requestId = begin();
     const r = await fetch(`/api/text-tube/videos?q=${encodeURIComponent(q)}`);
-    if (r.ok) setVideos((await readJson<{ videos: Video[] }>(r)).videos);
-  }, [q]);
-  useEffect(() => {
-    if (initialVideos && !skippedInitialFetch.current) {
-      skippedInitialFetch.current = true;
-      return;
-    }
-    void load();
-    // `initialVideos` intentionally omitted -- see the matching comment in
-    // app/watch-list-app.tsx.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [load]);
+    if (!r.ok) return;
+    const videos = (await readJson<{ videos: Video[] }>(r)).videos;
+    if (!isCurrent(requestId)) return;
+    setVideos(videos);
+  }, [q, begin, isCurrent]);
+  useSearchReload(load, q, Boolean(initialVideos));
   const sorted = useMemo(
     () =>
       videos

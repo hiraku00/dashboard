@@ -1,9 +1,22 @@
+/** To Do board shared helpers, including its write paths (initTodo,
+ *  materializeRoutines) -- every app/api/todos/**\/route.ts calls this, and so
+ *  does worker/index.ts's scheduled() handler (materializeRoutines() runs
+ *  off the daily cron, not a request -- see Issue #71). Living under
+ *  app/lib/ rather than app/api/todos/ (where this was previously
+ *  app/api/todos/_lib.ts) keeps that Worker-entry-point import from reaching
+ *  into the app/api/ route tree, matching how worker/index.ts already pulls
+ *  in app/lib/storage-usage.ts and app/lib/access.ts.
+ *
+ *  Read-only queries (boardSnapshot, listRoutines) are deliberately kept out
+ *  of this file and live in app/lib/queries/todo.ts instead -- see that
+ *  file's own docstring for why the write paths are not folded in there. */
 import { env } from "cloudflare:workers";
 import { ensureSchema } from "@/db";
 import { clean, validDate } from "@/app/lib/text";
 import { normalizeTask, validTime, type TaskInput } from "@/app/lib/todo-task-input";
+import { TODO_TIMEZONE, todoDate } from "@/app/lib/todo-date";
 
-export { clean, validDate, normalizeTask, validTime };
+export { clean, validDate, normalizeTask, validTime, todoDate };
 export type { TaskInput };
 export const BOARD_ID = "todo-default";
 export const columnKinds = ["inbox", "today", "doing", "done"] as const;
@@ -11,19 +24,13 @@ export type ColumnKind = (typeof columnKinds)[number];
 
 export const now = () => new Date().toISOString();
 
-export function todoDate(date = new Date()) {
-  const parts = new Intl.DateTimeFormat("en", { timeZone: "Asia/Bangkok", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(date);
-  const value = (type: string) => parts.find((part) => part.type === type)?.value ?? "";
-  return `${value("year")}-${value("month")}-${value("day")}`;
-}
-
 export async function initTodo() {
   await ensureSchema({ seed: false });
   const existing = (await env.DB.prepare("SELECT id FROM todo_boards WHERE id=?").bind(BOARD_ID).all()).results?.[0];
   if (existing) return;
   const createdAt = now();
   await env.DB.batch([
-    env.DB.prepare("INSERT OR IGNORE INTO todo_boards (id,name,timezone,created_at) VALUES (?,?,?,?)").bind(BOARD_ID, "To Do", "Asia/Bangkok", createdAt),
+    env.DB.prepare("INSERT OR IGNORE INTO todo_boards (id,name,timezone,created_at) VALUES (?,?,?,?)").bind(BOARD_ID, "To Do", TODO_TIMEZONE, createdAt),
     ...[["todo-inbox", "受信箱", "inbox"], ["todo-today", "今日", "today"], ["todo-doing", "進行中", "doing"], ["todo-done", "完了", "done"]].map(([id, name, kind], position) => env.DB.prepare("INSERT OR IGNORE INTO todo_columns (id,board_id,name,kind,position,created_at) VALUES (?,?,?,?,?,?)").bind(id, BOARD_ID, name, kind, position, createdAt)),
   ]);
 }

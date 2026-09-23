@@ -1,5 +1,5 @@
 import { env } from "cloudflare:workers";
-import { BOARD_ID, boardColumns, materializeRoutines, normalizeTask, now, taskShape, todoDate } from "../../_lib";
+import { BOARD_ID, boardColumns, materializeRoutines, normalizeTask, now, taskShape, todoDate } from "@/app/lib/todo-lib";
 import { route } from "@/app/lib/route";
 
 export const GET = route(async (_: Request, { params }: { params: Promise<{ id: string }> }) => { const { id } = await params; const row = await env.DB.prepare("SELECT * FROM todo_tasks WHERE id=? AND board_id=? AND deleted_at IS NULL").bind(id, BOARD_ID).first<Record<string, unknown>>(); return row ? Response.json({ task: taskShape(row) }) : Response.json({ error: "タスクが見つかりません。" }, { status: 404 }); });

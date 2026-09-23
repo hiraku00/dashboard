@@ -16,7 +16,7 @@
  *  のと同じ安全性を、関数自身が保証する形に変えただけ。 */
 import { env } from "cloudflare:workers";
 import { ensureSchema } from "@/db";
-import { STORAGE_BYTES_SQL, storageBytesFromRow } from "@/app/lib/portal";
+import { STORAGE_BYTES_SQL, storageBytesFromRow } from "@/app/lib/r2-storage";
 
 export type D1BackedUsage = {
   ok: boolean;

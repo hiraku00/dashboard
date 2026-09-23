@@ -1,5 +1,5 @@
 /** Pure validation/normalization for the To Do board's write paths -- no
- *  D1, no I/O. Kept separate from app/api/todos/_lib.ts and
+ *  D1, no I/O. Kept separate from app/lib/todo-lib.ts and
  *  app/api/todos/routines/route.ts (which do the actual D1 writes) for the
  *  same reason as app/lib/watch-list-item-input.ts: a module that imports
  *  "cloudflare:workers" at the top level cannot be loaded outside the
@@ -15,7 +15,7 @@ export type TaskInput = { title?: unknown; description?: unknown; priority?: unk
 export const validTime = (value: string) => !value || /^([01]\d|2[0-3]):[0-5]\d$/.test(value);
 
 /** app/api/todos/tasks/route.ts (POST) and app/api/todos/tasks/[id]/route.ts
- *  (PATCH) both go through this via app/api/todos/_lib.ts's re-export. */
+ *  (PATCH) both go through this via app/lib/todo-lib.ts's re-export. */
 export function normalizeTask(input: TaskInput) {
   const title = clean(input.title, 240); const description = clean(input.description, 6000);
   const occurrenceDate = clean(input.occurrenceDate, 10); const dueTime = clean(input.dueTime, 5);
