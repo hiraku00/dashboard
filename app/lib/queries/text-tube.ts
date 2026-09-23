@@ -9,7 +9,6 @@
 import { env } from "cloudflare:workers";
 import { ensureSchema } from "@/db";
 import { buildVideosFilter, type VideosQuery } from "@/app/lib/text-tube-query";
-import { getPortalObject } from "@/app/lib/r2-storage";
 
 export type Video = {
   id: unknown;
@@ -45,28 +44,16 @@ export async function getVideo(id: string): Promise<Video | null> {
   return (result.results?.[0] as unknown as Video | undefined) ?? null;
 }
 
-/** app/api/text-tube/videos/[id]/document の GET と同じ規則: キーが
- *  無ければ空文字、R2オブジェクトがキーだけ残って本体が無い（データ
- *  不整合）場合も静かに空文字にフォールバックする -- 元のクライアントの
- *  `r.ok ? text() : ""` が同じ規則で動いていたのに合わせている。ここで
- *  変えると、そのケースだけSSRとクライアントで挙動が分岐してしまう。 */
-export async function getVideoDocument(video: Video): Promise<string> {
-  const key = video.detailed_script_object_key;
-  if (typeof key !== "string" || !key) return "";
-  const object = await getPortalObject(key);
-  if (!object) return "";
-  return object.text();
-}
-
-export type VideoDetail = { video: Video; document: string };
-
 /** app/text-tube/watch/[id]/page.tsx の初期表示が呼ぶ。動画が
  *  見つからない場合は null を返す（D1自体の障害と区別するため、例外を
  *  投げない -- 呼び出し元はこれを「404」として扱い、D1障害時のような
- *  クライアント側フォールバックは行わない）。 */
-export async function getVideoDetail(id: string): Promise<VideoDetail | null> {
-  const video = await getVideo(id);
-  if (!video) return null;
-  const document = await getVideoDocument(video);
-  return { video, document };
+ *  クライアント側フォールバックは行わない）。
+ *
+ *  視聴ページは詳細スクリプト本文（R2）を表示しない -- 以前は
+ *  getVideoDocument() でここに埋め込んでいたが、表示しないものを毎回
+ *  R2から読むだけ無駄なので、動画1本ぶんのメタデータだけを返す。本文
+ *  そのものはStudioの編集フォームが GET .../document で必要なときだけ
+ *  個別に読む（app/api/text-tube/videos/[id]/document/route.ts）。 */
+export async function getVideoDetail(id: string): Promise<Video | null> {
+  return getVideo(id);
 }

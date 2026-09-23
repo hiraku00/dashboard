@@ -155,9 +155,8 @@ describe("TextTube pages", () => {
     });
   }
 
-  // app/text-tube/watch/[id]/page.tsx fetches both the video (D1) and its
-  // document (R2) directly at render time -- see getVideoDetail() in
-  // app/lib/queries/text-tube.ts.
+  // app/text-tube/watch/[id]/page.tsx fetches the video (D1) directly at
+  // render time -- see getVideoDetail() in app/lib/queries/text-tube.ts.
   test("GET /text-tube/watch/<id> embeds the video's title and summary in the server-rendered HTML", async () => {
     const id = await seedOneVideo();
     const html = await SELF.fetch(`${BASE}/text-tube/watch/${id}`).then((response) => response.text());

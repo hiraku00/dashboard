@@ -12,22 +12,19 @@ const date = (v: unknown) => (v ? new Date(String(v)).toLocaleDateString("ja-JP"
 export function TextTubeWatchApp({
   id,
   initialVideo = null,
-  initialDocument = "",
   initialError = "",
 }: {
   id: string;
   // Passed by app/text-tube/watch/[id]/page.tsx (a Server Component) after
-  // fetching this directly from D1+R2 -- see getVideoDetail() in
+  // fetching this directly from D1 -- see getVideoDetail() in
   // app/lib/queries/text-tube.ts. `initialError` is set only when the
   // server positively determined the video does not exist (a real 404, not
-  // a transient D1/R2 failure) -- see the comment on the effect below for
-  // why that distinction matters for whether the client retries.
+  // a transient D1 failure) -- see the comment on the effect below for why
+  // that distinction matters for whether the client retries.
   initialVideo?: Video | null;
-  initialDocument?: string;
   initialError?: string;
 }) {
   const [video, setVideo] = useState<Video | null>(initialVideo),
-    [doc, setDoc] = useState(initialDocument),
     [error, setError] = useState(initialError);
   useEffect(() => {
     // Two cases skip the client fetch entirely: the server already has the
@@ -37,11 +34,8 @@ export function TextTubeWatchApp({
     // the same fetch the pre-RSC page always made on mount, exactly like
     // the fallback in app/page.tsx and app/watch-list-app.tsx.
     if (initialVideo || initialError) return;
-    Promise.all([
-      fetch(`/api/text-tube/videos/${id}`),
-      fetch(`/api/text-tube/videos/${id}/document`).then((r) => (r.ok ? r.text() : "")),
-    ])
-      .then(async ([videoResponse, text]) => {
+    fetch(`/api/text-tube/videos/${id}`)
+      .then(async (videoResponse) => {
         if (!videoResponse.ok) {
           // Prefer the API's own message (e.g. the 404 route's
           // "動画が見つかりません。") when the response actually has one; an
@@ -54,7 +48,6 @@ export function TextTubeWatchApp({
         }
         const d = await readJson<{ video: Video }>(videoResponse);
         setVideo(d.video);
-        setDoc(text);
       })
       .catch((e) => setError(e instanceof Error ? e.message : "動画を読み込めませんでした。"));
   }, [id, initialVideo, initialError]);
@@ -106,12 +99,6 @@ export function TextTubeWatchApp({
             <h2>要約</h2>
             <MarkdownRenderer content={String(video.summary || "")} />
           </section>
-          {doc && (
-            <section className="tt-reading-section">
-              <h2>詳細スクリプト</h2>
-              <MarkdownRenderer content={doc} />
-            </section>
-          )}
         </article>
         <aside className="tt-next">
           <h2>次の動画</h2>
