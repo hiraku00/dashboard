@@ -5,6 +5,7 @@ import { attachLinks, listItems } from "@/app/lib/queries/watch-list";
 import { normalizeItem } from "@/app/lib/watch-list-item-input";
 import { route } from "@/app/lib/route";
 import { resolveStoredThumbnail } from "@/app/lib/thumbnail-fetch";
+import { youTubeVideoId } from "@/app/lib/youtube";
 
 // Re-exported for app/api/items/[id]/route.ts and app/api/imports/route.ts,
 // which both import this from here rather than from
@@ -46,5 +47,11 @@ export const POST = route(async (request: Request) => {
   }
   await env.DB.batch(statements);
   const { results } = await env.DB.prepare("SELECT * FROM items WHERE id = ?").bind(id).all<Record<string, unknown>>();
-  return Response.json({ item: (await attachLinks(results ?? []))[0] }, { status: 201 });
+  // 新規作成なので、リンクはすべて「今回追加された」もの扱い。
+  // app/watch-list-app.tsx が保存直後にこれを1件ずつ
+  // POST /api/text-tube/imports/run へ渡す -- app/lib/text-tube-import.ts
+  // 側で「既にTextTubeにある動画か」を確認するので、ここでは重複排除
+  // だけして絞り込みはしない。
+  const textTubeCandidates = [...new Set((item.links ?? []).map((link) => youTubeVideoId(link.url)).filter(Boolean))];
+  return Response.json({ item: (await attachLinks(results ?? []))[0], textTubeCandidates }, { status: 201 });
 });

@@ -7,10 +7,10 @@
 | パス                                   | 用途                                                                                                                              |
 | -------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
 | `GET /api/items`                       | 検索（`q`はタイトル・内容・人物・番組名・リンクのURL/表示名に部分一致。48バイトを超える検索語はD1のLIKE制限を避けるため切り詰める）、絞り込み、ページング付き一覧。各項目に`thumbnailUrl`（サムネイル画像のURL、なければ空文字）を含む。                         |
-| `POST /api/items`                      | 項目作成                                                                                                                          |
+| `POST /api/items`                      | 項目作成。レスポンスの`textTubeCandidates`に、リンク中のYouTube動画ID（重複除く）を返す。画面がこれを1件ずつ`POST /api/text-tube/imports/run`へ渡してTextTubeへ自動登録する。各項目のYouTubeリンクには`textTube`（`reflected`/`running`/`failed`/`none`）が付く。 |
 | `POST /api/watch-list/youtube-preview` | 公開YouTube動画URLから、チャンネル名・タイトル・正規化リンクを取得して入力用データを返す。返す項目は`seriesTitle`・`title`・`links`のみ。動画ページを読み取り、YouTubeにbot判定されて取れない場合はoEmbedで補う。YouTube Data APIやAPIキーは使用しない。 |
 | `GET /api/items/:id`                   | 項目詳細                                                                                                                          |
-| `PATCH /api/items/:id`                 | 項目更新                                                                                                                          |
+| `PATCH /api/items/:id`                 | 項目更新。`textTubeCandidates`は、この保存で**新しく追加された**YouTubeリンクの動画IDのみ。                                                                                                                          |
 | `DELETE /api/items/:id`                | 論理削除                                                                                                                          |
 | `GET /api/stats`                       | 一覧用集計                                                                                                                        |
 | `POST /api/imports`                    | Watch Listデータのインポート（最大200件）。保存時にリンク先のサムネイルも取得する（先頭16件まで）。レスポンスの`thumbnails`に`looked` / `found` / `skipped`を返す。 |
@@ -27,6 +27,9 @@
 | `DELETE /api/text-tube/videos/:id`        | コンテンツ削除                                                                                                                                              |
 | `POST /api/text-tube/videos/:id/document` | Markdown本文・revision保存                                                                                                                                  |
 | `POST /api/text-tube/youtube-preview`     | YouTube Data API v3でメタデータ、Supadataで既存YouTube字幕を取得してTextTube入力用データを返す。`YOUTUBE_DATA_API_KEY` と `SUPADATA_API_KEY` Secretが必要。 |
+| `POST /api/text-tube/imports/run`         | `{ youtubeVideoId, itemId? }`で1本をTextTubeへ登録（動画情報＋字幕、要約は空）。結果は`reflected`（既にある）/`running`（別で実行中）/`done`/`failed`。自動登録と手動の「TextTubeへ反映」の共通の窓口。 |
+| `GET /api/text-tube/imports/attention`    | 対応が必要な登録（`failed`、または10分以上進んでいない`stuck`）の一覧。Watch List上部の帯が使う。                                                              |
+| `POST /api/text-tube/imports/:id/dismiss` | 上記の帯から1件を閉じる。                                                                                                                                   |
 | `GET /api/settings/storage`               | R2使用量に加え、TextTube字幕APIの実消費クレジット・取得試行・最終取得日時を返す。                                                                           |
 
 ## To Do

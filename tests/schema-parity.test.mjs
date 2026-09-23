@@ -41,8 +41,12 @@ import { readFile, readdir } from "node:fs/promises";
  *  migration would have to be a bare ALTER (SQLite has no ADD COLUMN IF NOT
  *  EXISTS), and README's manual recovery runs `wrangler d1 migrations apply`
  *  against a database ensureSchema() has usually already upgraded, where that
- *  ALTER fails with "duplicate column" and stops the run. */
-const KNOWN_GAPS = new Set(["todo_routines.default_due_time", "items.thumbnail_url"]);
+ *  ALTER fails with "duplicate column" and stops the run.
+ *
+ *  text_tube_videos.youtube_video_id: same shape (schema version 4) -- added
+ *  by ensureSchema()'s ALTER plus a backfill, deliberately not in
+ *  migrations/0008_text_tube_imports.sql for the same reason. */
+const KNOWN_GAPS = new Set(["todo_routines.default_due_time", "items.thumbnail_url", "text_tube_videos.youtube_video_id"]);
 
 /** Finds the index of the `)` that closes the `(` at `openIndex`, honoring
  *  nesting and single-quoted string literals (SQLite uses '' to escape a

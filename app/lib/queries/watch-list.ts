@@ -12,9 +12,47 @@
  *  app/api/items/route.ts と app/api/items/[id]/route.ts に残したまま。 */
 import { env } from "cloudflare:workers";
 import { ensureSchema } from "@/db";
-import { buildItemsFilter, ITEMS_ORDER_BY, toItem, type ListItemsQuery, type WatchListItem } from "@/app/lib/watch-list-query";
+import { buildItemsFilter, ITEMS_ORDER_BY, toItem, attachTextTubeStatus, type ListItemsQuery, type WatchListItem } from "@/app/lib/watch-list-query";
+import { youTubeVideoId } from "@/app/lib/youtube";
 
 export type { ListItemsQuery, WatchListItem };
+
+const STALE_RUNNING_MS = 10 * 60 * 1000;
+
+/** Looks up, for every YouTube video id referenced by `items`' links, the
+ *  live (non-deleted) text_tube_videos row and the latest text_tube_imports
+ *  row -- then hands both maps to the pure attachTextTubeStatus() (see
+ *  app/lib/watch-list-query.ts for the actual status decision). Shared by
+ *  attachLinks() and listItems() so a single-item response (just after
+ *  save) and the paged list agree on what "reflected"/"running"/"failed"
+ *  means, the same reason toItem() itself is shared. A no-op (no extra D1
+ *  round trip) when none of `items`' links are YouTube URLs. */
+async function withTextTubeStatus(items: WatchListItem[]): Promise<WatchListItem[]> {
+  const videoIds = new Set<string>();
+  for (const item of items) for (const link of item.links) {
+    const id = youTubeVideoId(link.url);
+    if (id) videoIds.add(id);
+  }
+  if (!videoIds.size) return items;
+  const ids = [...videoIds];
+  const placeholders = ids.map(() => "?").join(",");
+  const staleCutoff = new Date(Date.now() - STALE_RUNNING_MS).toISOString();
+  const [videoResult, importResult] = await env.DB.batch<Record<string, unknown>>([
+    env.DB.prepare(`SELECT id, youtube_video_id FROM text_tube_videos WHERE youtube_video_id IN (${placeholders}) AND deleted_at IS NULL`).bind(...ids),
+    // 「youtube_video_idごとに最新の1行」を1回の問い合わせで取る --
+    // app/lib/text-tube-import.ts の pendingTextTubeImports() と同じ
+    // 相関サブクエリでの絞り込み。
+    env.DB.prepare(`SELECT ti.* FROM text_tube_imports ti WHERE ti.youtube_video_id IN (${placeholders}) AND ti.updated_at = (SELECT MAX(updated_at) FROM text_tube_imports WHERE youtube_video_id = ti.youtube_video_id)`).bind(...ids),
+  ]);
+  const videoByYoutubeId = new Map<string, { id: unknown }>();
+  for (const row of videoResult.results ?? []) videoByYoutubeId.set(String(row.youtube_video_id), { id: row.id });
+  const importByYoutubeId = new Map<string, { status: unknown; last_error?: unknown; updated_at: unknown }>();
+  for (const row of importResult.results ?? []) {
+    const key = String(row.youtube_video_id);
+    if (!importByYoutubeId.has(key)) importByYoutubeId.set(key, row as { status: unknown; last_error?: unknown; updated_at: unknown });
+  }
+  return attachTextTubeStatus(items, videoByYoutubeId, importByYoutubeId, staleCutoff);
+}
 
 /** POST/PATCH も保存直後の1件表示にこれを使う。id複数件バインドは
  *  IN (?,?,...) をチャンク化していない -- 呼び出し元はどちらも
@@ -26,7 +64,8 @@ export async function attachLinks(rows: Array<Record<string, unknown>>): Promise
   const placeholders = ids.map(() => "?").join(",");
   const { results } = await env.DB.prepare(`SELECT * FROM item_links WHERE item_id IN (${placeholders}) ORDER BY position ASC`).bind(...ids).all<Record<string, unknown>>();
   const byItem = groupLinksByItem(results ?? []);
-  return rows.map((row) => toItem(row, byItem.get(String(row.id)) ?? []));
+  const items = rows.map((row) => toItem(row, byItem.get(String(row.id)) ?? []));
+  return withTextTubeStatus(items);
 }
 
 function groupLinksByItem(links: Array<Record<string, unknown>>) {
@@ -63,7 +102,8 @@ export async function listItems(query: ListItemsQuery = {}): Promise<ListItemsRe
     env.DB.prepare(`SELECT * FROM item_links WHERE item_id IN (${page}) ORDER BY position ASC`).bind(...values, limit, offset),
   ]);
   const linksByItem = groupLinksByItem((linkResult.results ?? []) as Array<Record<string, unknown>>);
-  const items = ((rows.results ?? []) as Array<Record<string, unknown>>).map((row) => toItem(row, linksByItem.get(String(row.id)) ?? []));
+  const rawItems = ((rows.results ?? []) as Array<Record<string, unknown>>).map((row) => toItem(row, linksByItem.get(String(row.id)) ?? []));
+  const items = await withTextTubeStatus(rawItems);
   const total = Number((totalResult.results?.[0] as { count?: number } | undefined)?.count ?? 0);
   return { items, pagination: { total, limit, offset, hasMore: offset + items.length < total } };
 }

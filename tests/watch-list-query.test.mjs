@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 
-import { buildItemsFilter, ITEMS_ORDER_BY, toItem } from "../app/lib/watch-list-query.ts";
+import { attachTextTubeStatus, buildItemsFilter, ITEMS_ORDER_BY, resolveTextTubeStatus, toItem } from "../app/lib/watch-list-query.ts";
 
 // buildItemsFilter() is the pure "which WHERE clause and binds does this
 // request produce" decision extracted out of listItems() so it can be tested
@@ -120,4 +120,59 @@ test("toItem returns an empty links array for a row with no links, not undefined
 // the page query. See tests/workers/watch-list-list.test.ts for the D1 side.
 test("the list order ends in the id, after the date keys", () => {
   expect(ITEMS_ORDER_BY).toBe("ORDER BY added_on IS NULL ASC, added_on DESC, created_at DESC, id ASC");
+});
+
+// resolveTextTubeStatus() decides one YouTube link's TextTube badge --
+// app/lib/text-tube-import.ts's auto-import writes the rows this reads.
+const STALE_CUTOFF = "2026-09-23T00:00:00.000Z";
+
+test("resolveTextTubeStatus: a live video row wins outright, even with an older failed import row", () => {
+  const status = resolveTextTubeStatus(
+    { id: "video-1" },
+    { status: "failed", last_error: "old failure", updated_at: "2026-09-22T00:00:00.000Z" },
+    STALE_CUTOFF,
+  );
+  expect(status).toEqual({ status: "reflected", videoId: "video-1" });
+});
+
+test("resolveTextTubeStatus: running within the stale cutoff is still in progress", () => {
+  const status = resolveTextTubeStatus(undefined, { status: "running", updated_at: "2026-09-23T00:05:00.000Z" }, STALE_CUTOFF);
+  expect(status).toEqual({ status: "running" });
+});
+
+test("resolveTextTubeStatus: running older than the stale cutoff is treated as not started (stuck, retryable)", () => {
+  const status = resolveTextTubeStatus(undefined, { status: "running", updated_at: "2026-09-22T23:00:00.000Z" }, STALE_CUTOFF);
+  expect(status).toEqual({ status: "none" });
+});
+
+test("resolveTextTubeStatus: failed carries its error through", () => {
+  const status = resolveTextTubeStatus(undefined, { status: "failed", last_error: "動画情報を取得できませんでした。", updated_at: "2026-09-23T00:00:00.000Z" }, STALE_CUTOFF);
+  expect(status).toEqual({ status: "failed", error: "動画情報を取得できませんでした。" });
+});
+
+test("resolveTextTubeStatus: no video and no import row is 'none'", () => {
+  expect(resolveTextTubeStatus(undefined, undefined, STALE_CUTOFF)).toEqual({ status: "none" });
+});
+
+test("resolveTextTubeStatus: a 'done' import row whose video was later deleted from TextTube falls through to 'none', not 'reflected'", () => {
+  // videoRow is undefined here because the caller only looks up *live*
+  // (deleted_at IS NULL) text_tube_videos rows -- a done import with no
+  // matching live video means it was imported and then deleted.
+  const status = resolveTextTubeStatus(undefined, { status: "done", updated_at: "2026-09-20T00:00:00.000Z" }, STALE_CUTOFF);
+  expect(status).toEqual({ status: "none" });
+});
+
+test("attachTextTubeStatus: attaches textTube only to links that are a YouTube video URL", () => {
+  const items = [toItem(
+    { id: "item-1" },
+    [
+      { id: "link-1", label: "YouTube", url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ", link_type: "reference", position: 0 },
+      { id: "link-2", label: "公式サイト", url: "https://example.com", link_type: "reference", position: 1 },
+    ],
+  )];
+  const videoRows = new Map([["dQw4w9WgXcQ", { id: "video-1" }]]);
+  const importRows = new Map();
+  const [item] = attachTextTubeStatus(items, videoRows, importRows, STALE_CUTOFF);
+  expect(item.links[0].textTube).toEqual({ status: "reflected", videoId: "video-1" });
+  expect(item.links[1].textTube).toBeUndefined();
 });

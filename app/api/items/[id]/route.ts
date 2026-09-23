@@ -6,6 +6,7 @@ import { normalizeItem } from "../route";
 import { route } from "@/app/lib/route";
 import { resolveStoredThumbnail } from "@/app/lib/thumbnail-fetch";
 import { sameLinkSet } from "@/app/lib/thumbnail";
+import { youTubeVideoId } from "@/app/lib/youtube";
 
 // Delegates the row->API-shape mapping to attachLinks()/toItem() in
 // app/lib/queries/watch-list.ts -- the same functions listItems() (used by
@@ -91,7 +92,15 @@ export const PATCH = route(async (request: Request, { params }: { params: Promis
     statements.push(env.DB.prepare("INSERT INTO item_links (id, item_id, label, url, link_type, position, canonical_url) VALUES (?, ?, ?, ?, ?, ?, ?)").bind(crypto.randomUUID(), id, link.label ?? "", link.url, link.linkType ?? "reference", position, canonicalUrl(link.url)));
   }
   await env.DB.batch(statements);
-  return Response.json({ item: await itemResponse(id) });
+  // 「今回のPATCHで新しく追加されたリンク」だけを取り込み候補にする --
+  // 既にあったリンクは前回の保存時に扱われているはずで、状態変更だけの
+  // 保存のたびにTextTubeへ登録し直そうとしないため。「新しく追加」の
+  // 判定は previousLinks (このハンドラがサムネイル再取得の要否判定に
+  // 既に使っている) の canonical_url と同じ比較。
+  const previousCanonical = new Set((previousLinks.results ?? []).map((row) => row.canonical_url ?? ""));
+  const newLinks = (item.links ?? []).filter((link) => !previousCanonical.has(canonicalUrl(link.url)));
+  const textTubeCandidates = [...new Set(newLinks.map((link) => youTubeVideoId(link.url)).filter(Boolean))];
+  return Response.json({ item: await itemResponse(id), textTubeCandidates });
 });
 
 export const DELETE = route(async (_: Request, { params }: { params: Promise<{ id: string }> }) => {

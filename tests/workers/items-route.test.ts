@@ -107,3 +107,69 @@ describe("optimistic lock on PATCH /api/items/:id (Issue #75)", () => {
     expect(updated.item.title).toBe("lock-test-2-updated");
   });
 });
+
+// app/watch-list-app.tsx's save() calls app/lib/text-tube-import.ts's
+// runTextTubeImport() once per id in textTubeCandidates, right after a
+// successful save -- these confirm POST/PATCH compute the right set: every
+// YouTube link on create, but on edit only the links that are genuinely new
+// (an existing item PATCHed with unrelated field changes must not
+// re-trigger an already-handled link, and a duplicate YouTube link within
+// one save must not be offered twice).
+describe("textTubeCandidates (Watch List -> TextTube auto-import)", () => {
+  test("POST returns every distinct YouTube video id among the new item's links", async () => {
+    const { response, body } = await createItem({
+      contentType: "movie",
+      title: "texttube-candidates-post",
+      links: [
+        { label: "YouTube", url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ" },
+        { label: "Same video, different URL form", url: "https://youtu.be/dQw4w9WgXcQ" },
+        { label: "Not YouTube", url: "https://example.com/article" },
+      ],
+    });
+    expect(response.status).toBe(201);
+    const withCandidates = body as unknown as { textTubeCandidates: string[] };
+    expect(withCandidates.textTubeCandidates).toEqual(["dQw4w9WgXcQ"]);
+  });
+
+  test("PATCH returns only newly added YouTube links, not ones the item already had", async () => {
+    const { body: created } = await createItem({
+      contentType: "movie",
+      title: "texttube-candidates-patch",
+      links: [{ label: "Already here", url: "https://www.youtube.com/watch?v=aaaaaaaaaaa" }],
+    });
+    const id = created.item!.id as string;
+
+    // Edits only the title, keeping the same link -- nothing new to import.
+    const unrelatedEdit = await itemPatch(
+      new Request(`http://x/api/items/${id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ contentType: "movie", title: "texttube-candidates-patch-renamed", links: [{ label: "Already here", url: "https://www.youtube.com/watch?v=aaaaaaaaaaa" }], version: 1 }),
+      }),
+      { params: Promise.resolve({ id }) },
+    );
+    const unrelatedBody = (await unrelatedEdit.json()) as { textTubeCandidates: string[] };
+    expect(unrelatedBody.textTubeCandidates).toEqual([]);
+
+    // Adds a second YouTube link alongside the first -- only the new one is
+    // a candidate.
+    const addLink = await itemPatch(
+      new Request(`http://x/api/items/${id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          contentType: "movie",
+          title: "texttube-candidates-patch-renamed",
+          links: [
+            { label: "Already here", url: "https://www.youtube.com/watch?v=aaaaaaaaaaa" },
+            { label: "New", url: "https://www.youtube.com/watch?v=bbbbbbbbbbb" },
+          ],
+          version: 2,
+        }),
+      }),
+      { params: Promise.resolve({ id }) },
+    );
+    const addLinkBody = (await addLink.json()) as { textTubeCandidates: string[] };
+    expect(addLinkBody.textTubeCandidates).toEqual(["bbbbbbbbbbb"]);
+  });
+});
