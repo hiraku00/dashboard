@@ -371,7 +371,7 @@ test("previousOpeningPoint totals the opening record of the newest prior date", 
     { wallet_id: "w1", as_of_date: "2026-09-05", captured_at: "2026-09-05T10:00:00Z", total_usd: 200 },
   ];
   const exchanges = [{ source_id: "e1", as_of_date: "2026-09-04", captured_at: "2026-09-04T09:30:00Z", totals: { net_asset_usd: 50 } }];
-  expect(previousOpeningPoint(wallets, exchanges, "2026-09-05")).toEqual({ date: "2026-09-04", value: 170 });
+  expect(previousOpeningPoint(wallets, exchanges, "2026-09-05")).toEqual({ date: "2026-09-04", value: 170, fx: null });
 });
 
 test("previousOpeningPoint returns null when nothing precedes the latest date", () => {

@@ -168,8 +168,8 @@ const num = (value: unknown) => Number(value);
 /** The full read, cut down to the fields the overview reads. Independent of the implementation under test. */
 function project(full: { snapshots: Row[]; exchange_snapshots: Row[] }) {
   return {
-    snapshots: full.snapshots.map((row) => ({ wallet_id: row.wallet_id, as_of_date: row.as_of_date, captured_at: row.captured_at, total_usd: num(row.total_usd) })),
-    exchange_snapshots: full.exchange_snapshots.map((row) => ({ source_id: row.source_id, as_of_date: row.as_of_date, captured_at: row.captured_at, totals: { net_asset_usd: num((row.totals as Row).net_asset_usd) } })),
+    snapshots: full.snapshots.map((row) => ({ wallet_id: row.wallet_id, as_of_date: row.as_of_date, captured_at: row.captured_at, total_usd: num(row.total_usd), fx_usdjpy: row.fx_usdjpy ?? null })),
+    exchange_snapshots: full.exchange_snapshots.map((row) => ({ source_id: row.source_id, as_of_date: row.as_of_date, captured_at: row.captured_at, totals: { net_asset_usd: num((row.totals as Row).net_asset_usd) }, fx_usdjpy: row.fx_usdjpy ?? null })),
   };
 }
 const normalizeNumbers = (history: { snapshots: Row[]; exchange_snapshots: Row[] }) => ({
@@ -205,7 +205,7 @@ describe("assetHistory summary form", () => {
     test("carries no positions, tokens, payload or other detail", async () => {
       const summary = await assetHistory("90", { summary: true });
       for (const row of [...summary.snapshots, ...summary.exchange_snapshots] as Row[]) {
-        expect(Object.keys(row).sort().every((key) => ["wallet_id", "source_id", "as_of_date", "captured_at", "total_usd", "totals"].includes(key))).toBe(true);
+        expect(Object.keys(row).sort().every((key) => ["wallet_id", "source_id", "as_of_date", "captured_at", "total_usd", "totals", "fx_usdjpy"].includes(key))).toBe(true);
       }
       expect(JSON.stringify(summary)).not.toMatch(/tokens|positions|symbol|payload/);
     });

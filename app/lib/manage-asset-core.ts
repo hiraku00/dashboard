@@ -232,8 +232,9 @@ export function historyPoints(wallets: AssetRow[], exchanges: AssetRow[]) {
 
 /** 資産概要の「前日保存比」の基準となる、直近スナップショット日より前で最も新しい
  *  記録日の総額。その日の各 source について captured_at が最も早い（＝その日の
- *  始値相当の）行を採り、合算する（app-ui.js が渡す history 全体を対象にする）。 */
-export function previousOpeningPoint(wallets: AssetRow[], exchanges: AssetRow[], latestDate: string | null): { date: string; value: number } | null {
+ *  始値相当の）行を採り、合算する（app-ui.js が渡す history 全体を対象にする）。
+ *  fx はその行のうち captured_at が最も新しい fx_usdjpy 持ちの行のレート（無ければ null）。 */
+export function previousOpeningPoint(wallets: AssetRow[], exchanges: AssetRow[], latestDate: string | null): { date: string; value: number; fx: number | null } | null {
   const tag = (row: AssetRow, sourceKey: string): AssetRow & { sourceKey: string } => ({ ...row, sourceKey });
   const rows = [
     ...wallets.map((row) => tag(row, `wallet:${row.wallet_id}`)),
@@ -246,7 +247,9 @@ export function previousOpeningPoint(wallets: AssetRow[], exchanges: AssetRow[],
     const old = earliest.get(row.sourceKey);
     if (!old || String(row.captured_at) < String(old.captured_at)) earliest.set(row.sourceKey, row);
   }
-  return { date, value: [...earliest.values()].reduce((sum, row) => sum + number(row.total_usd ?? (row.totals as AssetRow | undefined)?.net_asset_usd), 0) };
+  const picked = [...earliest.values()];
+  const fxRow = picked.filter((row) => row.fx_usdjpy).sort((a, b) => String(a.captured_at).localeCompare(String(b.captured_at))).at(-1);
+  return { date, value: picked.reduce((sum, row) => sum + number(row.total_usd ?? (row.totals as AssetRow | undefined)?.net_asset_usd), 0), fx: fxRow ? Number(fxRow.fx_usdjpy) : null };
 }
 
 export function currencyHistory(wallets: AssetRow[], exchanges: AssetRow[], symbol: string, rates: AssetRow[]) {

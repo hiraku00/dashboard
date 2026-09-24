@@ -17,6 +17,17 @@ import { formatDate, formatQuantity, money, shortDate, yen } from "@/app/lib/man
 import { periodRows, periods, samplePoints, type Period } from "@/app/lib/manage-asset-chart";
 import { ChartTooltip, axisLayout, useChartHoverTooltip, useSvgFontScale, type ChartHoverPoint } from "@/app/manage-asset-chart-tooltip";
 
+/** 通貨記号を除いた符号つきの数値文字列（例: −8,144.33）。0 は符号なし。 */
+function signed(value: number, format: (value: number) => string): string {
+  const body = format(Math.abs(value)).slice(1);
+  return `${value > 0 ? "+" : value < 0 ? "−" : ""}${body}`;
+}
+
+function signedPercent(value: number): string {
+  const text = Math.abs(value).toFixed(2);
+  return `${value > 0 ? "+" : value < 0 && text !== "0.00" ? "−" : ""}${text}%`;
+}
+
 export type AssetStateData = { snapshots: AssetRow[]; exchange_snapshots: AssetRow[] };
 export type AssetHistoryData = { snapshots: AssetRow[]; exchange_snapshots: AssetRow[] };
 
@@ -53,13 +64,15 @@ export function AssetOverview({
     const times = places.map((place) => place.captured_at).filter(Boolean).map(String).sort();
     const trend = samplePoints(periodRows(historyPoints(histW, histE), period), period);
     const latestDate = [...wallets, ...exchanges].map((row) => row.as_of_date).filter(Boolean).map(String).sort().at(-1) ?? null;
-    const previous = previousOpeningPoint(histW, histE, latestDate)?.value ?? null;
+    const previousPoint = previousOpeningPoint(histW, histE, latestDate);
+    const previous = previousPoint?.value ?? null;
+    const previousFx = previousPoint?.fx ?? null;
     const delta = previous == null ? null : total - previous;
     const recon = reconciliation(wallets, exchanges);
-    return { fx, total, holdings, places, freshness: times.at(-1) ?? null, stale: places.filter((place) => place.status === "古いデータ"), trend, previous, delta, recon };
+    return { fx, total, holdings, places, freshness: times.at(-1) ?? null, stale: places.filter((place) => place.status === "古いデータ"), trend, previous, previousFx, delta, recon };
   }, [state, history, period, today]);
 
-  const { fx, total, delta, previous } = view;
+  const { fx, total, delta, previous, previousFx } = view;
   const rate = fx?.rate ?? null;
 
   // GMOコインは毎週土曜9:00〜11:00（日本時間）にシステムメンテナンスがある
@@ -89,15 +102,25 @@ export function AssetOverview({
             {delta == null ? (
               <strong>比較データがありません</strong>
             ) : (
-              <strong>
-                {`${delta >= 0 ? "+" : "−"}${money(Math.abs(delta))}（${previous ? Math.abs((delta / previous) * 100).toFixed(2) : "0.00"}%）`}
-                {rate ? <span className="hero-metric-sub">{`${delta >= 0 ? "+" : "−"}${yen(Math.abs(delta) * rate)}`}</span> : null}
+              <strong className={`hero-delta ${delta > 0 ? "up" : delta < 0 ? "down" : ""}`}>
+                <span className="hero-delta-row">
+                  <span className="hero-delta-unit">$</span>
+                  <span className="hero-delta-num">{signed(delta, money)}</span>
+                  <span className="hero-delta-pct">{`（${signedPercent(previous ? (delta / previous) * 100 : 0)}）`}</span>
+                </span>
+                {rate ? (
+                  <span className="hero-delta-row">
+                    <span className="hero-delta-unit">¥</span>
+                    <span className="hero-delta-num">{signed(delta * rate, yen)}</span>
+                  </span>
+                ) : null}
               </strong>
             )}
           </div>
           <div className="hero-metric">
             <span>換算レート</span>
             <strong>{fx ? `USD/JPY ${fx.rate.toFixed(2)}` : "USD/JPY 未取得"}</strong>
+            <span className="hero-metric-sub">{previousFx ? `前日 ${previousFx.toFixed(2)}` : "前日 —"}</span>
           </div>
           <div className="hero-metric">
             <span>最終更新</span>

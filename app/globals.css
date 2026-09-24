@@ -248,3 +248,4 @@ h1,h2,h3 { color:var(--ink); } h1 { margin:0; font-size:30px; line-height:1.1; l
 .asset-workspace .asset-table th:first-child{background:#f3f4f7}
 .asset-workspace .asset-table tr:hover td:first-child{background:#f2f7ff}
 }
+.asset-hero .hero-metric strong.hero-delta { display:grid; grid-template-columns:auto auto auto; justify-content:start; justify-items:end; column-gap:6px; row-gap:2px; }.hero-delta-row { display:contents; }.hero-delta-unit { justify-self:start; }.hero-delta-pct { justify-self:start; }.asset-hero .hero-metric strong.hero-delta.up { color:var(--good); }.asset-hero .hero-metric strong.hero-delta.down { color:var(--danger); }.hero-metric>.hero-metric-sub { margin-top:4px; font-variant-numeric:tabular-nums; }
