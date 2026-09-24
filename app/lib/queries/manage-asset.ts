@@ -208,7 +208,8 @@ export async function latestSyncRun(): Promise<Row | null> {
  *
  *  The overview's trend line and its "前日保存比" read exactly these fields of a
  *  history row: wallet_id / source_id, as_of_date, captured_at, and the total
- *  (total_usd, or totals.net_asset_usd for an exchange). Everything else in a
+ *  (total_usd, or totals.net_asset_usd for an exchange), plus fx_usdjpy for the
+ *  previous day's rate shown beside the current one. Everything else in a
  *  full row -- every token and position, addresses, names, raw payload -- is only
  *  for the per-currency history, and is most of the bytes: on production a
  *  90-day window is 896KB in full and ~170KB as this, and it skips the two
@@ -229,8 +230,8 @@ async function assetHistorySummary(cutoff: string | null): Promise<AssetHistory>
   const snapshotFilter = cutoff ? " WHERE s.as_of_date >= ?" : "";
   const bind = cutoff ? [cutoff] : [];
   const [recordResult, normalizedResult] = await env.DB.batch<Row>([
-    env.DB.prepare(`SELECT record_type, source_id, as_of_date, captured_at, total_usd FROM asset_history_records${filterSql} ORDER BY as_of_date ASC, captured_at ASC`).bind(...bind),
-    env.DB.prepare(`SELECT s.source_id, s.as_of_date, s.captured_at, s.total_usd, a.source_type, r.received_at AS sync_received_at
+    env.DB.prepare(`SELECT record_type, source_id, as_of_date, captured_at, total_usd, fx_usdjpy FROM asset_history_records${filterSql} ORDER BY as_of_date ASC, captured_at ASC`).bind(...bind),
+    env.DB.prepare(`SELECT s.source_id, s.as_of_date, s.captured_at, s.total_usd, s.fx_usdjpy, a.source_type, r.received_at AS sync_received_at
     FROM asset_snapshots s JOIN asset_sources a ON a.id=s.source_id
     LEFT JOIN asset_sync_runs r ON r.id=s.run_id${snapshotFilter}
     ORDER BY s.as_of_date ASC, s.captured_at ASC`).bind(...bind),
@@ -239,8 +240,8 @@ async function assetHistorySummary(cutoff: string | null): Promise<AssetHistory>
   const exchanges: Row[] = [];
   const add = (isWallet: boolean, row: Row, syncReceivedAt?: unknown) => {
     const summary: Row = isWallet
-      ? { wallet_id: row.source_id, as_of_date: row.as_of_date, captured_at: row.captured_at, total_usd: row.total_usd }
-      : { source_id: row.source_id, as_of_date: row.as_of_date, captured_at: row.captured_at, totals: { net_asset_usd: row.total_usd } };
+      ? { wallet_id: row.source_id, as_of_date: row.as_of_date, captured_at: row.captured_at, total_usd: row.total_usd, fx_usdjpy: row.fx_usdjpy }
+      : { source_id: row.source_id, as_of_date: row.as_of_date, captured_at: row.captured_at, totals: { net_asset_usd: row.total_usd }, fx_usdjpy: row.fx_usdjpy };
     // newestRecord() compares the sync time first; it is dropped again below.
     if (syncReceivedAt !== undefined) summary.sync_received_at = syncReceivedAt;
     (isWallet ? wallets : exchanges).push(summary);

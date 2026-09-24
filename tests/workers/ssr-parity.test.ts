@@ -369,7 +369,7 @@ describe("Manage Asset page", () => {
     // rather than shipping an empty shell for the client to fill.
     expect(html).toContain(money(expectedTotal));
     // 前日保存比: 1200 (latest) - 1000 (prior opening) = +$200.00.
-    expect(html).toContain(money(200));
+    expect(html).toContain(`+${money(200).slice(1)}`);
   });
 
   test("GET /manage-asset/locations renders the native locations view with the seeded wallet's value", async () => {
