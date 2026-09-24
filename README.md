@@ -8,6 +8,7 @@ Watch List、TextTube、Manage Asset、To Doを一つのCloudflare上で管理�
 - **Watch List**: 番組・記事・音声・映画などの視聴候補を、検索、絞り込み、優先度、ステータス、リンク付き（リンク先のサムネイルも表示）で管理
 - **TextTube**: 動画・音声・記事のライブラリ、詳細Markdown、目次、Markdown表、Mermaid図を含む本文表示、Studio編集。公開YouTube URLからメタデータと既存字幕を取り込み可能
 - **Manage Asset**: 資産総額、資産配分、保有資産、保管場所、通貨推移、履歴、設定、データ更新を表示
+- **ちきりんオプチャ**: LINEオープンチャット「集まれテレビっ子」のノート（1ノート＝1番組）から、ちきりんさんが立てたスレッドと、ちきりんさんのコメントだけを番組ごとに表示。Mac上のcollectorがLINEの画面を読み取り（参照のみ）、差分だけをD1へ同期
 - **To Do**: 日ごとの看板でタスクを管理。単発タスクと毎日／曜日指定の繰り返しタスクを分けて保存
 - **ローカル資産取得**: APIキーをmacOS Keychainに保持したローカルcollectorが各サービスから取得し、スナップショットだけをCloudflareへ同期
 - **ストレージ管理**: D1/R2の利用状況、カテゴリ別容量、日次集計、上限アラートを確認
@@ -15,7 +16,7 @@ Watch List、TextTube、Manage Asset、To Doを一つのCloudflare上で管理�
 ## 本番環境
 
 - Worker: <https://dashboard.hiraku00.workers.dev>
-- 主な画面: `/`, `/watch-list`, `/text-tube`, `/manage-asset`, `/todo`, `/settings/storage`
+- 主な画面: `/`, `/watch-list`, `/text-tube`, `/manage-asset`, `/todo`, `/chikirin`, `/settings/storage`
 - 本番データ: Cloudflare D1 `hiraku-watch-list` / R2 `hiraku-portal-files`
 
 本番URLはCloudflare Accessで保護されています。Accessの認証・セッションがない環境からは画面/APIを利用できません。
@@ -35,6 +36,7 @@ Watch List、TextTube、Manage Asset、To Doを一つのCloudflare上で管理�
 | `/manage-asset/sync` | データ取得・同期状況、古いデータ、手動同期状態 |
 | `/manage-asset/settings` | Manage Asset表示・同期設定 |
 | `/todo` | 日別の看板、単発タスク、毎日／曜日指定の繰り返しタスク |
+| `/chikirin` | ちきりんオプチャ。ちきりんさんのスレッド・コメントを番組ごとに表示、検索、絞り込み |
 | `/settings/storage` | D1/R2の利用状況、TextTube字幕APIの実消費クレジット、ストレージ管理 |
 
 各機能画面には共通ポータルヘッダーが表示されます。Manage Assetは他画面と同じくServer Componentとして実装されており、既存UIの表記・桁数・計算ロジックを踏襲したネイティブなReact実装です（旧来の静的アセットをiframeで埋め込む構成は撤去済み）。
@@ -65,6 +67,7 @@ Mac (launchd)
 - [API一覧](docs/api-reference.md)
 - [データモデル](docs/data-model.md)
 - [Manage Asset運用](docs/manage-asset.md)
+- [ちきりんオプチャ](docs/chikirin-openchat.md)
 - [TextTube運用](docs/text-tube.md)
 - [デプロイとAccess設定](docs/deployment-and-access.md)
 - [日次運用・障害対応](docs/operations.md)

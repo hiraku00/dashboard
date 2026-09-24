@@ -21,6 +21,7 @@ export function PortalNav({ active }: { active?: string }) {
     ["/text-tube", "TextTube"],
     ["/manage-asset", "Manage Asset"],
     ["/todo", "To Do"],
+    ["/chikirin", "ちきりんオプチャ"],
     ["/settings/storage", "使用量"],
   ] as const;
   return (

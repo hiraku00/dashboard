@@ -80,6 +80,8 @@ export default defineConfig({
             "tests/manage-asset-core.test.mjs",
             "tests/manage-asset-history-fields.test.mjs",
             "tests/manage-asset-steth-history.test.mjs",
+            "tests/openchat-input.test.mjs",
+            "tests/openchat-query.test.mjs",
             "tests/portal-summary.test.mjs",
             "tests/portfolio-core.test.mjs",
             "tests/schema-parity.test.mjs",
