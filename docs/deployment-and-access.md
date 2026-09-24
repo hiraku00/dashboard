@@ -82,6 +82,12 @@ PORTAL_SYNC_CLIENT_ID=<Keychainから実行時に設定>
 
 secret値をファイルに固定保存せず、Service Tokenを再発行した場合はKeychainとAccess側を同時に更新します。
 
+#### ちきりんオプチャの同期API
+
+`collector/line_openchat` は同じService Token（Keychain `manage-asset:portal-sync`）で `POST /api/openchat/sync` と `GET /api/openchat/ledger` を呼びます。Access Applicationの保護対象は `dashboard.hiraku00.workers.dev` のホスト全体（パス指定なし）で、Service Authポリシー「manage-asset portal sync」がアプリ全体に付いているため、`/api/openchat/*` にも追加の設定は不要です（2026-09-24にダッシュボードで確認）。今後、保護対象をパス単位に絞る場合は、`/api/openchat/*` を `/api/manage-asset/sync` と同じService Authの対象に含めてください。
+
+本番D1には `migrations/0009_openchat.sql` を `wrangler d1 execute DB --remote --file=...` で直接適用済みです（2026-09-24）。`migrations apply` は使いません: 本番はこれまで `ensureSchema()` で表を作ってきたため、0004〜0008も未適用と記録されており、全部を流し直してしまいます。0009は `CREATE ... IF NOT EXISTS` だけなので、デプロイ後に `ensureSchema()`（schema version 5）が同じ内容を流しても安全です。
+
 ## R2
 
 `wrangler.jsonc` の `FILES` bindingが `hiraku-portal-files` を指します。本文・原本の書き込み後、D1のrevision/台帳との対応を確認します。R2の利用量は日次reconciliationで確認し、上限に近づいた場合は新規原本の保持期間や不要オブジェクトを見直します。

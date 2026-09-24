@@ -32,6 +32,14 @@
 | `POST /api/text-tube/imports/:id/dismiss` | 上記の帯から1件を閉じる。                                                                                                                                   |
 | `GET /api/settings/storage`               | R2使用量に加え、TextTube字幕APIの実消費クレジット・取得試行・最終取得日時を返す。                                                                           |
 
+## ちきりんオプチャ
+
+| パス | 用途 |
+| --- | --- |
+| `POST /api/openchat/sync` | collectorの同期。`start` → `notes`（1リクエスト10ノート・60コメントまで。同じノートのコメントを複数リクエストに分けてよい）→ `complete`。ノート・コメントはcollectorが発行したidでupsertするので、再送しても結果は変わらない。壊れたノートは結果に`error`を付け、ほかのノートは保存する。Cloudflare AccessのService Tokenで保護する。 |
+| `GET /api/openchat/programs` | 画面用の一覧。`q`（番組名・ちきりんさんの本文）、`kind=all\|thread\|comment`、`cursor`、`limit`（最大50）。ちきりんさんのスレッド、またはちきりんさんのコメントがあるノートだけを新しい順に返す。ほかの人のコメント本文は返さない。 |
+| `GET /api/openchat/ledger?confirm=restore` | collectorのローカル台帳を失ったときの復元用。読み取り行数が多いので、`confirm=restore`が無いと400を返す。本文は先頭200字だけ。 |
+
 ## To Do
 
 | パス | 用途 |

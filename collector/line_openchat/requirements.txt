@@ -1,0 +1,9 @@
+# ちきりんオプチャ(collector/line_openchat)の依存。macOS専用(Vision / Quartz / Accessibility)。
+# launchdで動かす場合は、そのPython(/usr/local/bin/python3)にもインストールすること。
+pyobjc-framework-ApplicationServices>=12,<13
+pyobjc-framework-Cocoa>=12,<13
+pyobjc-framework-Quartz>=12,<13
+pyobjc-framework-Vision>=12,<13
+certifi>=2024.2.2
+# テスト
+pytest>=8,<9

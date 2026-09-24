@@ -249,3 +249,24 @@ h1,h2,h3 { color:var(--ink); } h1 { margin:0; font-size:30px; line-height:1.1; l
 .asset-workspace .asset-table tr:hover td:first-child{background:#f2f7ff}
 }
 .asset-hero .hero-metric strong.hero-delta { display:grid; grid-template-columns:auto auto auto; justify-content:start; justify-items:end; column-gap:6px; row-gap:2px; }.hero-delta-row { display:contents; }.hero-delta-unit { justify-self:start; }.hero-delta-pct { justify-self:start; }.asset-hero .hero-metric strong.hero-delta.up { color:var(--good); }.asset-hero .hero-metric strong.hero-delta.down { color:var(--danger); }.hero-metric>.hero-metric-sub { margin-top:4px; font-variant-numeric:tabular-nums; }
+
+/* ちきりんオプチャ (/chikirin) */
+.chikirin-run { margin:0; padding:0 24px 10px; color:var(--muted); font-size:12.5px; }
+.filters.chikirin-filters { grid-template-columns:minmax(220px,2fr) 3fr; align-items:center; }
+.chikirin-kinds { display:flex; flex-wrap:wrap; gap:6px; }
+.chikirin-kind { border:1px solid var(--line-strong); border-radius:999px; padding:7px 14px; background:var(--raised); color:var(--ink); font-size:13px; }
+.chikirin-kind.is-active { border-color:var(--blue-strong); background:var(--blue-soft); color:var(--blue-strong); font-weight:700; }
+.chikirin-list { display:grid; gap:14px; padding:16px 24px 8px; }.chikirin-list.is-loading { opacity:.55; }
+.chikirin-card { display:grid; gap:10px; border:1px solid var(--line); border-radius:14px; padding:16px 18px; background:var(--surface-solid); }
+.chikirin-card h3 { margin:0 0 4px; font-size:17px; line-height:1.4; overflow-wrap:anywhere; }
+.chikirin-meta { display:flex; flex-wrap:wrap; gap:4px 14px; margin:0; color:var(--muted); font-size:12.5px; font-variant-numeric:tabular-nums; }
+.chikirin-link { margin:4px 0 0; font-size:12.5px; }.chikirin-link a { color:var(--blue-strong); overflow-wrap:anywhere; }
+.chikirin-post { display:grid; gap:6px; border-left:3px solid var(--blue); border-radius:0 10px 10px 0; padding:10px 14px; background:var(--blue-soft); }
+.chikirin-post.is-thread { border-left-color:var(--audio); background:rgba(88,86,214,.09); }
+.chikirin-post-head { display:flex; align-items:center; justify-content:space-between; gap:12px; color:var(--muted); font-size:12px; }
+.chikirin-badge { font-size:11.5px; letter-spacing:.02em; color:var(--blue-strong); }.chikirin-post.is-thread .chikirin-badge { color:var(--audio); }
+.chikirin-text { margin:0; white-space:pre-wrap; overflow-wrap:anywhere; line-height:1.75; font-size:14.5px; }
+.chikirin-text.is-clamped { display:-webkit-box; -webkit-line-clamp:7; -webkit-box-orient:vertical; overflow:hidden; }
+.chikirin-toggle { justify-self:start; border:0; background:none; padding:2px 0; color:var(--blue-strong); font-size:12.5px; font-weight:700; }
+.chikirin-more { display:flex; justify-content:center; padding:10px 24px 22px; }.chikirin-more button { border:1px solid var(--line-strong); border-radius:10px; padding:9px 22px; background:var(--raised); }
+@media (max-width:760px) { .filters.chikirin-filters { grid-template-columns:1fr; }.chikirin-list { padding:12px 12px 6px; }.chikirin-run { padding:0 12px 10px; } }

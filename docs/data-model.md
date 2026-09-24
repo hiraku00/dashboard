@@ -29,6 +29,14 @@
 - `todo_tasks`: 単発タスクと、繰り返しタスクから日付ごとに生成された実行カード
 - `todo_task_events`: カードの移動履歴
 
+### ちきりんオプチャ
+
+- `openchat_notes`: LINEオープンチャットのノート（1ノート＝1番組）。投稿者、本文、投稿日時とその精度（`exact` / `approx_min` / `approx_hour`）、コメント数、ちきりんさんのコメント数（`target_comment_count`）、再確認が必要か（`needs_recheck`）
+- `openchat_comments`: ノートのコメント。`is_target`がちきりんさん（公式バッジで判定）。`deleted_at`は、LINE上で見えなくなったとcollectorが判断した時刻（件数が一致したときだけ付く）
+- `openchat_sync_runs`: collectorの同期履歴（状態、走査・展開したノート数、新しいコメント数、警告）
+
+ちきりんさん以外の投稿も保存するのは、collectorが「取得済みか」を判定する台帳を失ったときに復元できるようにするため。画面とAPIの一覧には出さない。
+
 ### Storage
 
 - `storage_objects`: R2オブジェクトの論理台帳

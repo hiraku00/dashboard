@@ -15,6 +15,21 @@ USD/JPYの評価レートは、Yahoo Financeの`USDJPY=X`公開チャートを�
 
 APIキー・API Secret・Passphraseはプロジェクト内に保存しません。既存のKeychainサービス（`manage-asset/<source_id>`）を使用します。Portal同期用Service Tokenも `manage-asset:portal-sync` から取得します。
 
+## ちきりんオプチャ（LINE）
+
+`line_openchat/` は、Mac版LINEのオープンチャット「集まれテレビっ子」のノートを画面から読み取り、ちきりんさんのスレッド・コメントをPortalへ同期します。**LINEは参照のみ**で、投稿・リアクション・削除などは行いません（`safety.py`と`tests/test_safety.py`が機械的に禁止・確認しています）。設計・前提・注意点は [docs/chikirin-openchat.md](../docs/chikirin-openchat.md)。
+
+```bash
+cd collector
+python3 -m pip install -r line_openchat/requirements.txt   # 初回のみ
+python3 -m line_openchat.sync --dry-run            # Portalへ送らず、台帳(data/line_openchat/ledger.json)だけ更新
+PORTAL_URL=https://dashboard.hiraku00.workers.dev PORTAL_SYNC_CLIENT_ID='…' python3 -m line_openchat.sync
+python3 -m line_openchat.sync --first-run          # 一覧の最後まで全件を読み直す
+python3 -m pytest tests                            # collectorのテスト
+```
+
+実行中はマウスでLINEを操作するので、数分間Macを触らないでください。マウスやキーボードを操作すると、その場で中断します（次回はその続きから始まります）。LINEでオープンチャットを開き、ノートウィンドウを表示してから実行します。
+
 ## 初回セットアップ
 
 ```bash

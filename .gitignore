@@ -44,4 +44,5 @@ pnpm-debug.log*
 /collector/data/*
 !/collector/data/.gitkeep
 /collector/**/__pycache__/
+/collector/.pytest_cache/
 /collector/**/*.py[cod]
