@@ -147,7 +147,8 @@ test("detail shows the thread owner's post and every comment by the target, olde
   expect(posts[0].textContent).toContain("私もこれ観ました");
   expect(posts[1].textContent).toContain("09.21 18:00");
   expect(posts[0].textContent).toContain("09.21 16:15");
-  expect(screen.getByRole("link", { name: /地球超解析 NHKオンデマンド/ }).getAttribute("href")).toBe("https://www.nhk-ondemand.jp/x");
+  expect(screen.getByRole("link", { name: /番組ページ/ }).getAttribute("href")).toBe("https://example.test/ep");
+  expect(screen.queryByRole("link", { name: /地球超解析 NHKオンデマンド/ })).toBeNull();   // ノート生のリンクカードは出さない(放送情報の編集で設定したリンクだけ)
 });
 
 test("saving 放送情報 redirects back to the list", async () => {

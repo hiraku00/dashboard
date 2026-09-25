@@ -52,9 +52,6 @@ export function ChikirinDetail({ id, initialProgram = null, initialError = "" }:
             <span>ちきりんのコメント {program.targetComments.length} 件</span>
           </p>
           {program.meta.links.length > 0 && <p className="chikirin-link">{program.meta.links.map((l) => <a key={l.url} href={l.url} target="_blank" rel="noreferrer">{linkText(l.url, l.label)} <span aria-hidden="true">↗</span></a>)}</p>}
-          {(program.linkTitle || program.linkUrl) && <p className="chikirin-link">
-            {program.linkUrl ? <a href={program.linkUrl} target="_blank" rel="noreferrer">{program.linkTitle || program.linkUrl} <span aria-hidden="true">↗</span></a> : program.linkTitle}
-          </p>}
         </header>
         {program.issues.length > 0 && <div className="chikirin-issue-box" role="status"><strong>要確認</strong><ul>{program.issues.map((issue) => <li key={issue}>{issue}</li>)}</ul></div>}
         {program.noteBody && <section className={program.noteByTarget ? "chikirin-post is-thread" : "chikirin-post is-owner"} aria-label={program.noteByTarget ? "ちきりんのスレッド" : "スレッド主の投稿"}>
