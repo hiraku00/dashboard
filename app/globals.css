@@ -259,7 +259,7 @@ h1,h2,h3 { color:var(--ink); } h1 { margin:0; font-size:30px; line-height:1.1; l
 .chikirin-list { display:grid; gap:14px; padding:16px 24px 8px; }.chikirin-list.is-loading { opacity:.55; }
 .chikirin-card { display:grid; gap:10px; border:1px solid var(--line); border-radius:14px; padding:16px 18px; background:var(--surface-solid); }
 .chikirin-card h3 { margin:0 0 4px; font-size:17px; line-height:1.4; overflow-wrap:anywhere; }
-.chikirin-meta { display:flex; flex-wrap:wrap; gap:4px 14px; margin:0; color:var(--muted); font-size:12.5px; font-variant-numeric:tabular-nums; }
+.chikirin-meta { display:flex; flex-wrap:wrap; gap:4px 14px; margin:0; color:var(--ink); font-size:14px; font-weight:600; font-variant-numeric:tabular-nums; }
 .chikirin-link { margin:4px 0 0; font-size:12.5px; }.chikirin-link a { color:var(--blue-strong); overflow-wrap:anywhere; }
 .chikirin-post { display:grid; gap:6px; border-left:3px solid var(--blue); border-radius:0 10px 10px 0; padding:10px 14px; background:var(--blue-soft); }
 .chikirin-post.is-thread { border-left-color:var(--audio); background:rgba(88,86,214,.09); }
