@@ -5,7 +5,7 @@
 import { MAX_LIKE_TERM_BYTES, truncateUtf8Bytes } from "./sql-text.ts";
 import { metaFromRow, type Meta } from "./openchat-meta.ts";
 
-export const PAGE_SIZE = 20;
+export const PAGE_SIZE = 10;
 export const MAX_PAGE = 10000;
 export const ROOM = "atsumare-tv";
 
