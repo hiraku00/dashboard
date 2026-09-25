@@ -58,3 +58,29 @@ export function metaFromRow(row: Record<string, unknown> | null | undefined): Me
   } catch { /* 壊れていれば空 */ }
   return { broadcaster: text(row.broadcaster, MAX_BROADCASTER), episodeTitle: text(row.episode_title, MAX_EPISODE_TITLE), links };
 }
+
+/** よく出るサイト: リンクの表示名と、そのサイトから分かる放送局。ドメイン(と、必要なら先頭のパス)で判定する。 */
+type Site = { host: string; pathPrefix?: string; name: string; broadcaster: string };
+export const SITES: Site[] = [
+  { host: "web.nhk", name: "NHK ONE", broadcaster: "NHK" },
+  { host: "txbiz.tv-tokyo.co.jp", pathPrefix: "/wbs", name: "WBS", broadcaster: "テレ東" },
+];
+
+export function siteOf(url: string): Site | null {
+  try {
+    const u = new URL(url);
+    const host = u.hostname.replace(/^www\./, "");
+    return SITES.find((s) => s.host === host && (!s.pathPrefix || u.pathname === s.pathPrefix || u.pathname.startsWith(`${s.pathPrefix}/`))) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** 放送局を、リンクから自動で決める(編集していないときの既定)。最初に分かったサイトの放送局。 */
+export function inferBroadcaster(urls: string[]): string {
+  for (const url of urls) {
+    const site = siteOf(url);
+    if (site) return site.broadcaster;
+  }
+  return "";
+}

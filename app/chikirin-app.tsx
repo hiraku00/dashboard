@@ -4,6 +4,7 @@ import { useCallback, useState } from "react";
 import Link from "next/link";
 import { PortalHeader } from "./portal-nav";
 import { readErrorMessage, readJson } from "./lib/json";
+import { inferBroadcaster, siteOf } from "./lib/openchat-meta.ts";
 import { formatPostedAt, type Program, type ProgramKind } from "./lib/openchat-query.ts";
 import { MAX_LIKE_TERM_BYTES, truncateUtf8Bytes, utf8ByteLength } from "./lib/sql-text.ts";
 import { useLatestRequest } from "./lib/use-latest-request";
@@ -39,16 +40,17 @@ export function titleLines(program: Program): { title: string; head: string } {
   return { title: program.meta.episodeTitle, head: head.length > 140 ? `${head.slice(0, 140)}…` : head };
 }
 
-/** よく出るサイトの表示名。ドメインのままだと何のサイトか分かりにくいものだけ。 */
-const SITE_NAMES: Record<string, string> = { "web.nhk": "NHK ONE" };
-
-/** リンクの表示名: ラベルがあればそれ、なければサイト名(NHKのWebは「NHK ONE」)、なければドメイン。 */
+/** リンクの表示名: ラベルがあればそれ、なければサイト名(NHK ONE・WBS など。openchat-meta.ts の SITES)、なければドメイン。 */
 export function linkText(url: string, label: string) {
   if (label) return label;
-  try {
-    const host = new URL(url).hostname.replace(/^www\./, "");
-    return SITE_NAMES[host] ?? host;
-  } catch { return url; }
+  const site = siteOf(url);
+  if (site) return site.name;
+  try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return url; }
+}
+
+/** 一覧・詳細に出す放送局: 編集した値があればそれ、なければリンク(編集したリンク→ノートのリンクカード)から自動で決める。 */
+export function displayBroadcaster(program: Program): string {
+  return program.meta.broadcaster || inferBroadcaster([...program.meta.links.map((l) => l.url), program.linkUrl].filter(Boolean));
 }
 
 /** 一覧のリンク列に出すリンク: 編集したリンク + ノートのリンクカード。 */
@@ -137,7 +139,7 @@ export function ChikirinApp({ initialPage = null, initialRun = null }: { initial
             const links = listLinks(program);
             return <tr key={program.noteId}>
               <td className="kind-cell"><span className={program.noteByTarget ? "chikirin-tag is-thread" : "chikirin-tag"}>{program.noteByTarget ? "スレッド" : "コメント"}</span></td>
-              <td className="broadcaster-cell">{program.meta.broadcaster || <span className="empty-cell">—</span>}</td>
+              <td className="broadcaster-cell">{displayBroadcaster(program) || <span className="empty-cell">—</span>}</td>
               <td className="program-cell">{(() => {
                 const { title, head } = titleLines(program);
                 return <><Link className={title ? "chikirin-row-title" : "chikirin-row-title is-unset"} href={`/chikirin/${encodeURIComponent(program.noteId)}`} prefetch={false} title={title || program.programTitle}>{isNew(program, initialRun) && <span className="chikirin-new" title="最後の取得で、ちきりんの新しい投稿が見つかりました">新着</span>}{title || "（番組名 未設定）"}</Link><p className="description" title={head}>{head || " "}</p></>;

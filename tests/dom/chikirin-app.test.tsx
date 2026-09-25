@@ -4,7 +4,8 @@ import { afterEach, beforeAll, expect, test, vi } from "vitest";
 import { ChikirinApp, type ProgramsPage } from "@/app/chikirin-app";
 import { ChikirinDetail } from "@/app/chikirin-detail";
 
-vi.mock("next/navigation", () => ({ usePathname: () => "/chikirin" }));
+const nav = vi.hoisted(() => ({ push: vi.fn(), refresh: vi.fn() }));
+vi.mock("next/navigation", () => ({ usePathname: () => "/chikirin", useRouter: () => ({ push: nav.push, refresh: nav.refresh }) }));
 vi.mock("next/link", () => ({
   default: ({ href, children, className }: { href: string; children: ReactNode; className?: string; prefetch?: boolean }) => (
     <a href={href} className={className}>{children}</a>
@@ -16,6 +17,8 @@ beforeAll(() => {
 });
 afterEach(() => {
   cleanup();
+  nav.push.mockClear();
+  nav.refresh.mockClear();
   vi.unstubAllGlobals();
   vi.useRealTimers();
 });
@@ -226,7 +229,29 @@ test("the sync warnings are listed with what they are about", () => {
 test("links without a label show the site name: www.web.nhk becomes NHK ONE, other sites their domain, a label wins", async () => {
   const { linkText } = await import("@/app/chikirin-app");
   expect(linkText("https://www.web.nhk/tv/pl/series-tep-XXXX", "")).toBe("NHK ONE");
+  expect(linkText("https://txbiz.tv-tokyo.co.jp/wbs", "")).toBe("WBS");
   expect(linkText("https://www.nhk-ondemand.jp/goods/G1/", "")).toBe("nhk-ondemand.jp");
   expect(linkText("https://www.web.nhk/tv/x", "番組ページ")).toBe("番組ページ");
   expect(linkText("not a url", "")).toBe("not a url");
+});
+
+test("the broadcaster is filled in from the link when not edited: NHK for NHK ONE, テレ東 for WBS; an edited value wins", () => {
+  const unedited = { broadcaster: "", episodeTitle: "", links: [] };
+  render(<ChikirinApp initialPage={page([
+    program({ noteId: "a", meta: unedited, linkUrl: "https://www.web.nhk/tv/pl/x" }),
+    program({ noteId: "b", meta: { ...unedited, links: [{ url: "https://txbiz.tv-tokyo.co.jp/wbs", label: "" }] }, linkUrl: "" }),
+    program({ noteId: "c", meta: { ...unedited, broadcaster: "手で入れた局" }, linkUrl: "https://www.web.nhk/tv/pl/x" }),
+    program({ noteId: "d", meta: unedited, linkUrl: "" }),
+  ])} initialRun={null} />);
+  const cell = (row: number) => within(screen.getAllByRole("row")[row]).getAllByRole("cell")[1].textContent;
+  expect(cell(1)).toBe("NHK");
+  expect(cell(2)).toBe("テレ東");
+  expect(cell(3)).toBe("手で入れた局");
+  expect(cell(4)).toBe("—");
+});
+
+test("the detail form is prefilled with the inferred broadcaster", () => {
+  vi.stubGlobal("fetch", () => Promise.resolve(json({ program: program() })));
+  render(<ChikirinDetail id="n1" initialProgram={program({ meta: { broadcaster: "", episodeTitle: "", links: [{ url: "https://txbiz.tv-tokyo.co.jp/wbs", label: "" }] } }) as never} />);
+  expect((screen.getByLabelText("放送局") as HTMLInputElement).value).toBe("テレ東");
 });
