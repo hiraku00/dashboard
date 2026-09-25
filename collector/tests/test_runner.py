@@ -78,6 +78,50 @@ def test_second_run_from_the_saved_ledger_opens_nothing(tmp_path):
     assert outcome.stats.notes_opened == 0
 
 
+def test_ledger_missing_and_restore_failing_aborts_without_touching_line(tmp_path):
+    """台帳が無く、Portalからの復元も失敗したら、LINEの画面には触れずに中断する(既存データとの重複を防ぐ)。
+    2026-09-25、認証設定の誤りで復元が失敗し、黙って空の台帳から新規スキャンした結果、Portalに既にある
+    15ノートが新しいIDで重複した事故の再発防止。"""
+    class Broken(FakeUploader):
+        def fetch_ledger(self):
+            self.calls.append("fetch")
+            raise RuntimeError("認証エラー")
+
+    def no_driver():
+        raise AssertionError("復元に失敗した時点で中断すべきで、LINEの画面には触れないはず")
+
+    cfg = SyncConfig(portal_url="https://example.test", first_run=False, ledger_path=tmp_path / "ledger.json")
+    with pytest.raises(RunnerError) as e:
+        run_sync(cfg, driver_factory=no_driver, uploader_factory=lambda url, log: Broken(), now=NOW)
+    assert e.value.code == "ledger_missing"
+
+
+def test_ledger_missing_and_no_portal_configured_aborts_too(tmp_path):
+    """Portal未設定(URLが無い、または --dry-run で送信先が無い)で台帳も無いときも、同じ理由で中断する。"""
+    def no_driver():
+        raise AssertionError("中断すべきで、LINEの画面には触れないはず")
+
+    cfg = SyncConfig(portal_url="", first_run=False, ledger_path=tmp_path / "ledger.json")
+    with pytest.raises(RunnerError) as e:
+        run_sync(cfg, driver_factory=no_driver, now=NOW)
+    assert e.value.code == "ledger_missing"
+
+
+def test_first_run_explicitly_allows_starting_empty_even_if_restore_fails(tmp_path):
+    """--first-run を明示していれば、復元に失敗しても(本当に初回のつもりで)続行できる。"""
+    class Broken(FakeUploader):
+        def fetch_ledger(self):
+            raise RuntimeError("認証エラー")
+    outcome, _, _ = go(tmp_path, build(jitter=False), uploader=Broken(), cfg={"first_run": True})
+    assert outcome.status == "success"
+
+
+def test_restore_succeeding_with_zero_notes_does_not_abort(tmp_path):
+    """Portalの復元自体は成功したが(たまたま0件でも)、それは「失敗」ではないので中断しない。"""
+    outcome, _, _ = go(tmp_path, build(jitter=False), cfg={"first_run": False})
+    assert outcome.status == "success"
+
+
 def test_only_one_run_at_a_time(tmp_path):
     held = acquire_lock(tmp_path)
     try:

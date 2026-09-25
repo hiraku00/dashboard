@@ -115,9 +115,22 @@ def run_sync(cfg: SyncConfig, *, log: Callable[[str], None] = lambda s: None,
                 try:
                     ledger = Ledger.from_portal(uploader.fetch_ledger(), cfg.room)
                     note(f"Portalから台帳を復元しました: ノート{len(ledger.notes)}件")
-                except Exception as exc:                        # noqa: BLE001 復元できなければ新規で始める
-                    note(f"台帳の復元に失敗(新規で開始): {exc}")
-            ledger = ledger or Ledger(cfg.room)
+                except Exception as exc:                        # noqa: BLE001 復元できなければ、下で扱う(黙って新規開始しない)
+                    note(f"台帳の復元に失敗: {exc}")
+            if ledger is None:
+                # ローカル台帳も無く、Portalからの復元もできない(またはそもそも試せない)。ここで黙って
+                # 空の台帳から始めると、Portalに既にある内容をすべて新しいIDで送ってしまい、重複を作る
+                # (実際に起きた事故: 2026-09-25、認証設定の誤りで復元が失敗し、既存15ノートが重複した)。
+                # 本当に初回なら --first-run で明示してもらう。
+                if not first_run:
+                    raise RunnerError(
+                        "ledger_missing",
+                        "ローカル台帳が無く、Portalからの復元もできませんでした。このまま新規スキャンすると、"
+                        "Portalに既にある内容と重複するおそれがあるため中断します。\n"
+                        "  - 復元が失敗した場合は、PORTAL_URL・PORTAL_SYNC_CLIENT_ID・Keychainの設定を確認してください。\n"
+                        "  - 本当に初めての実行であれば、--first-run を付けて実行してください。",
+                    )
+                ledger = Ledger(cfg.room)
             first_run = first_run or not ledger.notes
         when = now or datetime.now().astimezone()
 

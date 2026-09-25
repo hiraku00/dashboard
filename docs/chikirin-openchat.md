@@ -178,7 +178,7 @@ sim(a, b)    = difflib.SequenceMatcher(None, norm_text(a), norm_text(b)).ratio()
 
 ```
 run = start_run()                       # POST /api/openchat/sync {action:"start"}
-ledger = load_ledger() or restore_from_portal()
+ledger = load_ledger() or restore_from_portal() or abort_unless_first_run()
 to_top()                                # 先頭の変化が止まるまで上へスクロール
 unchanged_streak = 0
 for note_block in scan_note_list():     # 上から順に、完全なノートブロックを返す
@@ -202,6 +202,7 @@ uploader.flush(); complete_run()
 ```
 
 - `SCAN_DAYS` の初期値は21日（オプチャの対象が「過去3週間以内に放映された番組」のため）。初回実行時は全件（一覧の最後まで）を読む。
+- **ローカル台帳が無く、Portalからの復元もできない場合**（設定ミスでの認証失敗など）は、`--first-run` を明示していない限りそこで中断する。黙って空の台帳から始めると、Portalに既にある内容が新しいIDで再度送られ、重複ノート・重複コメントを作ってしまうため（2026-09-25、認証設定の誤りで実際に発生し、`wrangler d1 execute` で手動復旧した）。
 - 一覧の最後は「＜重要＞このオープンチャットは…」のノート（9.21 午後2:17、ちきりん投稿。検証では、ここより古いノートは見つからなかった）と想定している。これを見たら終了する。**一覧の本当の末尾かどうかは未確認**なので、実装の最初の手順で確かめる。
 
 ### `open_and_collect(note)`

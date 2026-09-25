@@ -23,8 +23,10 @@ APIキー・API Secret・Passphraseはプロジェクト内に保存しません
 cd collector
 python3 -m pip install -r line_openchat/requirements.txt   # 初回のみ
 python3 -m line_openchat.sync --dry-run            # Portalへ送らず、台帳(data/line_openchat/ledger.json)だけ更新
+# '…' はプレースホルダー。実際のClient IDは launchd/com.watch-list.manage-asset-collector.plist.template を参照
+# (Client IDは秘密ではない。秘密のClient Secretは、コマンドが自動でKeychainの manage-asset:portal-sync から読む)
 PORTAL_URL=https://dashboard.hiraku00.workers.dev PORTAL_SYNC_CLIENT_ID='…' python3 -m line_openchat.sync
-python3 -m line_openchat.sync --first-run          # 一覧の最後まで全件を読み直す
+python3 -m line_openchat.sync --first-run          # 一覧の最後まで全件を読み直す(台帳が無く、Portalからの復元もできないときは、これが無いと中断する)
 python3 -m pytest tests                            # collectorのテスト
 ```
 
