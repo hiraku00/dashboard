@@ -5,11 +5,15 @@ import { getProgram } from "@/app/lib/queries/openchat";
 // 存在しない・一覧に載らないノートは、エラーとして見せる(クライアントは読み直さない)。
 export default async function ChikirinDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  const initial = await fetchInitial(id);
+  return <ChikirinDetail id={id} initialProgram={initial.program} initialError={initial.error} />;
+}
+
+async function fetchInitial(id: string) {
   try {
     const program = await getProgram(id);
-    if (!program) return <ChikirinDetail id={id} initialError="この番組は見つかりません。" />;
-    return <ChikirinDetail id={id} initialProgram={program} />;
+    return program ? { program, error: "" } : { program: null, error: "この番組は見つかりません。" };
   } catch {
-    return <ChikirinDetail id={id} />;               // 一時的な失敗は、クライアントが自分で読む
+    return { program: null, error: "" };               // 一時的な失敗は、クライアントが自分で読む
   }
 }
