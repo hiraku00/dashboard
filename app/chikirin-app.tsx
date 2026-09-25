@@ -57,13 +57,13 @@ function listLinks(program: Program) {
   return program.meta.links.map((l) => ({ url: l.url, text: linkText(l.url, l.label) }));
 }
 
-export function ChikirinApp({ initialPage = null, initialRun = null }: { initialPage?: ProgramsPage | null; initialRun?: RunSummary } = {}) {
+export function ChikirinApp({ initialPage = null, initialRun = null, initialQuery = "", initialKind = "all" }: { initialPage?: ProgramsPage | null; initialRun?: RunSummary; initialQuery?: string; initialKind?: ProgramKind } = {}) {
   const [programs, setPrograms] = useState<Program[]>(initialPage?.programs ?? []);
   const [total, setTotal] = useState(initialPage?.total ?? 0);
   const [pageSize, setPageSize] = useState(initialPage?.pageSize ?? 10);
-  const [page, setPage] = useState(1);
-  const [query, setQuery] = useState("");
-  const [kind, setKind] = useState<ProgramKind>("all");
+  const [page, setPage] = useState(initialPage?.page ?? 1);
+  const [query, setQuery] = useState(initialQuery);
+  const [kind, setKind] = useState<ProgramKind>(initialKind);
   const [loading, setLoading] = useState(!initialPage);
   const [notice, setNotice] = useState("");
   const { begin, isCurrent } = useLatestRequest();
@@ -93,6 +93,13 @@ export function ChikirinApp({ initialPage = null, initialRun = null }: { initial
 
   // サーバーが同じ既定の表示(絞り込みなし・1ページ目)を描いていれば、最初の1回は読み直さない。
   useSearchReload(reload, query, Boolean(initialPage));
+
+  // 詳細への行リンクに、一覧の検索・絞り込み・ページを付ける。詳細で保存したら、同じクエリで一覧へ戻れる(位置が変わらない)。
+  const listQuery = new URLSearchParams();
+  if (query) listQuery.set("q", query);
+  if (kind !== "all") listQuery.set("kind", kind);
+  if (page > 1) listQuery.set("page", String(page));
+  const listQuerySuffix = listQuery.toString() ? `?${listQuery}` : "";
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const from = total === 0 ? 0 : (page - 1) * pageSize + 1;
@@ -143,7 +150,7 @@ export function ChikirinApp({ initialPage = null, initialRun = null }: { initial
               <td className="program-cell">{(() => {
                 const { title } = titleLines(program);
                 const head = program.noteBody.replace(/\s+/g, " ").trim();
-                return <><Link className={title ? "chikirin-row-title" : "chikirin-row-title is-unset"} href={`/chikirin/${encodeURIComponent(program.noteId)}`} prefetch={false} title={title || "タイトル未設定"}>{isNew(program, initialRun) && <span className="chikirin-new" title="最後の取得で、ちきりんの新しい投稿が見つかりました">新着</span>}{title || "（タイトル未設定）"}</Link>{head && <p className="description" title={head}>{head.slice(0, 140)}</p>}</>;
+                return <><Link className={title ? "chikirin-row-title" : "chikirin-row-title is-unset"} href={`/chikirin/${encodeURIComponent(program.noteId)}${listQuerySuffix}`} prefetch={false} title={title || "タイトル未設定"}>{isNew(program, initialRun) && <span className="chikirin-new" title="最後の取得で、ちきりんの新しい投稿が見つかりました">新着</span>}{title || "（タイトル未設定）"}</Link>{head && <p className="description" title={head}>{head.slice(0, 140)}</p>}</>;
               })()}</td>
               <td className="owner-cell">{program.noteByTarget ? "ちきりん" : program.noteAuthor}</td>
               <td className="date-cell"><time dateTime={program.notePostedAt}>{formatPostedAt(program.notePostedAt, program.notePrecision)}</time></td>

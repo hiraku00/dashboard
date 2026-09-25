@@ -137,6 +137,21 @@ test("moving to page 2 requests page=2 and shows that page; a new search goes ba
   await waitFor(() => expect(urls.some((u) => u.includes("q=%E9%89%84%E9%81%93") && !u.includes("page="))).toBe(true));
 });
 
+test("a row's link carries the current page, so saving in the detail returns to the same page (not always page 1)", async () => {
+  vi.stubGlobal("fetch", () => Promise.resolve(json(page([program({ noteId: "n2", programTitle: "二ページ目の番組", noteBody: "二ページ目の番組", meta: { broadcaster: "", episodeTitle: "", links: [] } })], 45, 2))));
+  render(<ChikirinApp initialPage={page([program()], 45)} initialRun={null} />);
+  fireEvent.click(screen.getByRole("button", { name: "次のページ" }));
+  await waitFor(() => expect(screen.getByText("二ページ目の番組")).toBeTruthy());
+  expect(screen.getByRole("link", { name: "（タイトル未設定）" }).getAttribute("href")).toBe("/chikirin/n2?page=2");
+});
+
+test("the server's initial page/query/kind seed the screen, so a link opened from page 2 comes back showing page 2", () => {
+  render(<ChikirinApp initialPage={page([program({ noteId: "n2" })], 45, 2)} initialRun={null} initialQuery="鉄道" initialKind="comment" />);
+  expect(screen.getByText("45 件中 21–40")).toBeTruthy();
+  expect((screen.getByLabelText("検索") as HTMLInputElement).value).toBe("鉄道");
+  expect(screen.getByRole("button", { name: "ちきりんのコメント", pressed: true })).toBeTruthy();
+});
+
 test("detail shows the thread owner's post and every comment by the target, oldest first", () => {
   render(<ChikirinDetail id="n1" initialProgram={program() as never} />);
   expect(screen.getByRole("link", { name: "← 一覧に戻る" }).getAttribute("href")).toBe("/chikirin");
@@ -156,6 +171,14 @@ test("saving 放送情報 redirects back to the list", async () => {
   render(<ChikirinDetail id="n1" initialProgram={program() as never} />);
   fireEvent.click(screen.getByRole("button", { name: "保存" }));
   await waitFor(() => expect(nav.push).toHaveBeenCalledWith("/chikirin"));
+});
+
+test("opened from page 2 (backHref carries the list's page/query/kind), back link and save both return to page 2", async () => {
+  vi.stubGlobal("fetch", vi.fn(() => Promise.resolve(json({ program: program() }))));
+  render(<ChikirinDetail id="n1" initialProgram={program() as never} backHref="/chikirin?page=2" />);
+  expect(screen.getByRole("link", { name: "← 一覧に戻る" }).getAttribute("href")).toBe("/chikirin?page=2");
+  fireEvent.click(screen.getByRole("button", { name: "保存" }));
+  await waitFor(() => expect(nav.push).toHaveBeenCalledWith("/chikirin?page=2"));
 });
 
 test("detail of the target's own thread shows her body once and labels her comments 本人コメント", () => {
