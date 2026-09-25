@@ -37,7 +37,7 @@ const json = (body: unknown, status = 200) => new Response(JSON.stringify(body),
 
 test("the list is a table: kind, broadcaster, episode title, thread, poster, times, counts, status and links (read-only; editing is on the detail page)", () => {
   render(<ChikirinApp initialPage={page([program()])} initialRun={null} />);
-  expect(screen.getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["種別", "放送局", "タイトル", "スレ主", "スレッド起票日時", "コメント全体", "コメントちきりん", "最新ちきりん", "状態", "リンク"]);
+  expect(screen.getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["種別", "放送局", "タイトル", "スレ主", "スレッド起票日時", "最新ちきりん", "コメント全体", "コメントちきりん", "状態", "リンク"]);
   const row = screen.getAllByRole("row")[1];
   const cells = within(row).getAllByRole("cell").map((c) => c.textContent ?? "");
   expect(cells[0]).toBe("コメント");
@@ -46,9 +46,9 @@ test("the list is a table: kind, broadcaster, episode title, thread, poster, tim
   expect(cells[2]).toContain("8/23放送のNHKスペシャルです。");           // 2行目: スレッドの冒頭
   expect(cells[3]).toBe("参加者B");
   expect(cells[4]).toBe("09.21 15:47");
-  expect(cells[5]).toBe("8");
-  expect(cells[6]).toBe("2");
-  expect(cells[7]).toBe("約09.21 18:00");
+  expect(cells[5]).toBe("約09.21 18:00");         // 日時は日時どうし(起票・ちきりん最新)、件数は件数どうし(全体・ちきりん)を並べる
+  expect(cells[6]).toBe("8");
+  expect(cells[7]).toBe("2");
   expect(cells[8]).toBe("OK");
   expect(within(row).getByRole("link", { name: "地球超解析" }).getAttribute("href")).toBe("/chikirin/n1");
   expect(within(row).getByRole("link", { name: /番組ページ/ }).getAttribute("href")).toBe("https://example.test/ep");
