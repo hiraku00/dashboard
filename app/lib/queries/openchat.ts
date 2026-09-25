@@ -45,13 +45,13 @@ async function withComments(page: Array<Record<string, unknown>>): Promise<Progr
     byNote.set(key, [...(byNote.get(key) ?? []), c]);
   }
   const metas = (await env.DB.prepare(
-    `SELECT note_id, broadcaster, episode_title, links_json FROM openchat_note_meta WHERE note_id IN (${placeholders})`,
+    `SELECT note_id, broadcaster, program_name, episode_title, links_json FROM openchat_note_meta WHERE note_id IN (${placeholders})`,
   ).bind(...ids).all<Record<string, unknown>>()).results ?? [];
   const metaByNote = new Map(metas.map((m) => [String(m.note_id), m]));
   return page.map((n) => toProgram({ ...n, meta_row: metaByNote.get(String(n.id)) }, byNote.get(String(n.id)) ?? []));
 }
 
-/** 人が編集する情報(放送局・その日の放送タイトル・リンク)を保存する。対象のノートが無ければ null、入力が不正なら { error }。 */
+/** 人が編集する情報(放送局・番組名・その日の放送タイトル・リンク)を保存する。 */
 export async function saveProgramMeta(id: string, input: unknown): Promise<Program | null | { error: string }> {
   const parsed = normalizeMeta(input);
   if ("error" in parsed) return { error: parsed.error };
@@ -59,10 +59,10 @@ export async function saveProgramMeta(id: string, input: unknown): Promise<Progr
   if (!program) return null;
   const { meta } = parsed;
   await env.DB.prepare(
-    `INSERT INTO openchat_note_meta (note_id, broadcaster, episode_title, links_json, updated_at) VALUES (?, ?, ?, ?, ?)
-     ON CONFLICT(note_id) DO UPDATE SET broadcaster = excluded.broadcaster, episode_title = excluded.episode_title,
+    `INSERT INTO openchat_note_meta (note_id, broadcaster, program_name, episode_title, links_json, updated_at) VALUES (?, ?, ?, ?, ?, ?)
+     ON CONFLICT(note_id) DO UPDATE SET broadcaster = excluded.broadcaster, program_name = excluded.program_name, episode_title = excluded.episode_title,
        links_json = excluded.links_json, updated_at = excluded.updated_at`,
-  ).bind(id, meta.broadcaster, meta.episodeTitle, JSON.stringify(meta.links), new Date().toISOString().replace(/\.\d+Z$/, "Z")).run();
+  ).bind(id, meta.broadcaster, meta.programName, meta.episodeTitle, JSON.stringify(meta.links), new Date().toISOString().replace(/\.\d+Z$/, "Z")).run();
   return { ...program, meta };
 }
 

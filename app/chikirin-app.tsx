@@ -34,10 +34,9 @@ function isNew(program: Program, run: RunSummary) {
   return !Number.isNaN(seen) && !Number.isNaN(started) && seen >= started;
 }
 
-/** 一覧のタイトル欄の2行: 1行目=番組名(編集した放送タイトル。編集するまでは空)、2行目=スレッドの冒頭。 */
-export function titleLines(program: Program): { title: string; head: string } {
-  const head = program.noteBody.replace(/\s+/g, " ").trim();
-  return { title: program.meta.episodeTitle, head: head.length > 140 ? `${head.slice(0, 140)}…` : head };
+/** 一覧のタイトル欄: 詳細で設定したその日の放送タイトル。 */
+export function titleLines(program: Program): { title: string } {
+  return { title: program.meta.episodeTitle };
 }
 
 /** リンクの表示名: ラベルがあればそれ、なければサイト名(NHK ONE・WBS など。openchat-meta.ts の SITES)、なければドメイン。 */
@@ -129,9 +128,9 @@ export function ChikirinApp({ initialPage = null, initialRun = null }: { initial
       {!loading && programs.length === 0 && <div className="empty-state"><strong>該当する番組はありません。</strong><p>{initialRun || query || kind !== "all" ? "条件を変えてみてください。" : "同期が終わるとここに表示されます。"}</p></div>}
       {programs.length > 0 && <div className={loading ? "table-scroll is-loading" : "table-scroll"} aria-busy={loading}>
         <table className="content-table chikirin-table">
-          <colgroup><col className="col-kind" /><col className="col-broadcaster" /><col className="col-program" /><col className="col-owner" /><col className="col-posted" /><col className="col-posted" /><col className="col-count" /><col className="col-count" /><col className="col-status" /><col className="col-links" /></colgroup>
+          <colgroup><col className="col-kind" /><col className="col-program" /><col className="col-program" /><col className="col-owner" /><col className="col-posted" /><col className="col-posted" /><col className="col-count" /><col className="col-count" /><col className="col-status" /><col className="col-links" /></colgroup>
           <thead><tr>
-            <th scope="col" className="kind-head">種別</th><th scope="col">放送局</th><th scope="col">タイトル</th><th scope="col">スレ主</th><th scope="col" title="スレッドが起票された日時(日本時間)"><span className="head-2">スレッド<br />起票日時</span></th>
+            <th scope="col" className="kind-head">種別</th><th scope="col">番組</th><th scope="col">タイトル</th><th scope="col">スレ主</th><th scope="col" title="スレッドが起票された日時(日本時間)"><span className="head-2">スレッド<br />起票日時</span></th>
             <th scope="col" title="ちきりんの最新の投稿の日時"><span className="head-2">最新<br />ちきりん</span></th>
             <th scope="col" className="num" title="ノート全体のコメント数"><span className="head-2">コメント<br />全体</span></th><th scope="col" className="num" title="ちきりんが書いたコメントの数"><span className="head-2">コメント<br />ちきりん</span></th><th scope="col" className="center">状態</th><th scope="col">リンク</th>
           </tr></thead>
@@ -139,10 +138,11 @@ export function ChikirinApp({ initialPage = null, initialRun = null }: { initial
             const links = listLinks(program);
             return <tr key={program.noteId}>
               <td className="kind-cell"><span className={program.noteByTarget ? "chikirin-tag is-thread" : "chikirin-tag"}>{program.noteByTarget ? "スレッド" : "コメント"}</span></td>
-              <td className="broadcaster-cell">{displayBroadcaster(program) || <span className="empty-cell">—</span>}</td>
+              <td className="program-cell"><strong>{displayBroadcaster(program) || "—"}</strong><br />{program.meta.programName || <span className="empty-cell">番組名未設定</span>}</td>
               <td className="program-cell">{(() => {
-                const { title, head } = titleLines(program);
-                return <><Link className={title ? "chikirin-row-title" : "chikirin-row-title is-unset"} href={`/chikirin/${encodeURIComponent(program.noteId)}`} prefetch={false} title={title || program.programTitle}>{isNew(program, initialRun) && <span className="chikirin-new" title="最後の取得で、ちきりんの新しい投稿が見つかりました">新着</span>}{title || "（番組名 未設定）"}</Link><p className="description" title={head}>{head || " "}</p></>;
+                const { title } = titleLines(program);
+                const head = program.noteBody.replace(/\s+/g, " ").trim();
+                return <><Link className={title ? "chikirin-row-title" : "chikirin-row-title is-unset"} href={`/chikirin/${encodeURIComponent(program.noteId)}`} prefetch={false} title={title || "タイトル未設定"}>{isNew(program, initialRun) && <span className="chikirin-new" title="最後の取得で、ちきりんの新しい投稿が見つかりました">新着</span>}{title || "（タイトル未設定）"}</Link>{head && <p className="description" title={head}>{head.slice(0, 140)}</p>}</>;
               })()}</td>
               <td className="owner-cell">{program.noteByTarget ? "ちきりん" : program.noteAuthor}</td>
               <td className="date-cell"><time dateTime={program.notePostedAt}>{formatPostedAt(program.notePostedAt, program.notePrecision)}</time></td>

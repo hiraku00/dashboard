@@ -85,9 +85,9 @@ describe("toProgram", () => {
 });
 
 describe("formatPostedAt", () => {
-  test("shows Japan time and marks approximate times", () => {
+  test("shows Japan time", () => {
     expect(formatPostedAt("2026-09-23T12:46:00Z", "exact")).toBe("09.23 21:46");
-    expect(formatPostedAt("2026-09-23T16:00:00Z", "approx_hour")).toBe("約09.24 01:00");
+    expect(formatPostedAt("2026-09-23T16:00:00Z", "approx_hour")).toBe("09.24 01:00");
     expect(formatPostedAt("nope", "exact")).toBe("");
   });
 });

@@ -9,8 +9,8 @@ export const MAX_URL = 2000;
 export const MAX_LINK_LABEL = 60;
 
 export type MetaLink = { url: string; label: string };
-export type Meta = { broadcaster: string; episodeTitle: string; links: MetaLink[] };
-export const EMPTY_META: Meta = { broadcaster: "", episodeTitle: "", links: [] };
+export type Meta = { broadcaster: string; programName: string; episodeTitle: string; links: MetaLink[] };
+export const EMPTY_META: Meta = { broadcaster: "", programName: "", episodeTitle: "", links: [] };
 
 function text(value: unknown, max: number): string {
   return typeof value === "string" ? value.replace(/[\r\n]+/g, " ").trim().slice(0, max) : "";
@@ -42,7 +42,7 @@ export function normalizeMeta(input: unknown): { meta: Meta } | { error: string 
     if (!url) return { error: "リンクのURLは http:// または https:// で始まる正しい形式にしてください。" };
     links.push({ url, label: text(row.label, MAX_LINK_LABEL) });
   }
-  return { meta: { broadcaster: text(body.broadcaster, MAX_BROADCASTER), episodeTitle: text(body.episodeTitle, MAX_EPISODE_TITLE), links } };
+  return { meta: { broadcaster: text(body.broadcaster, MAX_BROADCASTER), programName: text(body.programName, MAX_EPISODE_TITLE), episodeTitle: text(body.episodeTitle, MAX_EPISODE_TITLE), links } };
 }
 
 /** D1の行(links_json は文字列) → 画面・APIの形。壊れていても空として扱う。 */
@@ -56,7 +56,7 @@ export function metaFromRow(row: Record<string, unknown> | null | undefined): Me
       return url ? [{ url, label: text((l as Record<string, unknown>)?.label, MAX_LINK_LABEL) }] : [];
     }).slice(0, MAX_LINKS);
   } catch { /* 壊れていれば空 */ }
-  return { broadcaster: text(row.broadcaster, MAX_BROADCASTER), episodeTitle: text(row.episode_title, MAX_EPISODE_TITLE), links };
+  return { broadcaster: text(row.broadcaster, MAX_BROADCASTER), programName: text(row.program_name, MAX_EPISODE_TITLE), episodeTitle: text(row.episode_title, MAX_EPISODE_TITLE), links };
 }
 
 /** よく出るサイト: リンクの表示名と、そのサイトから分かる放送局。ドメイン(と、必要なら先頭のパス)で判定する。 */

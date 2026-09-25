@@ -1,0 +1,1 @@
+ALTER TABLE openchat_note_meta ADD COLUMN program_name TEXT NOT NULL DEFAULT '';

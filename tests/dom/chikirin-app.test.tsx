@@ -25,7 +25,7 @@ afterEach(() => {
 
 const program = (over: Record<string, unknown> = {}) => ({
   noteId: "n1", programTitle: "8/23放送 NHKスペシャル 地球超解析", linkTitle: "地球超解析 NHKオンデマンド", linkUrl: "https://www.nhk-ondemand.jp/x",
-  latestAt: "2026-09-21T09:00:00Z", latestPrecision: "approx_hour", meta: { broadcaster: "NHK BS", episodeTitle: "地球超解析", links: [{ url: "https://example.test/ep", label: "番組ページ" }] },
+  latestAt: "2026-09-21T09:00:00Z", latestPrecision: "approx_hour", meta: { broadcaster: "NHK BS", programName: "アナザーストーリーズ", episodeTitle: "地球超解析", links: [{ url: "https://example.test/ep", label: "番組ページ" }] },
   issues: [], newestSeenAt: "",
   noteAuthor: "参加者B", noteByTarget: false, notePostedAt: "2026-09-21T06:47:00Z", notePrecision: "exact", targetBody: null, noteBody: "8/23放送のNHKスペシャルです。海の環境を扱った回でした。",
   targetComments: [
@@ -38,18 +38,18 @@ const program = (over: Record<string, unknown> = {}) => ({
 const page = (programs: unknown[], total = programs.length, pageNo = 1, pageSize = 20) => ({ programs, total, page: pageNo, pageSize }) as unknown as ProgramsPage;
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
-test("the list is a table: kind, broadcaster, episode title, thread, poster, times, counts, status and links (read-only; editing is on the detail page)", () => {
+test("the list is a table: kind, program, title, thread, poster, times, counts, status and links (read-only; editing is on the detail page)", () => {
   render(<ChikirinApp initialPage={page([program()])} initialRun={null} />);
-  expect(screen.getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["種別", "放送局", "タイトル", "スレ主", "スレッド起票日時", "最新ちきりん", "コメント全体", "コメントちきりん", "状態", "リンク"]);
+  expect(screen.getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["種別", "番組", "タイトル", "スレ主", "スレッド起票日時", "最新ちきりん", "コメント全体", "コメントちきりん", "状態", "リンク"]);
   const row = screen.getAllByRole("row")[1];
   const cells = within(row).getAllByRole("cell").map((c) => c.textContent ?? "");
   expect(cells[0]).toBe("コメント");
-  expect(cells[1]).toBe("NHK BS");
-  expect(cells[2]).toContain("地球超解析");                              // 1行目: 編集した放送タイトル
-  expect(cells[2]).toContain("8/23放送のNHKスペシャルです。");           // 2行目: スレッドの冒頭
+  expect(cells[1]).toContain("NHK BS");
+  expect(cells[1]).toContain("アナザーストーリーズ");
+  expect(cells[2]).toContain("地球超解析");
   expect(cells[3]).toBe("参加者B");
   expect(cells[4]).toBe("09.21 15:47");
-  expect(cells[5]).toBe("約09.21 18:00");         // 日時は日時どうし(起票・ちきりん最新)、件数は件数どうし(全体・ちきりん)を並べる
+  expect(cells[5]).toBe("09.21 18:00");
   expect(cells[6]).toBe("8");
   expect(cells[7]).toBe("2");
   expect(cells[8]).toBe("OK");
@@ -76,12 +76,11 @@ test("title cell: line 1 is the program name (edited episode title), line 2 is t
   render(<ChikirinApp initialPage={page([program({ meta: { broadcaster: "", episodeTitle: "", links: [] }, programTitle: "スレッドの1行目", noteBody: "スレッドの1行目\n本文の2行目です。" }), program({ noteId: "n2" })])} initialRun={null} />);
   const rows = screen.getAllByRole("row");
   const unedited = within(rows[1]).getAllByRole("cell");
-  expect(unedited[1].textContent).toBe("—");
-  expect(within(unedited[2]).getByRole("link").textContent).toBe("（番組名 未設定）");          // 番組名は、編集するまで入らない
-  expect(unedited[2].textContent).toContain("スレッドの1行目 本文の2行目です。");                // 冒頭は、1行目から
+  expect(unedited[1].textContent).toContain("—番組名未設定");
+  expect(within(unedited[2]).getByRole("link").textContent).toBe("（タイトル未設定）");
   const edited = within(rows[2]).getAllByRole("cell");
   expect(within(edited[2]).getByRole("link").textContent).toBe("地球超解析");
-  expect(edited[2].textContent).toContain("8/23放送のNHKスペシャルです。");
+  expect(edited[1].textContent).toContain("アナザーストーリーズ");
 });
 
 test("the list has no edit button: editing happens on the detail page", () => {
@@ -138,7 +137,7 @@ test("moving to page 2 requests page=2 and shows that page; a new search goes ba
   await waitFor(() => expect(urls.some((u) => u.includes("q=%E9%89%84%E9%81%93") && !u.includes("page="))).toBe(true));
 });
 
-test("detail shows the thread owner's post and every comment by the target, oldest first, with approximate times marked", () => {
+test("detail shows the thread owner's post and every comment by the target, oldest first", () => {
   render(<ChikirinDetail id="n1" initialProgram={program() as never} />);
   expect(screen.getByRole("link", { name: "← 一覧に戻る" }).getAttribute("href")).toBe("/chikirin");
   expect(screen.getByText("8/23放送 NHKスペシャル 地球超解析")).toBeTruthy();
@@ -146,7 +145,7 @@ test("detail shows the thread owner's post and every comment by the target, olde
   const posts = screen.getAllByLabelText("ちきりんのコメント");
   expect(posts).toHaveLength(2);
   expect(posts[0].textContent).toContain("私もこれ観ました");
-  expect(posts[1].textContent).toContain("約09.21 18:00");
+  expect(posts[1].textContent).toContain("09.21 18:00");
   expect(posts[0].textContent).toContain("09.21 16:15");
   expect(screen.getByRole("link", { name: /地球超解析 NHKオンデマンド/ }).getAttribute("href")).toBe("https://www.nhk-ondemand.jp/x");
 });
@@ -244,10 +243,10 @@ test("the broadcaster is filled in from the link when not edited: NHK for NHK ON
     program({ noteId: "d", meta: unedited, linkUrl: "" }),
   ])} initialRun={null} />);
   const cell = (row: number) => within(screen.getAllByRole("row")[row]).getAllByRole("cell")[1].textContent;
-  expect(cell(1)).toBe("NHK");
-  expect(cell(2)).toBe("テレ東");
-  expect(cell(3)).toBe("手で入れた局");
-  expect(cell(4)).toBe("—");
+  expect(cell(1)).toContain("NHK");
+  expect(cell(2)).toContain("テレ東");
+  expect(cell(3)).toContain("手で入れた局");
+  expect(cell(4)).toContain("—");
 });
 
 test("the detail form is prefilled with the inferred broadcaster", () => {
