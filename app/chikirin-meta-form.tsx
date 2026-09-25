@@ -48,7 +48,7 @@ export function MetaForm({ program, onSaved, onCancel }: { program: Program; onS
     <div className="form-grid chikirin-meta-grid">
       <label>放送局<input value={draft.broadcaster} maxLength={MAX_BROADCASTER} onChange={(event) => setDraft({ ...draft, broadcaster: event.target.value })} placeholder="例：NHK、テレ東" /></label>
       <label>番組名<input value={draft.programName} maxLength={MAX_EPISODE_TITLE} onChange={(event) => setDraft({ ...draft, programName: event.target.value })} placeholder="例：アナザーストーリーズ" /></label>
-      <label>番組タイトル<input value={draft.episodeTitle} maxLength={MAX_EPISODE_TITLE} onChange={(event) => setDraft({ ...draft, episodeTitle: event.target.value })} placeholder="例：ダイアナ妃“最後の恋”の駆け引き" /></label>
+      <label className="title-field-wide">番組タイトル<input value={draft.episodeTitle} maxLength={MAX_EPISODE_TITLE} onChange={(event) => setDraft({ ...draft, episodeTitle: event.target.value })} placeholder="例：ダイアナ妃“最後の恋”の駆け引き" /></label>
     </div>
     <div className="links-editor"><div><span>リンク</span><button type="button" disabled={draft.links.length >= MAX_LINKS} onClick={() => setDraft({ ...draft, links: [...draft.links, { url: "", label: "" }] })}>＋ リンクを追加</button></div>
       {draft.links.map((link, index) => <div className="link-row" key={index}>
