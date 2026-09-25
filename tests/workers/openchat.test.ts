@@ -174,7 +174,7 @@ describe("programs list", () => {
 
   test("edited broadcaster, episode title and links are saved apart from the synced data, searchable, and survive a re-sync", async () => {
     const p = (await listPrograms({ q: "他人のノートに複数" })).programs[0];
-    expect(p.meta).toEqual({ broadcaster: "", episodeTitle: "", links: [] });
+    expect(p.meta).toEqual({ broadcaster: "", programName: "", episodeTitle: "", links: [] });
     const saved = await saveProgramMeta(p.noteId, { broadcaster: "テスト放送局", episodeTitle: "一覧テスト独自の放送タイトル", links: [{ url: "https://example.test/ep", label: "番組ページ" }] });
     expect(saved && "meta" in saved && saved.meta.broadcaster).toBe("テスト放送局");
     const again = (await listPrograms({ q: "一覧テスト独自の放送タイトル" })).programs;

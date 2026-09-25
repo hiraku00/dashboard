@@ -116,17 +116,12 @@ export function programIssues(note: Record<string, unknown>): string[] {
   return issues;
 }
 
-/** 「約」を付けるべき時刻か。 */
-export function isApproximate(precision: string): boolean {
-  return precision !== "exact";
-}
-
-/** 画面の日時表示(日本時間). "09.23 21:46"(mm.dd hh:mm。データは年つきのUTCで持ち、表示だけ年を省く)。概算のものには「約」を付ける。 */
+/** 画面の日時表示(日本時間). "09.23 21:46"(mm.dd hh:mm。データは年つきのUTCで持ち、表示だけ年を省く)。 */
 export function formatPostedAt(postedAt: string, precision: string): string {
   const date = new Date(postedAt);
   if (Number.isNaN(date.getTime())) return "";
   const jst = new Date(date.getTime() + 9 * 3600 * 1000);
   const pad = (n: number) => String(n).padStart(2, "0");
   const text = `${pad(jst.getUTCMonth() + 1)}.${pad(jst.getUTCDate())} ${pad(jst.getUTCHours())}:${pad(jst.getUTCMinutes())}`;
-  return isApproximate(precision) ? `約${text}` : text;
+  return text;
 }
