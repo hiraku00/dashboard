@@ -160,7 +160,7 @@ async function D1AnalyticsPanel({ d1Query }: { d1Query: D1BackedUsage }) {
           </div>
           <div className="usage-meter" aria-label={`D1データベース容量 ${d1StoragePct.toFixed(2)}%`}>
             <div className="usage-bar"><span style={{ width: `${d1StoragePct}%` }} /></div>
-            <p>保存対象: Watch List、Manage Asset、TextTubeのデータと履歴。</p>
+            <p>保存対象: Watch List、Manage Asset、TextTube、ちきりんオプチャのデータと履歴。</p>
             <p>無料枠: 5 GB · 読取500万行/日 · 書込10万行/日</p>
           </div>
           <div className="usage-section-label">本日の利用状況（日次上限との対比）</div>
@@ -198,7 +198,7 @@ async function D1AnalyticsPanel({ d1Query }: { d1Query: D1BackedUsage }) {
       ) : (
         <p className="muted-copy">Cloudflare Analyticsの読み取り専用トークンを設定すると、D1容量と直近30日の読み書き量を表示します。</p>
       )}
-      {/* Issue #100: Watch List/Manage Asset/TextTubeの件数はD1BackedUsage()
+      {/* Issue #100: Watch List/Manage Asset/TextTube/ちきりんオプチャの件数はD1BackedUsage()
           由来の純粋なD1データで、Cloudflare Analyticsの設定有無とは無関係。
           以前はd1.configuredの分岐の内側に入れ子になっており、Analytics未
           設定の環境(ローカル開発・テスト)ではこの件数表示ごと消えていた。 */}
@@ -207,6 +207,8 @@ async function D1AnalyticsPanel({ d1Query }: { d1Query: D1BackedUsage }) {
         <div className="usage-row"><span>Watch List</span><strong>{count.format(d1Query.databaseRecords.watchList)} 件</strong></div>
         <div className="usage-row"><span>Manage Assetのスナップショット</span><strong>{count.format(d1Query.databaseRecords.manageAsset)} 件</strong></div>
         <div className="usage-row"><span>TextTubeの動画</span><strong>{count.format(d1Query.databaseRecords.textTube)} 件</strong></div>
+        <div className="usage-row"><span>ちきりんオプチャのノート</span><strong>{count.format(d1Query.databaseRecords.openchatNotes)} 件</strong></div>
+        <div className="usage-row"><span>ちきりんオプチャのコメント</span><strong>{count.format(d1Query.databaseRecords.openchatComments)} 件</strong></div>
       </div>
     </section>
   );

@@ -49,7 +49,7 @@ describe("d1BackedUsage (result that must not change)", () => {
         { category: "text-tube/videos", count: 1, bytes: 500 },
       ],
       latest: { usage_date: "2026-09-20", object_count: 3, payload_bytes: 3600, class_a_estimate: 6, class_b_estimate: 7, source: "ledger", updated_at: T0 },
-      databaseRecords: { watchList: 2, manageAsset: 2, textTube: 1 },
+      databaseRecords: { watchList: 2, manageAsset: 2, textTube: 1, openchatNotes: 0, openchatComments: 0 },
       transcriptUsage: { credits: 5, attempts: 2, lastUsedAt: "2026-09-15T05:00:00Z" },
     });
   });
@@ -88,7 +88,7 @@ describe("d1BackedUsage when D1 fails (#35)", () => {
     expect(usage.usage).toEqual({ bytes: 0, count: 0 });
     expect(usage.categories).toEqual([]);
     expect(usage.latest).toBeNull();
-    expect(usage.databaseRecords).toEqual({ watchList: 0, manageAsset: 0, textTube: 0 });
+    expect(usage.databaseRecords).toEqual({ watchList: 0, manageAsset: 0, textTube: 0, openchatNotes: 0, openchatComments: 0 });
     expect(usage.transcriptUsage).toEqual({ credits: 0, attempts: 0, lastUsedAt: null });
   });
 });

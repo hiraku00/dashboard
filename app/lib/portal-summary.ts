@@ -9,6 +9,8 @@ export type PortalSummary = {
   textTube: { total: number; latest: { id: string; title: string; channel_name: string } | null };
   assets: { totalUsd: number; totalJpy: number; latestAt: string | null; sourceCount: number };
   todo: { total: number; completed: number };
+  /** ちきりんオプチャ: 一覧に載る番組(ちきりんが関わるノート)の数と、その最新の投稿日時。 */
+  openchat: { total: number; latestPostedAt: string | null };
 };
 
 /** The home page's asset totals, by the SAME definition Manage Asset uses, so the

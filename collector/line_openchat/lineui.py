@@ -65,12 +65,42 @@ def idle_seconds() -> float:
     )
 
 
+def line_is_running() -> bool:
+    return bool(NSRunningApplication.runningApplicationsWithBundleIdentifier_(LINE_BUNDLE))
+
+
+def ax_trusted() -> bool:
+    return bool(AS.AXIsProcessTrusted())
+
+
+def screen_recording_allowed() -> bool:
+    """他のアプリのウィンドウを撮影する許可(screencapture -l に必要)."""
+    try:
+        return bool(Quartz.CGPreflightScreenCaptureAccess())
+    except AttributeError:                       # macOS 10.15以前: 許可の仕組みが無い
+        return True
+
+
+def note_window_present() -> bool:
+    """ノートウィンドウが開いているか. LINEが無い・許可が無いときは例外にせず False."""
+    try:
+        return find_note_window() is not None
+    except Exception:                            # noqa: BLE001 状態確認は落ちない
+        return False
+
+
 def check_environment() -> None:
-    line_pid()
+    """実行してよい状態か. 満たさなければ、原因と直し方を添えて EnvironmentError_ を投げる."""
+    if not line_is_running():
+        raise EnvironmentError_("LINEが起動していません。LINEを起動し、対象のオープンチャットのノートを開いてから実行してください", 2)
     if screen_locked():
-        raise EnvironmentError_("画面がロックされています", 3)
+        raise EnvironmentError_("Macの画面がロックされています。ロックを解除してから実行してください", 3)
     if not AS.AXIsProcessTrusted():
-        raise EnvironmentError_("アクセシビリティの許可がありません(システム設定 > プライバシーとセキュリティ)", 4)
+        raise EnvironmentError_("アクセシビリティの許可がありません。システム設定 > プライバシーとセキュリティ > アクセシビリティ で、"
+                                "いま使っているターミナルアプリを許可してから、実行し直してください", 4)
+    if not screen_recording_allowed():
+        raise EnvironmentError_("画面収録の許可がありません(無いと、LINEの画面が撮れません)。システム設定 > プライバシーとセキュリティ > 画面収録 で、"
+                                "いま使っているターミナルアプリを許可してから、実行し直してください", 4)
 
 
 def _ax_windows():
@@ -204,8 +234,9 @@ class MacScreen:
         handler.performRequests_error_([req], None)
         return " ".join(str(o.topCandidates_(1)[0].string()) for o in (req.results() or []))
 
-    def ocr_digits(self, x: float, y: float, w: float, h: float, repeat: int = 1, scale: int = 5) -> str:
+    def ocr_digits(self, x: float, y: float, w: float, h: float, repeat: int = 1, enlarge: int = 5) -> str:
         """切り出して拡大し、周りに背景色の余白を付け、同じ画像を repeat 個横に並べて読む(1桁の数字対策)."""
+        scale = enlarge
         sx = self._scale
         crop = Quartz.CGImageCreateWithImageInRect(self._cg, Quartz.CGRectMake(x * sx, y * sx, w * sx, h * sx))
         pad = 12 * scale
@@ -252,9 +283,13 @@ class LineDriver:
         self.keep = keep_screenshots
 
     # ユーザーの操作を検知して、中断する
-    def pause(self) -> None:
+    def pause(self, strict: bool = True) -> None:
+        """strict=False は、クリックを伴わないスクロールだけの撮影用: マウス・キーボードの操作では中断しない(画面ロックだけ見る).
+        スクロールは毎回、ウィンドウの上にカーソルを置いてから送るので、ユーザーがマウスを動かしても、LINEには何も起きない。"""
         if screen_locked():
             raise Aborted("画面がロックされました")
+        if not strict:
+            return
         ev = Quartz.CGEventCreate(None)
         pos = Quartz.CGEventGetLocation(ev)
         if self._last_pos is not None and math.hypot(pos.x - self._last_pos[0], pos.y - self._last_pos[1]) > 30:
@@ -278,7 +313,7 @@ class LineDriver:
         self._prev = MacScreen(path, win)
         return self._prev
 
-    def scroll(self, lines: int) -> None:
+    def scroll(self, lines: int, wait: float = 0.6) -> None:
         """lines>0 で下へ. ピクセル単位のイベントはLINEが無視するので、行単位で送る."""
         x, y = self.win.x + self.win.w / 2, self.win.y + self.win.h * 0.55
         Quartz.CGWarpMouseCursorPosition((x, y))
@@ -288,7 +323,7 @@ class LineDriver:
             Quartz.CGEventSetLocation(ev, (x, y))
             Quartz.CGEventPost(Quartz.kCGHIDEventTap, ev)
             time.sleep(0.03)
-        time.sleep(0.6)
+        time.sleep(wait)
         self._last_pos, self._last_action = (x, y), time.time()
 
     def click_at(self, x: float, y: float) -> None:
@@ -302,6 +337,69 @@ class LineDriver:
         self._last_pos, self._last_action = (pt.x, pt.y), time.time()
         time.sleep(1.2)
 
+    def thread_reader(self):
+        from .threadread import TallThreadReader
+        return TallThreadReader(self)
+
     def close(self) -> None:
         if self._prev is not None and not self.keep:
             self._prev.close()
+
+
+class MacFrameSource:
+    """capture.FrameSource の実機実装: ノートウィンドウの撮影と、スクロール(読み取りだけ. クリックはしない)."""
+
+    SETTLE_TRIES = 8
+
+    def __init__(self, driver: LineDriver):
+        import numpy as np
+        self._np = np
+        self.driver = driver
+        self.win_w_pt = float(driver.win.w)
+        first = self._shoot()
+        self.scale = first.shape[1] / self.win_w_pt
+
+    def _shoot(self):
+        """ウィンドウの画像(RGB)。Quartz で直接撮る(screencapture の起動より5倍速い). 撮れなければ screencapture."""
+        win = find_note_window()
+        if win is None:
+            raise Aborted("ノートウィンドウが閉じられました")
+        self.driver.win = win
+        try:
+            img = Quartz.CGWindowListCreateImage(Quartz.CGRectNull, Quartz.kCGWindowListOptionIncludingWindow, win.id,
+                                                 Quartz.kCGWindowImageBoundsIgnoreFraming | Quartz.kCGWindowImageBestResolution)
+            if img is not None:
+                w, h = Quartz.CGImageGetWidth(img), Quartz.CGImageGetHeight(img)
+                data = Quartz.CGDataProviderCopyData(Quartz.CGImageGetDataProvider(img))
+                arr = self._np.frombuffer(data, dtype=self._np.uint8).reshape(h, Quartz.CGImageGetBytesPerRow(img) // 4, 4)
+                return self._np.ascontiguousarray(arr[:, :w, 2::-1])            # BGRA → RGB
+        except Exception:                                                        # noqa: BLE001 撮れなければ、下の方法で撮る
+            pass
+        from PIL import Image
+        fd, path = tempfile.mkstemp(suffix=".png", prefix="linecap-")
+        os.close(fd)
+        os.chmod(path, 0o600)
+        try:
+            subprocess.run(["screencapture", "-x", "-o", "-l", str(win.id), path], check=True)
+            return self._np.asarray(Image.open(path).convert("RGB")).copy()
+        finally:
+            try:
+                os.unlink(path)
+            except OSError:
+                pass
+
+    def grab(self):
+        """スクロールや描画が落ち着くまで(続けて2枚が同じになるまで)撮り直す."""
+        self.driver.pause(strict=False)
+        prev = self._shoot()
+        for _ in range(self.SETTLE_TRIES):
+            time.sleep(0.1)
+            cur = self._shoot()
+            if cur.shape == prev.shape and self._np.array_equal(cur, prev):
+                return cur
+            prev = cur
+        return prev
+
+    def scroll(self, lines: int) -> None:
+        self.driver.pause(strict=False)
+        self.driver.scroll(lines, wait=0.1)      # 落ち着くのは grab() が同じ画像が続くまで待つ

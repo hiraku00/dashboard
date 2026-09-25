@@ -37,7 +37,9 @@
 | パス | 用途 |
 | --- | --- |
 | `POST /api/openchat/sync` | collectorの同期。`start` → `notes`（1リクエスト10ノート・60コメントまで。同じノートのコメントを複数リクエストに分けてよい）→ `complete`。ノート・コメントはcollectorが発行したidでupsertするので、再送しても結果は変わらない。壊れたノートは結果に`error`を付け、ほかのノートは保存する。Cloudflare AccessのService Tokenで保護する。 |
-| `GET /api/openchat/programs` | 画面用の一覧。`q`（番組名・ちきりんさんの本文）、`kind=all\|thread\|comment`、`cursor`、`limit`（最大50）。ちきりんさんのスレッド、またはちきりんさんのコメントがあるノートだけを新しい順に返す。ほかの人のコメント本文は返さない。 |
+| `GET /api/openchat/programs` | 画面用の一覧。`q`（番組名・ちきりんの本文）、`kind=all\|thread\|comment`、`page`（1始まり。既定は1）、`limit`（最大50、既定20）。ちきりんのスレッド、またはちきりんのコメントがあるノートだけを新しい順に返す。ほかの人のコメント本文は返さない。 |
+| `PUT /api/openchat/programs/:id` | 人が編集する情報の保存。`{ broadcaster, episodeTitle, links: [{ url, label }] }`（放送局40字・放送タイトル200字・リンク5件まで、URLは http/https のみ。不正なら400で理由を返す）。collector の同期データとは別のテーブルに保存し、同期で上書きされない。一覧に載らないノートは404。 |
+| `GET /api/openchat/programs/:id` | 詳細。1番組のスレッド主の投稿（`noteBody`）とちきりんのコメント全部を `{ program }` で返す。一覧に載らない（ちきりんが関わらない）・削除済み・存在しないノートは404。 |
 | `GET /api/openchat/ledger?confirm=restore` | collectorのローカル台帳を失ったときの復元用。読み取り行数が多いので、`confirm=restore`が無いと400を返す。本文は先頭200字だけ。 |
 
 ## To Do

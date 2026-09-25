@@ -78,7 +78,7 @@ export const POST = route(async (request: Request) => {
     if (batch.error !== undefined) return Response.json({ error: batch.error }, { status: 400 });
     const { notes, errors } = batch.value;
     const statements = notes.flatMap((n) => [noteStatement(n), ...commentStatements(n)]);
-    // ノート行とそのコメント行を書いたあとで、ちきりんさんのコメント数を数え直す(コメントが複数リクエストに
+    // ノート行とそのコメント行を書いたあとで、ちきりんのコメント数を数え直す(コメントが複数リクエストに
     // 分かれて届いても、最後に正しい数になる)。
     const touched = notes.map((n) => n.id);
     if (touched.length) {

@@ -35,5 +35,5 @@ class Screen(Protocol):
     def ocr_region(self, x: float, y: float, w: float, h: float) -> str:
         """矩形だけを読み直す(短い名前の取りこぼし対策)."""
 
-    def ocr_digits(self, x: float, y: float, w: float, h: float, repeat: int = 1) -> str:
+    def ocr_digits(self, x: float, y: float, w: float, h: float, repeat: int = 1, enlarge: int = 5) -> str:
         """小さい数字用: 拡大・余白付きで読む. repeat>1 なら同じ画像を横に並べて読む."""
