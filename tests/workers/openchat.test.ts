@@ -213,6 +213,20 @@ describe("programs list", () => {
     expect(latest?.warnings).toEqual(["本文を開けませんでした: 対象のノート"]);
   });
 
+  test("programs seen in the last run are counted as new, using first_seen_at whatever its UTC offset", async () => {
+    const id = `run-${uid("r")}`;
+    await sync({ action: "start", clientRunId: id, clientVersion: "test" });                  // いまが最後の取得
+    await sync({ action: "complete", clientRunId: id, status: "success", stats: {}, warnings: [] });
+    const p = (await listPrograms({ q: "他人のノートに複数" })).programs[0];
+    const older = "2026-09-01T09:00:00+07:00", fresh = new Date(Date.now() + 3_000).toISOString();          // 最後の取得のあとに見つけた投稿
+    await env.DB.prepare("UPDATE openchat_comments SET first_seen_at = ? WHERE note_id = ? AND is_target = 1").bind(older, p.noteId).run();
+    const before = (await latestOpenchatRun())!.newPrograms;
+    expect((await getProgram(p.noteId))?.newestSeenAt).toBe("2026-09-01T02:00:00Z");           // +07:00 をUTCにそろえて返す
+    await env.DB.prepare("UPDATE openchat_comments SET first_seen_at = ? WHERE note_id = ? AND is_target = 1 AND ordinal = (SELECT MAX(ordinal) FROM openchat_comments WHERE note_id = ? AND is_target = 1)").bind(fresh, p.noteId, p.noteId).run();
+    expect((await latestOpenchatRun())!.newPrograms).toBe(before + 1);                         // 最後の取得のあとに見つかった投稿がある番組を数える
+    expect(Date.parse((await getProgram(p.noteId))!.newestSeenAt)).toBeGreaterThan(Date.now());
+  });
+
   test("a program's issues say why it needs checking (recheck, incomplete body); a clean one has none", async () => {
     const p = (await listPrograms({ q: "他人のノートに複数" })).programs[0];
     expect(p.issues).toEqual(expect.arrayContaining([expect.stringContaining("本文が途中")]));   // note()の既定は body_complete=false

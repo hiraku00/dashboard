@@ -20,7 +20,7 @@ export async function listPrograms(query: ProgramsQuery = {}): Promise<ProgramsP
     env.DB.prepare(`SELECT COUNT(*) AS c FROM openchat_notes n ${where}`).bind(...values).first<{ c: number }>(),
     env.DB.prepare(
       `SELECT n.id, n.author_name, n.author_is_target, n.program_title, n.link_title, n.link_url, n.body_text,
-              n.posted_at, n.posted_at_precision, n.comment_count, n.last_checked_at, n.needs_recheck, n.body_complete
+              n.posted_at, n.posted_at_precision, n.comment_count, n.last_checked_at, n.needs_recheck, n.body_complete, n.first_seen_at
          FROM openchat_notes n ${where} ${PROGRAMS_ORDER_BY} LIMIT ? OFFSET ?`,
     ).bind(...values, limit, offset).all<Record<string, unknown>>(),
   ]);
@@ -35,7 +35,7 @@ async function withComments(page: Array<Record<string, unknown>>): Promise<Progr
   const ids = page.map((n) => String(n.id));
   const placeholders = ids.map(() => "?").join(",");
   const comments = (await env.DB.prepare(
-    `SELECT id, note_id, body_text, posted_at, posted_at_precision, is_target
+    `SELECT id, note_id, body_text, posted_at, posted_at_precision, is_target, first_seen_at
        FROM openchat_comments WHERE is_target = 1 AND deleted_at IS NULL AND note_id IN (${placeholders})
       ORDER BY posted_at ASC, ordinal ASC`,
   ).bind(...ids).all<Record<string, unknown>>()).results ?? [];
@@ -71,7 +71,7 @@ export async function getProgram(id: string): Promise<Program | null> {
   await ensureSchema({ seed: false });
   const note = (await env.DB.prepare(
     `SELECT n.id, n.author_name, n.author_is_target, n.program_title, n.link_title, n.link_url, n.body_text,
-            n.posted_at, n.posted_at_precision, n.comment_count, n.last_checked_at, n.needs_recheck, n.body_complete
+            n.posted_at, n.posted_at_precision, n.comment_count, n.last_checked_at, n.needs_recheck, n.body_complete, n.first_seen_at
        FROM openchat_notes n
       WHERE n.id = ? AND n.room = ? AND n.deleted_at IS NULL AND (n.author_is_target = 1 OR n.target_comment_count > 0)`,
   ).bind(id, ROOM).first<Record<string, unknown>>());
@@ -82,6 +82,8 @@ export async function getProgram(id: string): Promise<Program | null> {
 export type LatestRun = {
   status: string; startedAt: string; completedAt: string | null; notesScanned: number; notesOpened: number;
   commentsNew: number; targetCommentsNew: number; warningCount: number; warnings: string[];
+  /** 最後の取得で、ちきりんの投稿(スレッド・コメント)が初めて見つかった番組の数。一覧の「新着」の行。 */
+  newPrograms: number;
 };
 
 export async function latestOpenchatRun(): Promise<LatestRun | null> {
@@ -93,10 +95,17 @@ export async function latestOpenchatRun(): Promise<LatestRun | null> {
   let warnings: string[] = [];
   try { warnings = (JSON.parse(String(row.warnings_json ?? "[]")) as unknown[]).map((w) => String(w).slice(0, 300)).slice(0, 50); } catch { /* 壊れていても件数0として扱う */ }
   const warningCount = warnings.length;
+  // 最後の取得(started_at)以降に初めて見つかった投稿がある番組。first_seen_at は「+07:00」付きのことがあるので datetime() でUTCにそろえる。
+  const fresh = (await env.DB.prepare(
+    `SELECT COUNT(*) AS c FROM openchat_notes n
+      WHERE n.room = ? AND n.deleted_at IS NULL AND (n.author_is_target = 1 OR n.target_comment_count > 0)
+        AND ((n.author_is_target = 1 AND datetime(n.first_seen_at) >= datetime(?))
+             OR EXISTS (SELECT 1 FROM openchat_comments c WHERE c.note_id = n.id AND c.is_target = 1 AND c.deleted_at IS NULL AND datetime(c.first_seen_at) >= datetime(?)))`,
+  ).bind(ROOM, String(row.started_at), String(row.started_at)).first<{ c: number }>());
   return {
     status: String(row.status), startedAt: String(row.started_at), completedAt: row.completed_at ? String(row.completed_at) : null,
     notesScanned: Number(row.notes_scanned ?? 0), notesOpened: Number(row.notes_opened ?? 0),
-    commentsNew: Number(row.comments_new ?? 0), targetCommentsNew: Number(row.target_comments_new ?? 0), warningCount, warnings,
+    commentsNew: Number(row.comments_new ?? 0), targetCommentsNew: Number(row.target_comments_new ?? 0), warningCount, warnings, newPrograms: Number(fresh?.c ?? 0),
   };
 }
 

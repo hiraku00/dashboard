@@ -70,12 +70,22 @@ export type Program = {
   meta: Meta;
   /** 取得の状態。要確認(コメント件数が合わず再確認待ち)・本文が途中の可能性。どちらでもなければ空。 */
   issues: string[];
+  /** ちきりんの投稿(スレッド・コメント)を、collector が最初に見つけた日時のうち最新のもの(UTC, ISO)。「新着」の判定に使う。 */
+  newestSeenAt: string;
   commentCount: number; lastCheckedAt: string;
 };
 
 /** ノート行とちきりんのコメント行から、画面・APIの形にする。ノート行は、一覧に載る(ちきりんが関わる)ものだけを渡すこと。ほかの人のコメントは受け取らない。 */
+function isoUtc(value: unknown): string {
+  const t = new Date(String(value ?? "")).getTime();
+  return Number.isNaN(t) ? "" : new Date(t).toISOString().replace(/\.\d+Z$/, "Z");
+}
+
 export function toProgram(note: Record<string, unknown>, targetComments: Array<Record<string, unknown>>): Program {
   const p = buildProgram(note, targetComments);
+  const seen = targetComments.filter((c) => Number(c.is_target ?? 1) === 1).map((c) => isoUtc(c.first_seen_at));
+  if (p.noteByTarget) seen.push(isoUtc(note.first_seen_at));
+  p.newestSeenAt = seen.filter(Boolean).sort().pop() ?? "";
   const last = p.targetComments[p.targetComments.length - 1];
   p.latestAt = last ? last.postedAt : p.noteByTarget ? p.notePostedAt : "";
   p.latestPrecision = last ? last.precision : p.noteByTarget ? p.notePrecision : "";
@@ -93,7 +103,7 @@ function buildProgram(note: Record<string, unknown>, targetComments: Array<Recor
     targetComments: targetComments
       .filter((c) => Number(c.is_target ?? 1) === 1)
       .map((c) => ({ id: String(c.id), bodyText: String(c.body_text ?? ""), postedAt: String(c.posted_at), precision: String(c.posted_at_precision) })),
-    latestAt: "", latestPrecision: "", issues: programIssues(note), meta: metaFromRow(note.meta_row as Record<string, unknown> | undefined),
+    latestAt: "", latestPrecision: "", issues: programIssues(note), newestSeenAt: "", meta: metaFromRow(note.meta_row as Record<string, unknown> | undefined),
     commentCount: Number(note.comment_count ?? 0), lastCheckedAt: String(note.last_checked_at ?? ""),
   };
 }

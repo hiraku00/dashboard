@@ -13,26 +13,28 @@ import { linkText } from "./chikirin-app";
 export function ChikirinDetail({ id, initialProgram = null, initialError = "" }: { id: string; initialProgram?: Program | null; initialError?: string }) {
   const [program, setProgram] = useState<Program | null>(initialProgram);
   const [error, setError] = useState(initialError);
+  // 画面を開くたびに最新を読む: 一覧で編集した放送局などが、先読みされた古い画面のままにならないようにする。
+  // (サーバーが描いたものは最初の表示に使い、読み直せなくても、その表示は残す)
   useEffect(() => {
-    if (program || error) return;                    // サーバーが描いていれば読み直さない(失敗のときだけ、自分で読む)
+    if (initialError) return;
     let alive = true;
     (async () => {
       try {
-        const response = await fetch(`/api/openchat/programs/${encodeURIComponent(id)}`);
+        const response = await fetch(`/api/openchat/programs/${encodeURIComponent(id)}`, { cache: "no-store" });
         if (!response.ok) throw new Error(await readErrorMessage(response, "読み込めませんでした。"));
         const body = await readJson<{ program: Program }>(response);
         if (alive) setProgram(body.program);
       } catch (e) {
-        if (alive) setError(e instanceof Error ? e.message : "読み込めませんでした。");
+        if (alive && !initialProgram) setError(e instanceof Error ? e.message : "読み込めませんでした。");
       }
     })();
     return () => { alive = false; };
-  }, [id, program, error]);
+  }, [id, initialError, initialProgram]);
 
   return <main className="app-shell">
     <PortalHeader title="ちきりんオプチャ" active="/chikirin" />
     <section className="library-panel" aria-labelledby="chikirin-detail-title">
-      <p className="chikirin-back"><Link href="/chikirin">← 一覧に戻る</Link></p>
+      <p className="chikirin-back"><Link href="/chikirin" prefetch={false}>← 一覧に戻る</Link></p>
       {error && <p className="notice" role="alert">{error}</p>}
       {!program && !error && <p className="chikirin-run">読み込み中…</p>}
       {program && <article className="chikirin-detail">

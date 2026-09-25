@@ -271,16 +271,19 @@ h1,h2,h3 { color:var(--ink); } h1 { margin:0; font-size:30px; line-height:1.1; l
 .chikirin-text.is-clamped { display:-webkit-box; -webkit-line-clamp:7; -webkit-box-orient:vertical; overflow:hidden; }
 .chikirin-toggle { justify-self:start; border:0; background:none; padding:2px 0; color:var(--blue-strong); font-size:12.5px; font-weight:700; }
 .chikirin-more { display:flex; justify-content:center; padding:10px 24px 22px; }.chikirin-more button { border:1px solid var(--line-strong); border-radius:10px; padding:9px 22px; background:var(--raised); }
-.chikirin-table { min-width:1260px; }
+.chikirin-table { min-width:1200px; }
 .chikirin-table th, .chikirin-table td { padding-left:10px; padding-right:10px; }
-.chikirin-table .col-kind { width:96px; }.chikirin-table .col-broadcaster { width:92px; }.chikirin-table .col-episode { width:17%; }.chikirin-table .col-owner { width:100px; }
+.chikirin-table .col-kind { width:96px; }.chikirin-table .col-broadcaster { width:76px; }.chikirin-table .col-episode { width:17%; }.chikirin-table .col-owner { width:100px; }
 .chikirin-table .col-posted { width:112px; }.chikirin-table .col-count { width:64px; }.chikirin-table .col-links { width:130px; }.chikirin-table .col-action { width:64px; }
 .chikirin-table .kind-head, .chikirin-table .kind-cell { padding-left:18px; }
 .chikirin-table th.num, .chikirin-table td.num-cell { text-align:right; font-variant-numeric:tabular-nums; }
 .chikirin-table .program-cell { min-width:0; }
 .chikirin-table .broadcaster-cell, .chikirin-table .episode-cell, .chikirin-table .owner-cell { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:14px; }
 .chikirin-table .date-cell { font-size:13px; white-space:nowrap; }
-.editor .link-row { grid-template-columns:minmax(0,3fr) minmax(0,2fr) 32px; }
+.editor .link-row, .chikirin-meta-edit .link-row { grid-template-columns:minmax(0,3fr) minmax(0,2fr) 32px; }
+.chikirin-meta-grid { grid-template-columns:200px minmax(0,1fr); }
+.chikirin-table th.center, .chikirin-table td.center { text-align:center; }
+.chikirin-new { display:inline-block; margin-right:8px; border-radius:999px; padding:1px 8px; background:rgba(239,68,68,.12); color:#dc2626; font-size:11.5px; font-weight:750; vertical-align:1px; }
 .chikirin-tz { color:var(--faint); }
 .chikirin-warnings { display:inline-block; margin-left:10px; }.chikirin-warnings summary { cursor:pointer; color:#b45309; font-weight:700; }.chikirin-warnings ul { margin:6px 0 0; padding-left:18px; color:var(--ink); }
 .chikirin-table .head-2 { display:inline-block; line-height:1.25; }
