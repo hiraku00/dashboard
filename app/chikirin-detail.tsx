@@ -35,13 +35,16 @@ export function ChikirinDetail({ id, initialProgram = null, initialError = "" }:
 
   return <main className="app-shell">
     <PortalHeader title="ちきりんオプチャ" active="/chikirin" />
-    <section className="library-panel" aria-labelledby="chikirin-detail-title">
+    <section className="library-panel" aria-label="番組の詳細">
       <p className="chikirin-back"><Link href="/chikirin" prefetch={false}>← 一覧に戻る</Link></p>
       {error && <p className="notice" role="alert">{error}</p>}
       {!program && !error && <p className="chikirin-run">読み込み中…</p>}
       {program && <article className="chikirin-detail">
+        <section className="chikirin-meta-edit" aria-labelledby="chikirin-meta-title">
+          <h2 id="chikirin-meta-title">放送情報（編集）</h2>
+          <MetaForm key={JSON.stringify(program.meta)} program={program} onSaved={() => router.push("/chikirin")} />
+        </section>
         <header>
-          <h2 id="chikirin-detail-title">{program.programTitle || "（題名なし）"}</h2>
           <p className="chikirin-meta">
             <span>{program.noteByTarget ? "ちきりんのスレッド" : `スレッド: ${program.noteAuthor}`}</span>
             <span>起票 <time dateTime={program.notePostedAt}>{formatPostedAt(program.notePostedAt, program.notePrecision)}</time></span>
@@ -54,10 +57,6 @@ export function ChikirinDetail({ id, initialProgram = null, initialError = "" }:
           </p>}
         </header>
         {program.issues.length > 0 && <div className="chikirin-issue-box" role="status"><strong>要確認</strong><ul>{program.issues.map((issue) => <li key={issue}>{issue}</li>)}</ul></div>}
-        <section className="chikirin-meta-edit" aria-labelledby="chikirin-meta-title">
-          <h3 id="chikirin-meta-title">放送情報（編集）</h3>
-          <MetaForm key={JSON.stringify(program.meta)} program={program} onSaved={(saved) => { setProgram(saved); router.push("/chikirin"); router.refresh(); }} />
-        </section>
         {program.noteBody && <section className={program.noteByTarget ? "chikirin-post is-thread" : "chikirin-post is-owner"} aria-label={program.noteByTarget ? "ちきりんのスレッド" : "スレッド主の投稿"}>
           <strong className="chikirin-badge">{program.noteByTarget ? "ちきりんのスレッド" : "スレッド主の投稿（番組の情報）"}</strong>
           <Body text={program.noteBody} full />

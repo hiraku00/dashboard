@@ -140,7 +140,7 @@ test("moving to page 2 requests page=2 and shows that page; a new search goes ba
 test("detail shows the thread owner's post and every comment by the target, oldest first", () => {
   render(<ChikirinDetail id="n1" initialProgram={program() as never} />);
   expect(screen.getByRole("link", { name: "← 一覧に戻る" }).getAttribute("href")).toBe("/chikirin");
-  expect(screen.getByText("8/23放送 NHKスペシャル 地球超解析")).toBeTruthy();
+  expect(screen.getByDisplayValue("地球超解析")).toBeTruthy();   // 放送情報（編集）の番組タイトル欄
   expect(screen.getByLabelText("スレッド主の投稿").textContent).toContain("海の環境を扱った回");   // 番組の情報
   const posts = screen.getAllByLabelText("ちきりんのコメント");
   expect(posts).toHaveLength(2);
@@ -148,6 +148,13 @@ test("detail shows the thread owner's post and every comment by the target, olde
   expect(posts[1].textContent).toContain("09.21 18:00");
   expect(posts[0].textContent).toContain("09.21 16:15");
   expect(screen.getByRole("link", { name: /地球超解析 NHKオンデマンド/ }).getAttribute("href")).toBe("https://www.nhk-ondemand.jp/x");
+});
+
+test("saving 放送情報 redirects back to the list", async () => {
+  vi.stubGlobal("fetch", vi.fn(() => Promise.resolve(json({ program: program() }))));
+  render(<ChikirinDetail id="n1" initialProgram={program() as never} />);
+  fireEvent.click(screen.getByRole("button", { name: "保存" }));
+  await waitFor(() => expect(nav.push).toHaveBeenCalledWith("/chikirin"));
 });
 
 test("detail of the target's own thread shows her body once and labels her comments 本人コメント", () => {
@@ -169,7 +176,7 @@ test("detail shows long text in full without a fold", () => {
 test("detail fetches on its own when the server sent nothing, and shows a not-found message from the server", async () => {
   vi.stubGlobal("fetch", vi.fn(() => Promise.resolve(json({ program: program() }))));
   const { unmount } = render(<ChikirinDetail id="n1" />);
-  await waitFor(() => expect(screen.getByText("8/23放送 NHKスペシャル 地球超解析")).toBeTruthy());
+  await waitFor(() => expect(screen.getByDisplayValue("地球超解析")).toBeTruthy());
   unmount();
   render(<ChikirinDetail id="zzz" initialError="この番組は見つかりません。" />);
   expect(screen.getByRole("alert").textContent).toContain("見つかりません");
