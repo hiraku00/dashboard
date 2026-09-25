@@ -11,7 +11,7 @@ import { formatPostedAt, type Program } from "./lib/openchat-query.ts";
 import { linkText } from "./chikirin-app";
 
 /** 1番組(1ノート)の詳細: スレッド主の投稿(番組の情報)と、ちきりんのコメントを全文で。 */
-export function ChikirinDetail({ id, initialProgram = null, initialError = "" }: { id: string; initialProgram?: Program | null; initialError?: string }) {
+export function ChikirinDetail({ id, initialProgram = null, initialError = "", backHref = "/chikirin" }: { id: string; initialProgram?: Program | null; initialError?: string; backHref?: string }) {
   const [program, setProgram] = useState<Program | null>(initialProgram);
   const [error, setError] = useState(initialError);
   const router = useRouter();
@@ -36,13 +36,13 @@ export function ChikirinDetail({ id, initialProgram = null, initialError = "" }:
   return <main className="app-shell">
     <PortalHeader title="ちきりんオプチャ" active="/chikirin" />
     <section className="library-panel" aria-label="番組の詳細">
-      <p className="chikirin-back"><Link href="/chikirin" prefetch={false}>← 一覧に戻る</Link></p>
+      <p className="chikirin-back"><Link href={backHref} prefetch={false}>← 一覧に戻る</Link></p>
       {error && <p className="notice" role="alert">{error}</p>}
       {!program && !error && <p className="chikirin-run">読み込み中…</p>}
       {program && <article className="chikirin-detail">
         <section className="chikirin-meta-edit" aria-labelledby="chikirin-meta-title">
           <h2 id="chikirin-meta-title">放送情報（編集）</h2>
-          <MetaForm key={JSON.stringify(program.meta)} program={program} onSaved={() => router.push("/chikirin")} />
+          <MetaForm key={JSON.stringify(program.meta)} program={program} onSaved={() => router.push(backHref)} />
         </section>
         <header>
           <p className="chikirin-meta">
