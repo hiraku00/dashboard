@@ -37,21 +37,20 @@ const json = (body: unknown, status = 200) => new Response(JSON.stringify(body),
 
 test("the list is a table: kind, broadcaster, episode title, thread, poster, times, counts, status and links (read-only; editing is on the detail page)", () => {
   render(<ChikirinApp initialPage={page([program()])} initialRun={null} />);
-  expect(screen.getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["種別", "放送局", "放送タイトル", "スレッド", "スレ主", "投稿", "コメント全体", "コメントちきりん", "最新ちきりん", "状態", "リンク"]);
+  expect(screen.getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["種別", "放送局", "タイトル", "スレ主", "投稿", "コメント全体", "コメントちきりん", "最新ちきりん", "状態", "リンク"]);
   const row = screen.getAllByRole("row")[1];
   const cells = within(row).getAllByRole("cell").map((c) => c.textContent ?? "");
   expect(cells[0]).toBe("コメント");
   expect(cells[1]).toBe("NHK BS");
-  expect(cells[2]).toBe("地球超解析");
-  expect(cells[3]).toContain("8/23放送 NHKスペシャル 地球超解析");
-  expect(cells[3]).toContain("私もこれ観ました");                       // 内容の抜粋(最初のちきりんのコメント)
-  expect(cells[4]).toBe("参加者B");
-  expect(cells[5]).toBe("26/09/21 15:47");
-  expect(cells[6]).toBe("8");
-  expect(cells[7]).toBe("2");
-  expect(cells[8]).toBe("約26/09/21 18:00");
-  expect(cells[9]).toBe("OK");
-  expect(within(row).getByRole("link", { name: /8\/23放送/ }).getAttribute("href")).toBe("/chikirin/n1");
+  expect(cells[2]).toContain("地球超解析");                              // 1行目: 編集した放送タイトル
+  expect(cells[2]).toContain("8/23放送のNHKスペシャルです。");           // 2行目: スレッドの冒頭
+  expect(cells[3]).toBe("参加者B");
+  expect(cells[4]).toBe("26.09.21 15:47");
+  expect(cells[5]).toBe("8");
+  expect(cells[6]).toBe("2");
+  expect(cells[7]).toBe("約26.09.21 18:00");
+  expect(cells[8]).toBe("OK");
+  expect(within(row).getByRole("link", { name: "地球超解析" }).getAttribute("href")).toBe("/chikirin/n1");
   expect(within(row).getByRole("link", { name: /番組ページ/ }).getAttribute("href")).toBe("https://example.test/ep");
   expect(screen.queryByLabelText("ちきりんのコメント")).toBeNull();   // 一覧には全文を出さない
 });
@@ -60,9 +59,9 @@ test("a row with a problem shows 要確認 with the reason, so it can be found i
   const bad = program({ issues: ["コメントの件数が表示と合わず、再確認待ちです（次回の同期でやり直します）。"] });
   render(<ChikirinApp initialPage={page([bad, program({ noteId: "n2" })])} initialRun={null} />);
   const cells = within(screen.getAllByRole("row")[1]).getAllByRole("cell");
-  expect(cells[9].textContent).toBe("要確認");
-  expect(within(cells[9]).getByText("要確認").getAttribute("title")).toContain("再確認待ち");
-  expect(within(screen.getAllByRole("row")[2]).getAllByRole("cell")[9].textContent).toBe("OK");
+  expect(cells[8].textContent).toBe("要確認");
+  expect(within(cells[8]).getByText("要確認").getAttribute("title")).toContain("再確認待ち");
+  expect(within(screen.getAllByRole("row")[2]).getAllByRole("cell")[8].textContent).toBe("OK");
 });
 
 test("the times are labelled as Japan time", () => {
@@ -70,11 +69,12 @@ test("the times are labelled as Japan time", () => {
   expect(screen.getByText(/日時は日本時間\(JST\)/)).toBeTruthy();
 });
 
-test("unedited rows show a dash for broadcaster and episode title", () => {
-  render(<ChikirinApp initialPage={page([program({ meta: { broadcaster: "", episodeTitle: "", links: [] } })])} initialRun={null} />);
+test("unedited rows: dash for broadcaster, and the title falls back to the thread's first line without repeating it in the second line", () => {
+  render(<ChikirinApp initialPage={page([program({ meta: { broadcaster: "", episodeTitle: "", links: [] }, programTitle: "スレッドの1行目", noteBody: "スレッドの1行目\n本文の2行目です。" })])} initialRun={null} />);
   const cells = within(screen.getAllByRole("row")[1]).getAllByRole("cell");
   expect(cells[1].textContent).toBe("—");
-  expect(cells[2].textContent).toBe("—");
+  expect(within(cells[2]).getByRole("link").textContent).toBe("スレッドの1行目");
+  expect(cells[2].textContent).toBe("スレッドの1行目本文の2行目です。");
 });
 
 test("the list has no edit button: editing happens on the detail page", () => {
@@ -86,7 +86,7 @@ test("the list has no edit button: editing happens on the detail page", () => {
 test("the status cell is centered", () => {
   render(<ChikirinApp initialPage={page([program()])} initialRun={null} />);
   const cells = within(screen.getAllByRole("row")[1]).getAllByRole("cell");
-  expect(cells[9].className).toContain("center");
+  expect(cells[8].className).toContain("center");
 });
 
 test("rows first seen in the last run are marked 新着, and the header says how many programs are new", () => {
@@ -99,7 +99,7 @@ test("rows first seen in the last run are marked 新着, and the header says how
 });
 
 test("the target's own thread is marked in the list and previews her body", () => {
-  const own = program({ noteByTarget: true, noteAuthor: "ちきりん", targetBody: "9月23日の報道特集の真ん中あたり。" });
+  const own = program({ noteByTarget: true, noteAuthor: "ちきりん", targetBody: "9月23日の報道特集の真ん中あたり。", noteBody: "9月23日の報道特集の真ん中あたり。" });
   render(<ChikirinApp initialPage={page([own])} initialRun={null} />);
   const row = screen.getAllByRole("row")[1];
   expect(within(row).getAllByRole("cell")[0].textContent).toBe("スレッド");
@@ -121,7 +121,7 @@ test("no pagination when everything fits on one page", () => {
 
 test("moving to page 2 requests page=2 and shows that page; a new search goes back to page 1", async () => {
   const urls: string[] = [];
-  vi.stubGlobal("fetch", (url: string) => { urls.push(url); return Promise.resolve(json(page([program({ noteId: "n2", programTitle: "二ページ目の番組" })], 45, 2))); });
+  vi.stubGlobal("fetch", (url: string) => { urls.push(url); return Promise.resolve(json(page([program({ noteId: "n2", programTitle: "二ページ目の番組", meta: { broadcaster: "", episodeTitle: "", links: [] } })], 45, 2))); });
   render(<ChikirinApp initialPage={page([program()], 45)} initialRun={null} />);
   fireEvent.click(screen.getByRole("button", { name: "次のページ" }));
   await waitFor(() => expect(screen.getByText("二ページ目の番組")).toBeTruthy());
@@ -139,8 +139,8 @@ test("detail shows the thread owner's post and every comment by the target, olde
   const posts = screen.getAllByLabelText("ちきりんのコメント");
   expect(posts).toHaveLength(2);
   expect(posts[0].textContent).toContain("私もこれ観ました");
-  expect(posts[1].textContent).toContain("約26/09/21 18:00");
-  expect(posts[0].textContent).toContain("26/09/21 16:15");
+  expect(posts[1].textContent).toContain("約26.09.21 18:00");
+  expect(posts[0].textContent).toContain("26.09.21 16:15");
   expect(screen.getByRole("link", { name: /地球超解析 NHKオンデマンド/ }).getAttribute("href")).toBe("https://www.nhk-ondemand.jp/x");
 });
 
@@ -201,13 +201,13 @@ test("a failed request shows a message and keeps the list", async () => {
   render(<ChikirinApp initialPage={page([program()], 45)} initialRun={null} />);
   fireEvent.click(screen.getByRole("button", { name: "次のページ" }));
   await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("一覧を読み込めませんでした"));
-  expect(screen.getByRole("link", { name: /8\/23放送/ })).toBeTruthy();
+  expect(screen.getByRole("link", { name: "地球超解析" })).toBeTruthy();
 });
 
 test("shows when the last sync ran and how it ended", () => {
   render(<ChikirinApp initialPage={page([])} initialRun={{ status: "partial", startedAt: "2026-09-24T03:00:00Z", completedAt: "2026-09-24T03:10:00Z", notesScanned: 30, notesOpened: 3, commentsNew: 9, targetCommentsNew: 2, warningCount: 1, warnings: ["本文を開けませんでした: 対象のノート"] }} />);
   const line = screen.getByTestId("run-line").textContent ?? "";
-  expect(line).toContain("26/09/24 12:00");
+  expect(line).toContain("26.09.24 12:00");
   expect(line).toContain("一部に警告あり");
   expect(line).toContain("最後の取得");
   expect(line).toContain("JST");
@@ -217,4 +217,12 @@ test("the sync warnings are listed with what they are about", () => {
   render(<ChikirinApp initialPage={page([])} initialRun={{ status: "partial", startedAt: "2026-09-24T03:00:00Z", completedAt: "2026-09-24T03:10:00Z", notesScanned: 30, notesOpened: 3, commentsNew: 9, targetCommentsNew: 2, warningCount: 1, warnings: ["本文を開けませんでした: 対象のノート"] }} />);
   expect(screen.getByText("警告 1 件")).toBeTruthy();
   expect(screen.getByText("本文を開けませんでした: 対象のノート")).toBeTruthy();
+});
+
+test("links without a label show the site name: www.web.nhk becomes NHK ONE, other sites their domain, a label wins", async () => {
+  const { linkText } = await import("@/app/chikirin-app");
+  expect(linkText("https://www.web.nhk/tv/pl/series-tep-XXXX", "")).toBe("NHK ONE");
+  expect(linkText("https://www.nhk-ondemand.jp/goods/G1/", "")).toBe("nhk-ondemand.jp");
+  expect(linkText("https://www.web.nhk/tv/x", "番組ページ")).toBe("番組ページ");
+  expect(linkText("not a url", "")).toBe("not a url");
 });
