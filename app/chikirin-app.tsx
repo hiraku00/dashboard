@@ -62,7 +62,7 @@ function listLinks(program: Program) {
 export function ChikirinApp({ initialPage = null, initialRun = null }: { initialPage?: ProgramsPage | null; initialRun?: RunSummary } = {}) {
   const [programs, setPrograms] = useState<Program[]>(initialPage?.programs ?? []);
   const [total, setTotal] = useState(initialPage?.total ?? 0);
-  const [pageSize, setPageSize] = useState(initialPage?.pageSize ?? 20);
+  const [pageSize, setPageSize] = useState(initialPage?.pageSize ?? 10);
   const [page, setPage] = useState(1);
   const [query, setQuery] = useState("");
   const [kind, setKind] = useState<ProgramKind>("all");
@@ -138,7 +138,10 @@ export function ChikirinApp({ initialPage = null, initialRun = null }: { initial
             const links = listLinks(program);
             return <tr key={program.noteId}>
               <td className="kind-cell"><span className={program.noteByTarget ? "chikirin-tag is-thread" : "chikirin-tag"}>{program.noteByTarget ? "スレッド" : "コメント"}</span></td>
-              <td className="program-cell"><strong>{displayBroadcaster(program) || "—"}</strong><br />{program.meta.programName || <span className="empty-cell">番組名未設定</span>}</td>
+              <td className="program-cell">
+                <strong className="program-broadcaster" title={displayBroadcaster(program) || undefined}>{displayBroadcaster(program) || "—"}</strong>
+                <span className={program.meta.programName ? "program-name" : "program-name is-unset"} title={program.meta.programName || undefined}>{program.meta.programName || "番組名未設定"}</span>
+              </td>
               <td className="program-cell">{(() => {
                 const { title } = titleLines(program);
                 const head = program.noteBody.replace(/\s+/g, " ").trim();
