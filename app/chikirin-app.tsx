@@ -129,7 +129,7 @@ export function ChikirinApp({ initialPage = null, initialRun = null }: { initial
         <table className="content-table chikirin-table">
           <colgroup><col className="col-kind" /><col className="col-broadcaster" /><col className="col-program" /><col className="col-owner" /><col className="col-posted" /><col className="col-count" /><col className="col-count" /><col className="col-posted" /><col className="col-status" /><col className="col-links" /></colgroup>
           <thead><tr>
-            <th scope="col" className="kind-head">種別</th><th scope="col">放送局</th><th scope="col">タイトル</th><th scope="col">スレ主</th><th scope="col">投稿</th>
+            <th scope="col" className="kind-head">種別</th><th scope="col">放送局</th><th scope="col">タイトル</th><th scope="col">スレ主</th><th scope="col" title="スレッドが起票された日時(日本時間)"><span className="head-2">スレッド<br />起票日時</span></th>
             <th scope="col" className="num" title="ノート全体のコメント数"><span className="head-2">コメント<br />全体</span></th><th scope="col" className="num" title="ちきりんが書いたコメントの数"><span className="head-2">コメント<br />ちきりん</span></th><th scope="col" title="ちきりんの最新の投稿の日時"><span className="head-2">最新<br />ちきりん</span></th><th scope="col" className="center">状態</th><th scope="col">リンク</th>
           </tr></thead>
           <tbody>{programs.map((program) => {

@@ -42,7 +42,7 @@ export function ChikirinDetail({ id, initialProgram = null, initialError = "" }:
           <h2 id="chikirin-detail-title">{program.programTitle || "（題名なし）"}</h2>
           <p className="chikirin-meta">
             <span>{program.noteByTarget ? "ちきりんのスレッド" : `スレッド: ${program.noteAuthor}`}</span>
-            <time dateTime={program.notePostedAt}>{formatPostedAt(program.notePostedAt, program.notePrecision)}</time>
+            <span>起票 <time dateTime={program.notePostedAt}>{formatPostedAt(program.notePostedAt, program.notePrecision)}</time></span>
             <span>コメント {program.commentCount} 件</span>
             <span>ちきりんのコメント {program.targetComments.length} 件</span>
           </p>

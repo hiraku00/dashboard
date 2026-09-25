@@ -274,7 +274,7 @@ h1,h2,h3 { color:var(--ink); } h1 { margin:0; font-size:30px; line-height:1.1; l
 .chikirin-table { min-width:1080px; }
 .chikirin-table th, .chikirin-table td { padding-left:10px; padding-right:10px; }
 .chikirin-table .col-kind { width:96px; }.chikirin-table .col-broadcaster { width:76px; }.chikirin-table .col-owner { width:100px; }
-.chikirin-table .col-posted { width:112px; }.chikirin-table .col-count { width:64px; }.chikirin-table .col-links { width:130px; }.chikirin-table .col-action { width:64px; }
+.chikirin-table .col-posted { width:92px; }.chikirin-table .col-count { width:64px; }.chikirin-table .col-links { width:130px; }.chikirin-table .col-action { width:64px; }
 .chikirin-table .kind-head, .chikirin-table .kind-cell { padding-left:18px; }
 .chikirin-table th.num, .chikirin-table td.num-cell { text-align:right; font-variant-numeric:tabular-nums; }
 .chikirin-table .program-cell { min-width:0; }
