@@ -69,12 +69,16 @@ test("the times are labelled as Japan time", () => {
   expect(screen.getByText(/日時は日本時間\(JST\)/)).toBeTruthy();
 });
 
-test("unedited rows: dash for broadcaster, and the title falls back to the thread's first line without repeating it in the second line", () => {
-  render(<ChikirinApp initialPage={page([program({ meta: { broadcaster: "", episodeTitle: "", links: [] }, programTitle: "スレッドの1行目", noteBody: "スレッドの1行目\n本文の2行目です。" })])} initialRun={null} />);
-  const cells = within(screen.getAllByRole("row")[1]).getAllByRole("cell");
-  expect(cells[1].textContent).toBe("—");
-  expect(within(cells[2]).getByRole("link").textContent).toBe("スレッドの1行目");
-  expect(cells[2].textContent).toBe("スレッドの1行目本文の2行目です。");
+test("title cell: line 1 is the program name (edited episode title), line 2 is the start of the thread; unedited rows have no program name", () => {
+  render(<ChikirinApp initialPage={page([program({ meta: { broadcaster: "", episodeTitle: "", links: [] }, programTitle: "スレッドの1行目", noteBody: "スレッドの1行目\n本文の2行目です。" }), program({ noteId: "n2" })])} initialRun={null} />);
+  const rows = screen.getAllByRole("row");
+  const unedited = within(rows[1]).getAllByRole("cell");
+  expect(unedited[1].textContent).toBe("—");
+  expect(within(unedited[2]).getByRole("link").textContent).toBe("（番組名 未設定）");          // 番組名は、編集するまで入らない
+  expect(unedited[2].textContent).toContain("スレッドの1行目 本文の2行目です。");                // 冒頭は、1行目から
+  const edited = within(rows[2]).getAllByRole("cell");
+  expect(within(edited[2]).getByRole("link").textContent).toBe("地球超解析");
+  expect(edited[2].textContent).toContain("8/23放送のNHKスペシャルです。");
 });
 
 test("the list has no edit button: editing happens on the detail page", () => {
@@ -121,7 +125,7 @@ test("no pagination when everything fits on one page", () => {
 
 test("moving to page 2 requests page=2 and shows that page; a new search goes back to page 1", async () => {
   const urls: string[] = [];
-  vi.stubGlobal("fetch", (url: string) => { urls.push(url); return Promise.resolve(json(page([program({ noteId: "n2", programTitle: "二ページ目の番組", meta: { broadcaster: "", episodeTitle: "", links: [] } })], 45, 2))); });
+  vi.stubGlobal("fetch", (url: string) => { urls.push(url); return Promise.resolve(json(page([program({ noteId: "n2", programTitle: "二ページ目の番組", noteBody: "二ページ目の番組", meta: { broadcaster: "", episodeTitle: "", links: [] } })], 45, 2))); });
   render(<ChikirinApp initialPage={page([program()], 45)} initialRun={null} />);
   fireEvent.click(screen.getByRole("button", { name: "次のページ" }));
   await waitFor(() => expect(screen.getByText("二ページ目の番組")).toBeTruthy());

@@ -33,14 +33,10 @@ function isNew(program: Program, run: RunSummary) {
   return !Number.isNaN(seen) && !Number.isNaN(started) && seen >= started;
 }
 
-/** 一覧のタイトル欄の2行: 1行目=タイトル(編集した放送タイトル。未編集ならスレッドの1行目)、2行目=スレッドの冒頭。
- *  未編集のときは、1行目と同じ文が2行目の頭に来ないよう、スレッドの1行目を除く。 */
+/** 一覧のタイトル欄の2行: 1行目=番組名(編集した放送タイトル。編集するまでは空)、2行目=スレッドの冒頭。 */
 export function titleLines(program: Program): { title: string; head: string } {
-  const title = program.meta.episodeTitle || program.programTitle || "（題名なし）";
-  const lines = program.noteBody.split("\n").map((l) => l.trim()).filter(Boolean);
-  const rest = program.meta.episodeTitle ? lines : lines.slice(1);
-  const head = rest.join(" ").replace(/\s+/g, " ");
-  return { title, head: head.length > 140 ? `${head.slice(0, 140)}…` : head };
+  const head = program.noteBody.replace(/\s+/g, " ").trim();
+  return { title: program.meta.episodeTitle, head: head.length > 140 ? `${head.slice(0, 140)}…` : head };
 }
 
 /** よく出るサイトの表示名。ドメインのままだと何のサイトか分かりにくいものだけ。 */
@@ -143,7 +139,7 @@ export function ChikirinApp({ initialPage = null, initialRun = null }: { initial
               <td className="broadcaster-cell">{program.meta.broadcaster || <span className="empty-cell">—</span>}</td>
               <td className="program-cell">{(() => {
                 const { title, head } = titleLines(program);
-                return <><Link className="chikirin-row-title" href={`/chikirin/${encodeURIComponent(program.noteId)}`} prefetch={false} title={title}>{isNew(program, initialRun) && <span className="chikirin-new" title="最後の取得で、ちきりんの新しい投稿が見つかりました">新着</span>}{title}</Link><p className="description" title={head}>{head || " "}</p></>;
+                return <><Link className={title ? "chikirin-row-title" : "chikirin-row-title is-unset"} href={`/chikirin/${encodeURIComponent(program.noteId)}`} prefetch={false} title={title || program.programTitle}>{isNew(program, initialRun) && <span className="chikirin-new" title="最後の取得で、ちきりんの新しい投稿が見つかりました">新着</span>}{title || "（番組名 未設定）"}</Link><p className="description" title={head}>{head || " "}</p></>;
               })()}</td>
               <td className="owner-cell">{program.noteByTarget ? "ちきりん" : program.noteAuthor}</td>
               <td className="date-cell"><time dateTime={program.notePostedAt}>{formatPostedAt(program.notePostedAt, program.notePrecision)}</time></td>

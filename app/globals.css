@@ -294,6 +294,7 @@ h1,h2,h3 { color:var(--ink); } h1 { margin:0; font-size:30px; line-height:1.1; l
 .chikirin-meta-edit { display:grid; gap:6px; border:1px solid var(--line); border-radius:12px; padding:12px 16px 14px; background:var(--surface-solid); }.chikirin-meta-edit h3 { margin:0; font-size:14px; }
 .chikirin-editor-note { margin:0 0 10px; color:var(--muted); font-size:13px; overflow-wrap:anywhere; }
 .chikirin-row-title { display:block; overflow:hidden; color:var(--ink); font-size:15px; font-weight:700; line-height:1.35; text-decoration:none; text-overflow:ellipsis; white-space:nowrap; }
+.chikirin-row-title.is-unset { color:var(--faint); font-weight:500; }
 .chikirin-row-title:hover, .chikirin-row-title:focus-visible { color:var(--blue-strong); text-decoration:underline; }
 .chikirin-tag { display:inline-block; border-radius:999px; padding:2px 10px; background:var(--blue-soft); color:var(--blue-strong); font-size:12px; font-weight:700; }
 .chikirin-tag.is-thread { background:rgba(88,86,214,.12); color:var(--audio); }
