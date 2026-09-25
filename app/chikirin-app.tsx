@@ -4,7 +4,6 @@ import { useCallback, useState } from "react";
 import Link from "next/link";
 import { PortalHeader } from "./portal-nav";
 import { readErrorMessage, readJson } from "./lib/json";
-import { MetaForm } from "./chikirin-meta-form";
 import { formatPostedAt, type Program, type ProgramKind } from "./lib/openchat-query.ts";
 import { MAX_LIKE_TERM_BYTES, truncateUtf8Bytes, utf8ByteLength } from "./lib/sql-text.ts";
 import { useLatestRequest } from "./lib/use-latest-request";
@@ -13,7 +12,7 @@ import { useSearchReload } from "./lib/use-search-reload";
 export type ProgramsPage = { programs: Program[]; total: number; page: number; pageSize: number };
 export type RunSummary = {
   status: string; startedAt: string; completedAt: string | null; notesScanned: number; notesOpened: number;
-  commentsNew: number; targetCommentsNew: number; warningCount: number; warnings?: string[];
+  commentsNew: number; targetCommentsNew: number; warningCount: number; warnings?: string[]; newPrograms?: number;
 } | null;
 
 const kindLabel: Record<ProgramKind, string> = { all: "すべて", thread: "ちきりんのスレッド", comment: "ちきりんのコメント" };
@@ -24,7 +23,14 @@ function runLine(run: RunSummary) {
   if (!run) return "まだ同期されていません。Macで collector/line_openchat の同期を実行してください。";
   const stamp = new Date(run.startedAt);
   const when = Number.isNaN(stamp.getTime()) ? "" : formatPostedAt(stamp.toISOString().replace(/\.\d+Z$/, "Z"), "exact");
-  return `最後の取得: ${when} JST（${runStatusLabel[run.status] ?? run.status}）・新しいちきりんのコメント ${run.targetCommentsNew} 件`;
+  return `最後の取得: ${when} JST（${runStatusLabel[run.status] ?? run.status}）${run.newPrograms === undefined ? "" : `・新着 ${run.newPrograms} 番組（ちきりんの新しいスレッド・コメントが見つかった番組。一覧の「新着」）`}`;
+}
+
+/** 最後の取得で、ちきりんの投稿(スレッド・コメント)が初めて見つかった番組か。 */
+function isNew(program: Program, run: RunSummary) {
+  if (!run || !program.newestSeenAt) return false;
+  const seen = Date.parse(program.newestSeenAt), started = Date.parse(run.startedAt);
+  return !Number.isNaN(seen) && !Number.isNaN(started) && seen >= started;
 }
 
 /** 一覧の1行に出す、内容の抜粋(1行)。ちきりんのスレッドは本文、コメントは最初のコメント。 */
@@ -47,17 +53,6 @@ function listLinks(program: Program) {
   return links;
 }
 
-/** 一覧の「編集」で開くダイアログ。 */
-function MetaEditor({ program, onClose, onSaved }: { program: Program; onClose: () => void; onSaved: (program: Program) => void }) {
-  return <div className="modal-backdrop" role="presentation" onClick={onClose}>
-    <section className="editor" role="dialog" aria-modal="true" aria-labelledby="chikirin-editor-title" onClick={(event) => event.stopPropagation()}>
-      <div className="editor-heading"><div><p className="app-kicker">EDIT</p><h2 id="chikirin-editor-title">放送情報を編集</h2></div><button type="button" className="icon-button" onClick={onClose} aria-label="閉じる">×</button></div>
-      <p className="chikirin-editor-note">スレッド: {program.programTitle || "（題名なし）"}</p>
-      <MetaForm program={program} onSaved={onSaved} onCancel={onClose} />
-    </section>
-  </div>;
-}
-
 export function ChikirinApp({ initialPage = null, initialRun = null }: { initialPage?: ProgramsPage | null; initialRun?: RunSummary } = {}) {
   const [programs, setPrograms] = useState<Program[]>(initialPage?.programs ?? []);
   const [total, setTotal] = useState(initialPage?.total ?? 0);
@@ -67,7 +62,6 @@ export function ChikirinApp({ initialPage = null, initialRun = null }: { initial
   const [kind, setKind] = useState<ProgramKind>("all");
   const [loading, setLoading] = useState(!initialPage);
   const [notice, setNotice] = useState("");
-  const [editing, setEditing] = useState<Program | null>(null);
   const { begin, isCurrent } = useLatestRequest();
 
   const reload = useCallback(async () => {
@@ -128,10 +122,10 @@ export function ChikirinApp({ initialPage = null, initialRun = null }: { initial
       {!loading && programs.length === 0 && <div className="empty-state"><strong>該当する番組はありません。</strong><p>{initialRun || query || kind !== "all" ? "条件を変えてみてください。" : "同期が終わるとここに表示されます。"}</p></div>}
       {programs.length > 0 && <div className={loading ? "table-scroll is-loading" : "table-scroll"} aria-busy={loading}>
         <table className="content-table chikirin-table">
-          <colgroup><col className="col-kind" /><col className="col-broadcaster" /><col className="col-episode" /><col className="col-program" /><col className="col-owner" /><col className="col-posted" /><col className="col-count" /><col className="col-count" /><col className="col-posted" /><col className="col-status" /><col className="col-links" /><col className="col-action" /></colgroup>
+          <colgroup><col className="col-kind" /><col className="col-broadcaster" /><col className="col-episode" /><col className="col-program" /><col className="col-owner" /><col className="col-posted" /><col className="col-count" /><col className="col-count" /><col className="col-posted" /><col className="col-status" /><col className="col-links" /></colgroup>
           <thead><tr>
             <th scope="col" className="kind-head">種別</th><th scope="col">放送局</th><th scope="col">放送タイトル</th><th scope="col" title="LINEのスレッドの1行目">スレッド</th><th scope="col">スレ主</th><th scope="col">投稿</th>
-            <th scope="col" className="num" title="ノート全体のコメント数"><span className="head-2">コメント<br />全体</span></th><th scope="col" className="num" title="ちきりんが書いたコメントの数"><span className="head-2">コメント<br />ちきりん</span></th><th scope="col" title="ちきりんの最新の投稿の日時"><span className="head-2">最新<br />ちきりん</span></th><th scope="col">状態</th><th scope="col">リンク</th><th scope="col"><span className="sr-only">編集</span></th>
+            <th scope="col" className="num" title="ノート全体のコメント数"><span className="head-2">コメント<br />全体</span></th><th scope="col" className="num" title="ちきりんが書いたコメントの数"><span className="head-2">コメント<br />ちきりん</span></th><th scope="col" title="ちきりんの最新の投稿の日時"><span className="head-2">最新<br />ちきりん</span></th><th scope="col" className="center">状態</th><th scope="col">リンク</th>
           </tr></thead>
           <tbody>{programs.map((program) => {
             const links = listLinks(program);
@@ -139,21 +133,19 @@ export function ChikirinApp({ initialPage = null, initialRun = null }: { initial
               <td className="kind-cell"><span className={program.noteByTarget ? "chikirin-tag is-thread" : "chikirin-tag"}>{program.noteByTarget ? "スレッド" : "コメント"}</span></td>
               <td className="broadcaster-cell">{program.meta.broadcaster || <span className="empty-cell">—</span>}</td>
               <td className="episode-cell">{program.meta.episodeTitle || <span className="empty-cell">—</span>}</td>
-              <td className="program-cell"><Link className="chikirin-row-title" href={`/chikirin/${encodeURIComponent(program.noteId)}`} title={program.programTitle}>{program.programTitle || "（題名なし）"}</Link><p className="description" title={preview(program)}>{preview(program) || " "}</p></td>
+              <td className="program-cell"><Link className="chikirin-row-title" href={`/chikirin/${encodeURIComponent(program.noteId)}`} prefetch={false} title={program.programTitle}>{isNew(program, initialRun) && <span className="chikirin-new" title="最後の取得で、ちきりんの新しい投稿が見つかりました">新着</span>}{program.programTitle || "（題名なし）"}</Link><p className="description" title={preview(program)}>{preview(program) || " "}</p></td>
               <td className="owner-cell">{program.noteByTarget ? "ちきりん" : program.noteAuthor}</td>
               <td className="date-cell"><time dateTime={program.notePostedAt}>{formatPostedAt(program.notePostedAt, program.notePrecision)}</time></td>
               <td className="num-cell">{program.commentCount}</td>
               <td className="num-cell">{program.targetComments.length}</td>
               <td className="date-cell">{program.latestAt ? <time dateTime={program.latestAt}>{formatPostedAt(program.latestAt, program.latestPrecision)}</time> : <span className="empty-cell">—</span>}</td>
-              <td className="status-cell">{program.issues.length > 0 ? <span className="chikirin-issue" title={program.issues.join("\n")}>要確認</span> : <span className="empty-cell" title="取得に問題はありません">OK</span>}</td>
+              <td className="status-cell center">{program.issues.length > 0 ? <span className="chikirin-issue" title={program.issues.join("\n")}>要確認</span> : <span className="empty-cell" title="取得に問題はありません">OK</span>}</td>
               <td className="links-cell">{links.length > 0 ? <div className="item-links" aria-label={`${program.programTitle} のリンク`}>{links.slice(0, 2).map((l) => <a key={l.url} href={l.url} target="_blank" rel="noreferrer" title={l.url}>{l.text} ↗</a>)}{links.length > 2 && <span className="empty-cell">+{links.length - 2}</span>}</div> : <span className="empty-cell">—</span>}</td>
-              <td className="action-cell"><button type="button" className="icon-button" onClick={() => setEditing(program)} aria-label={`${program.programTitle} の放送情報を編集`}>編集</button></td>
             </tr>;
           })}</tbody>
         </table>
       </div>}
       {pagination}
     </section>
-    {editing && <MetaEditor program={editing} onClose={() => setEditing(null)} onSaved={(saved) => { setPrograms((current) => current.map((p) => (p.noteId === saved.noteId ? saved : p))); setEditing(null); }} />}
   </main>;
 }

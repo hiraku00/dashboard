@@ -292,7 +292,7 @@ class Session:
             # 本文が縦に長くなり、末尾(時刻行)が画面の下にはみ出した(実機で確認)。投稿の末尾が見えるまで少しずつ下へ進む
             self.scroll(8)
         if b2 is None or b2.more_y is not None:
-            self.stats.warnings.append(f"本文を開けませんでした: {note['author_name']} {note['posted_at_raw']}")
+            self.stats.warnings.append(f"本文を開けませんでした: {self._label(note)}")
             return True
         obs2 = note_obs(b2, self.now)
         if obs2:
@@ -329,7 +329,7 @@ class Session:
                 s = identity.note_score(note, o.as_match_dict()) if o else 0.0
                 if s > best_s:
                     best, best_s = g, s
-            label = f"{note['author_name']} {note['posted_at_raw']}"
+            label = self._label(note)
             if best is None:
                 self.stats.warnings.append(f"{label}: 撮影した画像の中にノートが見つかりませんでした")
                 note["needs_recheck"] = True
@@ -370,7 +370,7 @@ class Session:
             note, is_new = self.ledger.upsert_note(obs, self.now_iso)
             shown = g.note.comments
             observed = [c for c in (comment_obs(b, self.now) for b in g.comments) if c is not None]
-            label = f"{note['author_name']} {note['posted_at_raw']}"
+            label = self._label(note)
             if shown is not None and shown == len(observed) and (observed or shown == 0):
                 res = self.ledger.apply_collection(note, observed, shown, self.now_iso)
                 self._count(res)
@@ -381,6 +381,12 @@ class Session:
                 note["pending_upload"] = True
                 self.stats.warnings.append(f"{label}: 走査で見えず、撮影でも件数が合わないため、次回に確認します(表示{shown} / 取得{len(observed)})")
             self.opts.checkpoint()
+
+    @staticmethod
+    def _label(note: dict) -> str:
+        """警告に出す、どのノートか分かる名前: 投稿者・LINEの時刻表示・番組名(1行目)。"""
+        title = (note.get("program_title") or "").strip()
+        return f"{note['author_name']} {note['posted_at_raw']}" + (f"「{title[:24]}」" if title else "")
 
     def _count(self, res: CollectionResult) -> None:
         self.stats.comments_new += res.new_comments

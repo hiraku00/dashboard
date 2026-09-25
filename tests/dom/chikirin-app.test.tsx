@@ -23,7 +23,7 @@ afterEach(() => {
 const program = (over: Record<string, unknown> = {}) => ({
   noteId: "n1", programTitle: "8/23放送 NHKスペシャル 地球超解析", linkTitle: "地球超解析 NHKオンデマンド", linkUrl: "https://www.nhk-ondemand.jp/x",
   latestAt: "2026-09-21T09:00:00Z", latestPrecision: "approx_hour", meta: { broadcaster: "NHK BS", episodeTitle: "地球超解析", links: [{ url: "https://example.test/ep", label: "番組ページ" }] },
-  issues: [],
+  issues: [], newestSeenAt: "",
   noteAuthor: "参加者B", noteByTarget: false, notePostedAt: "2026-09-21T06:47:00Z", notePrecision: "exact", targetBody: null, noteBody: "8/23放送のNHKスペシャルです。海の環境を扱った回でした。",
   targetComments: [
     { id: "c1", bodyText: "私もこれ観ました。海の環境への影響が大きいと思いました。", postedAt: "2026-09-21T07:15:00Z", precision: "exact" },
@@ -35,9 +35,9 @@ const program = (over: Record<string, unknown> = {}) => ({
 const page = (programs: unknown[], total = programs.length, pageNo = 1, pageSize = 20) => ({ programs, total, page: pageNo, pageSize }) as unknown as ProgramsPage;
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
-test("the list is a table: kind, broadcaster, episode title, thread, poster, times, counts, links and an edit button", () => {
+test("the list is a table: kind, broadcaster, episode title, thread, poster, times, counts, status and links (read-only; editing is on the detail page)", () => {
   render(<ChikirinApp initialPage={page([program()])} initialRun={null} />);
-  expect(screen.getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["種別", "放送局", "放送タイトル", "スレッド", "スレ主", "投稿", "コメント全体", "コメントちきりん", "最新ちきりん", "状態", "リンク", "編集"]);
+  expect(screen.getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["種別", "放送局", "放送タイトル", "スレッド", "スレ主", "投稿", "コメント全体", "コメントちきりん", "最新ちきりん", "状態", "リンク"]);
   const row = screen.getAllByRole("row")[1];
   const cells = within(row).getAllByRole("cell").map((c) => c.textContent ?? "");
   expect(cells[0]).toBe("コメント");
@@ -77,35 +77,25 @@ test("unedited rows show a dash for broadcaster and episode title", () => {
   expect(cells[2].textContent).toBe("—");
 });
 
-test("editing saves broadcaster, episode title and links with PUT and updates the row", async () => {
-  const calls: Array<{ url: string; init?: RequestInit }> = [];
-  vi.stubGlobal("fetch", (url: string, init?: RequestInit) => {
-    calls.push({ url, init });
-    return Promise.resolve(json({ program: program({ meta: { broadcaster: "テレビ東京", episodeTitle: "WBS", links: [{ url: "https://example.test/wbs", label: "" }] } }) }));
-  });
-  render(<ChikirinApp initialPage={page([program({ meta: { broadcaster: "", episodeTitle: "", links: [] } })])} initialRun={null} />);
-  fireEvent.click(screen.getByRole("button", { name: /の放送情報を編集/ }));
-  const dialog = screen.getByRole("dialog");
-  fireEvent.change(within(dialog).getByLabelText("放送局"), { target: { value: "テレビ東京" } });
-  fireEvent.change(within(dialog).getByLabelText("その日の放送タイトル"), { target: { value: "WBS" } });
-  fireEvent.click(within(dialog).getByRole("button", { name: "＋ リンクを追加" }));
-  fireEvent.change(within(dialog).getByLabelText("リンク1のURL"), { target: { value: "https://example.test/wbs" } });
-  fireEvent.click(within(dialog).getByRole("button", { name: "保存" }));
-  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-  expect(calls[0].url).toBe("/api/openchat/programs/n1");
-  expect(calls[0].init?.method).toBe("PUT");
-  expect(JSON.parse(String(calls[0].init?.body))).toEqual({ broadcaster: "テレビ東京", episodeTitle: "WBS", links: [{ url: "https://example.test/wbs", label: "" }] });
-  const cells = within(screen.getAllByRole("row")[1]).getAllByRole("cell");
-  expect(cells[1].textContent).toBe("テレビ東京");
-  expect(cells[2].textContent).toBe("WBS");
+test("the list has no edit button: editing happens on the detail page", () => {
+  render(<ChikirinApp initialPage={page([program()])} initialRun={null} />);
+  expect(screen.queryByRole("button", { name: /編集/ })).toBeNull();
+  expect(screen.queryByRole("dialog")).toBeNull();
 });
 
-test("a rejected edit shows the server's message and keeps the dialog open", async () => {
-  vi.stubGlobal("fetch", () => Promise.resolve(json({ error: "リンクのURLは http:// または https:// で始まる正しい形式にしてください。" }, 400)));
+test("the status cell is centered", () => {
   render(<ChikirinApp initialPage={page([program()])} initialRun={null} />);
-  fireEvent.click(screen.getByRole("button", { name: /の放送情報を編集/ }));
-  fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "保存" }));
-  await waitFor(() => expect(within(screen.getByRole("dialog")).getByRole("alert").textContent).toContain("http://"));
+  const cells = within(screen.getAllByRole("row")[1]).getAllByRole("cell");
+  expect(cells[9].className).toContain("center");
+});
+
+test("rows first seen in the last run are marked 新着, and the header says how many programs are new", () => {
+  const run = { status: "success", startedAt: "2026-09-25T00:00:00Z", completedAt: "2026-09-25T00:10:00Z", notesScanned: 3, notesOpened: 2, commentsNew: 4, targetCommentsNew: 2, warningCount: 0, warnings: [], newPrograms: 1 };
+  render(<ChikirinApp initialPage={page([program({ newestSeenAt: "2026-09-25T00:05:00Z" }), program({ noteId: "n2", programTitle: "前からある番組", newestSeenAt: "2026-09-24T00:05:00Z" })])} initialRun={run} />);
+  const rows = screen.getAllByRole("row");
+  expect(within(rows[1]).getByText("新着")).toBeTruthy();
+  expect(within(rows[2]).queryByText("新着")).toBeNull();
+  expect(screen.getByTestId("run-line").textContent).toContain("新着 1 番組");
 });
 
 test("the target's own thread is marked in the list and previews her body", () => {
