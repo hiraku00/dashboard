@@ -121,8 +121,12 @@ class Uploader:
             return json.loads(response.read().decode("utf-8"))
 
     # ---------- 1回の同期 ----------
-    def start(self, client_run_id: str, client_version: str) -> str:
-        return self.post("/api/openchat/sync", {"action": "start", "clientRunId": client_run_id, "clientVersion": client_version})["runId"]
+    def start(self, client_run_id: str, client_version: str, started_at: str | None = None) -> str:
+        """started_at: 読み取りを始めた時刻(UTC, ISO)。送信が遅れても、画面に「いつ取得したか」を正しく出すため。"""
+        body = {"action": "start", "clientRunId": client_run_id, "clientVersion": client_version}
+        if started_at:
+            body["startedAt"] = started_at
+        return self.post("/api/openchat/sync", body)["runId"]
 
     def send_notes(self, client_run_id: str, notes: list[dict]) -> list[str]:
         """変更のあったノートを送る. 全コメントを送り終えたノートのIDを返す(台帳の pending_upload を下ろす対象)."""

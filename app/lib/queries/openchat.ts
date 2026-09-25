@@ -20,7 +20,7 @@ export async function listPrograms(query: ProgramsQuery = {}): Promise<ProgramsP
     env.DB.prepare(`SELECT COUNT(*) AS c FROM openchat_notes n ${where}`).bind(...values).first<{ c: number }>(),
     env.DB.prepare(
       `SELECT n.id, n.author_name, n.author_is_target, n.program_title, n.link_title, n.link_url, n.body_text,
-              n.posted_at, n.posted_at_precision, n.comment_count, n.last_checked_at
+              n.posted_at, n.posted_at_precision, n.comment_count, n.last_checked_at, n.needs_recheck, n.body_complete
          FROM openchat_notes n ${where} ${PROGRAMS_ORDER_BY} LIMIT ? OFFSET ?`,
     ).bind(...values, limit, offset).all<Record<string, unknown>>(),
   ]);
@@ -71,7 +71,7 @@ export async function getProgram(id: string): Promise<Program | null> {
   await ensureSchema({ seed: false });
   const note = (await env.DB.prepare(
     `SELECT n.id, n.author_name, n.author_is_target, n.program_title, n.link_title, n.link_url, n.body_text,
-            n.posted_at, n.posted_at_precision, n.comment_count, n.last_checked_at
+            n.posted_at, n.posted_at_precision, n.comment_count, n.last_checked_at, n.needs_recheck, n.body_complete
        FROM openchat_notes n
       WHERE n.id = ? AND n.room = ? AND n.deleted_at IS NULL AND (n.author_is_target = 1 OR n.target_comment_count > 0)`,
   ).bind(id, ROOM).first<Record<string, unknown>>());
@@ -81,7 +81,7 @@ export async function getProgram(id: string): Promise<Program | null> {
 
 export type LatestRun = {
   status: string; startedAt: string; completedAt: string | null; notesScanned: number; notesOpened: number;
-  commentsNew: number; targetCommentsNew: number; warningCount: number;
+  commentsNew: number; targetCommentsNew: number; warningCount: number; warnings: string[];
 };
 
 export async function latestOpenchatRun(): Promise<LatestRun | null> {
@@ -90,12 +90,13 @@ export async function latestOpenchatRun(): Promise<LatestRun | null> {
     "SELECT status, started_at, completed_at, notes_scanned, notes_opened, comments_new, target_comments_new, warnings_json FROM openchat_sync_runs ORDER BY started_at DESC LIMIT 1",
   ).all<Record<string, unknown>>()).results?.[0];
   if (!row) return null;
-  let warningCount = 0;
-  try { warningCount = (JSON.parse(String(row.warnings_json ?? "[]")) as unknown[]).length; } catch { /* 壊れていても件数0として扱う */ }
+  let warnings: string[] = [];
+  try { warnings = (JSON.parse(String(row.warnings_json ?? "[]")) as unknown[]).map((w) => String(w).slice(0, 300)).slice(0, 50); } catch { /* 壊れていても件数0として扱う */ }
+  const warningCount = warnings.length;
   return {
     status: String(row.status), startedAt: String(row.started_at), completedAt: row.completed_at ? String(row.completed_at) : null,
     notesScanned: Number(row.notes_scanned ?? 0), notesOpened: Number(row.notes_opened ?? 0),
-    commentsNew: Number(row.comments_new ?? 0), targetCommentsNew: Number(row.target_comments_new ?? 0), warningCount,
+    commentsNew: Number(row.comments_new ?? 0), targetCommentsNew: Number(row.target_comments_new ?? 0), warningCount, warnings,
   };
 }
 

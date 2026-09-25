@@ -271,7 +271,7 @@ h1,h2,h3 { color:var(--ink); } h1 { margin:0; font-size:30px; line-height:1.1; l
 .chikirin-text.is-clamped { display:-webkit-box; -webkit-line-clamp:7; -webkit-box-orient:vertical; overflow:hidden; }
 .chikirin-toggle { justify-self:start; border:0; background:none; padding:2px 0; color:var(--blue-strong); font-size:12.5px; font-weight:700; }
 .chikirin-more { display:flex; justify-content:center; padding:10px 24px 22px; }.chikirin-more button { border:1px solid var(--line-strong); border-radius:10px; padding:9px 22px; background:var(--raised); }
-.chikirin-table { min-width:1180px; }
+.chikirin-table { min-width:1260px; }
 .chikirin-table th, .chikirin-table td { padding-left:10px; padding-right:10px; }
 .chikirin-table .col-kind { width:96px; }.chikirin-table .col-broadcaster { width:92px; }.chikirin-table .col-episode { width:17%; }.chikirin-table .col-owner { width:100px; }
 .chikirin-table .col-posted { width:112px; }.chikirin-table .col-count { width:64px; }.chikirin-table .col-links { width:130px; }.chikirin-table .col-action { width:64px; }
@@ -281,6 +281,13 @@ h1,h2,h3 { color:var(--ink); } h1 { margin:0; font-size:30px; line-height:1.1; l
 .chikirin-table .broadcaster-cell, .chikirin-table .episode-cell, .chikirin-table .owner-cell { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:14px; }
 .chikirin-table .date-cell { font-size:13px; white-space:nowrap; }
 .editor .link-row { grid-template-columns:minmax(0,3fr) minmax(0,2fr) 32px; }
+.chikirin-tz { color:var(--faint); }
+.chikirin-warnings { display:inline-block; margin-left:10px; }.chikirin-warnings summary { cursor:pointer; color:#b45309; font-weight:700; }.chikirin-warnings ul { margin:6px 0 0; padding-left:18px; color:var(--ink); }
+.chikirin-table .head-2 { display:inline-block; line-height:1.25; }
+.chikirin-table .col-status { width:76px; }
+.chikirin-issue { display:inline-block; border-radius:999px; padding:2px 10px; background:rgba(245,158,11,.16); color:#b45309; font-size:12px; font-weight:700; cursor:help; }
+.chikirin-issue-box { border-left:3px solid #f59e0b; border-radius:0 10px 10px 0; padding:10px 14px; background:rgba(245,158,11,.1); font-size:13.5px; }.chikirin-issue-box ul { margin:4px 0 0; padding-left:18px; }
+.chikirin-meta-edit { display:grid; gap:6px; border:1px solid var(--line); border-radius:12px; padding:12px 16px 14px; background:var(--surface-solid); }.chikirin-meta-edit h3 { margin:0; font-size:14px; }
 .chikirin-editor-note { margin:0 0 10px; color:var(--muted); font-size:13px; overflow-wrap:anywhere; }
 .chikirin-row-title { display:block; overflow:hidden; color:var(--ink); font-size:15px; font-weight:700; line-height:1.35; text-decoration:none; text-overflow:ellipsis; white-space:nowrap; }
 .chikirin-row-title:hover, .chikirin-row-title:focus-visible { color:var(--blue-strong); text-decoration:underline; }

@@ -68,6 +68,8 @@ export type Program = {
   latestAt: string; latestPrecision: string;
   /** 人が編集した情報(放送局・その日の放送タイトル・リンク)。未編集なら空。 */
   meta: Meta;
+  /** 取得の状態。要確認(コメント件数が合わず再確認待ち)・本文が途中の可能性。どちらでもなければ空。 */
+  issues: string[];
   commentCount: number; lastCheckedAt: string;
 };
 
@@ -91,9 +93,17 @@ function buildProgram(note: Record<string, unknown>, targetComments: Array<Recor
     targetComments: targetComments
       .filter((c) => Number(c.is_target ?? 1) === 1)
       .map((c) => ({ id: String(c.id), bodyText: String(c.body_text ?? ""), postedAt: String(c.posted_at), precision: String(c.posted_at_precision) })),
-    latestAt: "", latestPrecision: "", meta: metaFromRow(note.meta_row as Record<string, unknown> | undefined),
+    latestAt: "", latestPrecision: "", issues: programIssues(note), meta: metaFromRow(note.meta_row as Record<string, unknown> | undefined),
     commentCount: Number(note.comment_count ?? 0), lastCheckedAt: String(note.last_checked_at ?? ""),
   };
+}
+
+/** 取得の状態: 画面で気づけるように、要確認の理由を文にする(collector が警告に出したものと同じ内容)。 */
+export function programIssues(note: Record<string, unknown>): string[] {
+  const issues: string[] = [];
+  if (Number(note.needs_recheck) === 1) issues.push("コメントの件数が表示と合わず、再確認待ちです（次回の同期でやり直します）。");
+  if (note.body_complete !== undefined && Number(note.body_complete) !== 1) issues.push("本文が途中までしか読めていない可能性があります（「もっと見る」を開けませんでした）。");
+  return issues;
 }
 
 /** 「約」を付けるべき時刻か。 */

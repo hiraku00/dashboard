@@ -1,10 +1,10 @@
 "use client";
 
-import { useCallback, useState, type FormEvent } from "react";
+import { useCallback, useState } from "react";
 import Link from "next/link";
 import { PortalHeader } from "./portal-nav";
 import { readErrorMessage, readJson } from "./lib/json";
-import { MAX_BROADCASTER, MAX_EPISODE_TITLE, MAX_LINKS, MAX_LINK_LABEL, type Meta } from "./lib/openchat-meta.ts";
+import { MetaForm } from "./chikirin-meta-form";
 import { formatPostedAt, type Program, type ProgramKind } from "./lib/openchat-query.ts";
 import { MAX_LIKE_TERM_BYTES, truncateUtf8Bytes, utf8ByteLength } from "./lib/sql-text.ts";
 import { useLatestRequest } from "./lib/use-latest-request";
@@ -13,18 +13,18 @@ import { useSearchReload } from "./lib/use-search-reload";
 export type ProgramsPage = { programs: Program[]; total: number; page: number; pageSize: number };
 export type RunSummary = {
   status: string; startedAt: string; completedAt: string | null; notesScanned: number; notesOpened: number;
-  commentsNew: number; targetCommentsNew: number; warningCount: number;
+  commentsNew: number; targetCommentsNew: number; warningCount: number; warnings?: string[];
 } | null;
 
 const kindLabel: Record<ProgramKind, string> = { all: "すべて", thread: "ちきりんのスレッド", comment: "ちきりんのコメント" };
 const runStatusLabel: Record<string, string> = { success: "成功", partial: "一部に警告あり", failed: "失敗", aborted: "中断", started: "実行中" };
 
+/** 最後の取得: collector が読み取りを始めた時刻(送信が遅れても、取得の時刻)。日時はすべて日本時間(JST)。 */
 function runLine(run: RunSummary) {
   if (!run) return "まだ同期されていません。Macで collector/line_openchat の同期を実行してください。";
-  const stamp = new Date(run.completedAt ?? run.startedAt);
+  const stamp = new Date(run.startedAt);
   const when = Number.isNaN(stamp.getTime()) ? "" : formatPostedAt(stamp.toISOString().replace(/\.\d+Z$/, "Z"), "exact");
-  const warn = run.warningCount ? `・警告 ${run.warningCount} 件` : "";
-  return `最後の同期: ${when}（${runStatusLabel[run.status] ?? run.status}）・新しいちきりんのコメント ${run.targetCommentsNew} 件${warn}`;
+  return `最後の取得: ${when} JST（${runStatusLabel[run.status] ?? run.status}）・新しいちきりんのコメント ${run.targetCommentsNew} 件`;
 }
 
 /** 一覧の1行に出す、内容の抜粋(1行)。ちきりんのスレッドは本文、コメントは最初のコメント。 */
@@ -47,46 +47,13 @@ function listLinks(program: Program) {
   return links;
 }
 
-/** 放送局・その日の放送タイトル・リンクの編集。collector の同期データとは別に保存される。 */
+/** 一覧の「編集」で開くダイアログ。 */
 function MetaEditor({ program, onClose, onSaved }: { program: Program; onClose: () => void; onSaved: (program: Program) => void }) {
-  const [draft, setDraft] = useState<Meta>({ broadcaster: program.meta.broadcaster, episodeTitle: program.meta.episodeTitle, links: program.meta.links.map((l) => ({ ...l })) });
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
-  const setLink = (index: number, patch: Partial<Meta["links"][number]>) => setDraft({ ...draft, links: draft.links.map((l, i) => (i === index ? { ...l, ...patch } : l)) });
-  const save = async (event: FormEvent) => {
-    event.preventDefault();
-    setSaving(true);
-    setError("");
-    try {
-      const response = await fetch(`/api/openchat/programs/${encodeURIComponent(program.noteId)}`, {
-        method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(draft),
-      });
-      if (!response.ok) throw new Error(await readErrorMessage(response, "保存できませんでした。"));
-      onSaved((await readJson<{ program: Program }>(response)).program);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "保存できませんでした。");
-      setSaving(false);
-    }
-  };
   return <div className="modal-backdrop" role="presentation" onClick={onClose}>
     <section className="editor" role="dialog" aria-modal="true" aria-labelledby="chikirin-editor-title" onClick={(event) => event.stopPropagation()}>
-      <form onSubmit={save}>
-        <div className="editor-heading"><div><p className="app-kicker">EDIT</p><h2 id="chikirin-editor-title">放送情報を編集</h2></div><button type="button" className="icon-button" onClick={onClose} aria-label="閉じる">×</button></div>
-        <p className="chikirin-editor-note">スレッド: {program.programTitle || "（題名なし）"}</p>
-        {error && <p className="notice" role="alert">{error}</p>}
-        <div className="form-grid">
-          <label>放送局<input value={draft.broadcaster} maxLength={MAX_BROADCASTER} onChange={(event) => setDraft({ ...draft, broadcaster: event.target.value })} placeholder="例：NHK BS、テレビ東京" /></label>
-          <label>その日の放送タイトル<input value={draft.episodeTitle} maxLength={MAX_EPISODE_TITLE} onChange={(event) => setDraft({ ...draft, episodeTitle: event.target.value })} placeholder="例：BSスペシャル 禁じられる物語" /></label>
-        </div>
-        <div className="links-editor"><div><span>リンク</span><button type="button" disabled={draft.links.length >= MAX_LINKS} onClick={() => setDraft({ ...draft, links: [...draft.links, { url: "", label: "" }] })}>＋ リンクを追加</button></div>
-          {draft.links.map((link, index) => <div className="link-row" key={index}>
-            <input type="url" value={link.url} onChange={(event) => setLink(index, { url: event.target.value })} placeholder="https://" aria-label={`リンク${index + 1}のURL`} />
-            <input value={link.label} maxLength={MAX_LINK_LABEL} onChange={(event) => setLink(index, { label: event.target.value })} placeholder="表示名（省略可）" aria-label={`リンク${index + 1}の表示名`} />
-            <button type="button" aria-label={`リンク${index + 1}を削除`} onClick={() => setDraft({ ...draft, links: draft.links.filter((_, i) => i !== index) })}>×</button>
-          </div>)}
-        </div>
-        <div className="editor-actions"><button type="button" className="cancel-button" onClick={onClose}>キャンセル</button><button className="save-button" disabled={saving}>{saving ? "保存中…" : "保存"}</button></div>
-      </form>
+      <div className="editor-heading"><div><p className="app-kicker">EDIT</p><h2 id="chikirin-editor-title">放送情報を編集</h2></div><button type="button" className="icon-button" onClick={onClose} aria-label="閉じる">×</button></div>
+      <p className="chikirin-editor-note">スレッド: {program.programTitle || "（題名なし）"}</p>
+      <MetaForm program={program} onSaved={onSaved} onCancel={onClose} />
     </section>
   </div>;
 }
@@ -145,9 +112,9 @@ export function ChikirinApp({ initialPage = null, initialRun = null }: { initial
     <section className="library-panel" aria-labelledby="chikirin-title">
       <div className="library-heading">
         <h2 id="chikirin-title">番組ごとのちきりん</h2>
-        <span className="result-count">{loading ? "読み込み中" : `${total} 件中 ${from}–${to}`}</span>
+        <span className="result-count">{loading ? "読み込み中" : `${total} 件中 ${from}–${to}`}<small className="chikirin-tz"> ・日時は日本時間(JST)</small></span>
       </div>
-      <p className="chikirin-run" data-testid="run-line">{runLine(initialRun)}</p>
+      <div className="chikirin-run" data-testid="run-line">{runLine(initialRun)}{initialRun && initialRun.warningCount > 0 && <details className="chikirin-warnings"><summary>警告 {initialRun.warningCount} 件</summary><ul>{(initialRun.warnings ?? []).map((w, i) => <li key={i}>{w}</li>)}</ul></details>}</div>
       <div className="filters chikirin-filters">
         <label className="search"><span aria-hidden="true">⌕</span>
           <input value={query} onChange={(event) => { setPage(1); setQuery(truncateUtf8Bytes(event.target.value, MAX_LIKE_TERM_BYTES)); }}
@@ -161,10 +128,10 @@ export function ChikirinApp({ initialPage = null, initialRun = null }: { initial
       {!loading && programs.length === 0 && <div className="empty-state"><strong>該当する番組はありません。</strong><p>{initialRun || query || kind !== "all" ? "条件を変えてみてください。" : "同期が終わるとここに表示されます。"}</p></div>}
       {programs.length > 0 && <div className={loading ? "table-scroll is-loading" : "table-scroll"} aria-busy={loading}>
         <table className="content-table chikirin-table">
-          <colgroup><col className="col-kind" /><col className="col-broadcaster" /><col className="col-episode" /><col className="col-program" /><col className="col-owner" /><col className="col-posted" /><col className="col-count" /><col className="col-count" /><col className="col-posted" /><col className="col-links" /><col className="col-action" /></colgroup>
+          <colgroup><col className="col-kind" /><col className="col-broadcaster" /><col className="col-episode" /><col className="col-program" /><col className="col-owner" /><col className="col-posted" /><col className="col-count" /><col className="col-count" /><col className="col-posted" /><col className="col-status" /><col className="col-links" /><col className="col-action" /></colgroup>
           <thead><tr>
             <th scope="col" className="kind-head">種別</th><th scope="col">放送局</th><th scope="col">放送タイトル</th><th scope="col" title="LINEのスレッドの1行目">スレッド</th><th scope="col">スレ主</th><th scope="col">投稿</th>
-            <th scope="col" className="num" title="ノート全体のコメント数">コメ</th><th scope="col" className="num" title="ちきりんのコメント数">ちきりん</th><th scope="col" title="ちきりんの最新の投稿">最新</th><th scope="col">リンク</th><th scope="col"><span className="sr-only">編集</span></th>
+            <th scope="col" className="num" title="ノート全体のコメント数"><span className="head-2">コメント<br />全体</span></th><th scope="col" className="num" title="ちきりんが書いたコメントの数"><span className="head-2">コメント<br />ちきりん</span></th><th scope="col" title="ちきりんの最新の投稿の日時"><span className="head-2">最新<br />ちきりん</span></th><th scope="col">状態</th><th scope="col">リンク</th><th scope="col"><span className="sr-only">編集</span></th>
           </tr></thead>
           <tbody>{programs.map((program) => {
             const links = listLinks(program);
@@ -178,6 +145,7 @@ export function ChikirinApp({ initialPage = null, initialRun = null }: { initial
               <td className="num-cell">{program.commentCount}</td>
               <td className="num-cell">{program.targetComments.length}</td>
               <td className="date-cell">{program.latestAt ? <time dateTime={program.latestAt}>{formatPostedAt(program.latestAt, program.latestPrecision)}</time> : <span className="empty-cell">—</span>}</td>
+              <td className="status-cell">{program.issues.length > 0 ? <span className="chikirin-issue" title={program.issues.join("\n")}>要確認</span> : <span className="empty-cell" title="取得に問題はありません">OK</span>}</td>
               <td className="links-cell">{links.length > 0 ? <div className="item-links" aria-label={`${program.programTitle} のリンク`}>{links.slice(0, 2).map((l) => <a key={l.url} href={l.url} target="_blank" rel="noreferrer" title={l.url}>{l.text} ↗</a>)}{links.length > 2 && <span className="empty-cell">+{links.length - 2}</span>}</div> : <span className="empty-cell">—</span>}</td>
               <td className="action-cell"><button type="button" className="icon-button" onClick={() => setEditing(program)} aria-label={`${program.programTitle} の放送情報を編集`}>編集</button></td>
             </tr>;

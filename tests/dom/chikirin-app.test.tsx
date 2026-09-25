@@ -23,6 +23,7 @@ afterEach(() => {
 const program = (over: Record<string, unknown> = {}) => ({
   noteId: "n1", programTitle: "8/23放送 NHKスペシャル 地球超解析", linkTitle: "地球超解析 NHKオンデマンド", linkUrl: "https://www.nhk-ondemand.jp/x",
   latestAt: "2026-09-21T09:00:00Z", latestPrecision: "approx_hour", meta: { broadcaster: "NHK BS", episodeTitle: "地球超解析", links: [{ url: "https://example.test/ep", label: "番組ページ" }] },
+  issues: [],
   noteAuthor: "参加者B", noteByTarget: false, notePostedAt: "2026-09-21T06:47:00Z", notePrecision: "exact", targetBody: null, noteBody: "8/23放送のNHKスペシャルです。海の環境を扱った回でした。",
   targetComments: [
     { id: "c1", bodyText: "私もこれ観ました。海の環境への影響が大きいと思いました。", postedAt: "2026-09-21T07:15:00Z", precision: "exact" },
@@ -36,7 +37,7 @@ const json = (body: unknown, status = 200) => new Response(JSON.stringify(body),
 
 test("the list is a table: kind, broadcaster, episode title, thread, poster, times, counts, links and an edit button", () => {
   render(<ChikirinApp initialPage={page([program()])} initialRun={null} />);
-  expect(screen.getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["種別", "放送局", "放送タイトル", "スレッド", "スレ主", "投稿", "コメ", "ちきりん", "最新", "リンク", "編集"]);
+  expect(screen.getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["種別", "放送局", "放送タイトル", "スレッド", "スレ主", "投稿", "コメント全体", "コメントちきりん", "最新ちきりん", "状態", "リンク", "編集"]);
   const row = screen.getAllByRole("row")[1];
   const cells = within(row).getAllByRole("cell").map((c) => c.textContent ?? "");
   expect(cells[0]).toBe("コメント");
@@ -49,9 +50,24 @@ test("the list is a table: kind, broadcaster, episode title, thread, poster, tim
   expect(cells[6]).toBe("8");
   expect(cells[7]).toBe("2");
   expect(cells[8]).toBe("約26/09/21 18:00");
+  expect(cells[9]).toBe("OK");
   expect(within(row).getByRole("link", { name: /8\/23放送/ }).getAttribute("href")).toBe("/chikirin/n1");
   expect(within(row).getByRole("link", { name: /番組ページ/ }).getAttribute("href")).toBe("https://example.test/ep");
   expect(screen.queryByLabelText("ちきりんのコメント")).toBeNull();   // 一覧には全文を出さない
+});
+
+test("a row with a problem shows 要確認 with the reason, so it can be found in the list", () => {
+  const bad = program({ issues: ["コメントの件数が表示と合わず、再確認待ちです（次回の同期でやり直します）。"] });
+  render(<ChikirinApp initialPage={page([bad, program({ noteId: "n2" })])} initialRun={null} />);
+  const cells = within(screen.getAllByRole("row")[1]).getAllByRole("cell");
+  expect(cells[9].textContent).toBe("要確認");
+  expect(within(cells[9]).getByText("要確認").getAttribute("title")).toContain("再確認待ち");
+  expect(within(screen.getAllByRole("row")[2]).getAllByRole("cell")[9].textContent).toBe("OK");
+});
+
+test("the times are labelled as Japan time", () => {
+  render(<ChikirinApp initialPage={page([program()])} initialRun={null} />);
+  expect(screen.getByText(/日時は日本時間\(JST\)/)).toBeTruthy();
 });
 
 test("unedited rows show a dash for broadcaster and episode title", () => {
@@ -199,9 +215,16 @@ test("a failed request shows a message and keeps the list", async () => {
 });
 
 test("shows when the last sync ran and how it ended", () => {
-  render(<ChikirinApp initialPage={page([])} initialRun={{ status: "partial", startedAt: "2026-09-24T03:00:00Z", completedAt: "2026-09-24T03:10:00Z", notesScanned: 30, notesOpened: 3, commentsNew: 9, targetCommentsNew: 2, warningCount: 1 }} />);
+  render(<ChikirinApp initialPage={page([])} initialRun={{ status: "partial", startedAt: "2026-09-24T03:00:00Z", completedAt: "2026-09-24T03:10:00Z", notesScanned: 30, notesOpened: 3, commentsNew: 9, targetCommentsNew: 2, warningCount: 1, warnings: ["本文を開けませんでした: 対象のノート"] }} />);
   const line = screen.getByTestId("run-line").textContent ?? "";
-  expect(line).toContain("26/09/24 12:10");
+  expect(line).toContain("26/09/24 12:00");
   expect(line).toContain("一部に警告あり");
-  expect(line).toContain("警告 1 件");
+  expect(line).toContain("最後の取得");
+  expect(line).toContain("JST");
+});
+
+test("the sync warnings are listed with what they are about", () => {
+  render(<ChikirinApp initialPage={page([])} initialRun={{ status: "partial", startedAt: "2026-09-24T03:00:00Z", completedAt: "2026-09-24T03:10:00Z", notesScanned: 30, notesOpened: 3, commentsNew: 9, targetCommentsNew: 2, warningCount: 1, warnings: ["本文を開けませんでした: 対象のノート"] }} />);
+  expect(screen.getByText("警告 1 件")).toBeTruthy();
+  expect(screen.getByText("本文を開けませんでした: 対象のノート")).toBeTruthy();
 });
