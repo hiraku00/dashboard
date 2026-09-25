@@ -330,6 +330,8 @@ class Session:
                 if s > best_s:
                     best, best_s = g, s
             label = self._label(note)
+            if best is not None:
+                self._adopt_full_body(note, best.note)
             if best is None:
                 self.stats.warnings.append(f"{label}: 撮影した画像の中にノートが見つかりませんでした")
                 note["needs_recheck"] = True
@@ -368,6 +370,7 @@ class Session:
             if existing is None and self._reached_old({"posted_at": obs.posted_at}) and not self.opts.first_run:
                 continue
             note, is_new = self.ledger.upsert_note(obs, self.now_iso)
+            self._adopt_full_body(note, g.note)
             shown = g.note.comments
             observed = [c for c in (comment_obs(b, self.now) for b in g.comments) if c is not None]
             label = self._label(note)
@@ -381,6 +384,18 @@ class Session:
                 note["pending_upload"] = True
                 self.stats.warnings.append(f"{label}: 走査で見えず、撮影でも件数が合わないため、次回に確認します(表示{shown} / 取得{len(observed)})")
             self.opts.checkpoint()
+
+    def _adopt_full_body(self, note: dict, block: Block) -> None:
+        """撮影した画像で本文が最後まで読めている(「もっと見る」が残っていない)なら、その本文を採る.
+        走査の途中で「本文を開けませんでした」と警告したノートも、ここで全文が取れていれば、その警告は取り下げる。"""
+        if block.more_y is not None:
+            return
+        obs = note_obs(block, self.now)
+        if obs is None:
+            return
+        stale = f"本文を開けませんでした: {self._label(note)}"      # 上書きで番組名が変わる前の名前で探す
+        self.ledger.upsert_note(obs, self.now_iso)
+        self.stats.warnings[:] = [w for w in self.stats.warnings if w != stale]
 
     @staticmethod
     def _label(note: dict) -> str:

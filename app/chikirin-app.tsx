@@ -33,17 +33,26 @@ function isNew(program: Program, run: RunSummary) {
   return !Number.isNaN(seen) && !Number.isNaN(started) && seen >= started;
 }
 
-/** 一覧の1行に出す、内容の抜粋(1行)。ちきりんのスレッドは本文、コメントは最初のコメント。 */
-function preview(program: Program) {
-  const text = program.targetBody ?? program.targetComments[0]?.bodyText ?? "";
-  const line = text.replace(/\s+/g, " ").trim();
-  return line.length > 90 ? `${line.slice(0, 90)}…` : line;
+/** 一覧のタイトル欄の2行: 1行目=タイトル(編集した放送タイトル。未編集ならスレッドの1行目)、2行目=スレッドの冒頭。
+ *  未編集のときは、1行目と同じ文が2行目の頭に来ないよう、スレッドの1行目を除く。 */
+export function titleLines(program: Program): { title: string; head: string } {
+  const title = program.meta.episodeTitle || program.programTitle || "（題名なし）";
+  const lines = program.noteBody.split("\n").map((l) => l.trim()).filter(Boolean);
+  const rest = program.meta.episodeTitle ? lines : lines.slice(1);
+  const head = rest.join(" ").replace(/\s+/g, " ");
+  return { title, head: head.length > 140 ? `${head.slice(0, 140)}…` : head };
 }
 
-/** リンクの表示名: ラベルがあればそれ、なければドメイン。 */
+/** よく出るサイトの表示名。ドメインのままだと何のサイトか分かりにくいものだけ。 */
+const SITE_NAMES: Record<string, string> = { "web.nhk": "NHK ONE" };
+
+/** リンクの表示名: ラベルがあればそれ、なければサイト名(NHKのWebは「NHK ONE」)、なければドメイン。 */
 export function linkText(url: string, label: string) {
   if (label) return label;
-  try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return url; }
+  try {
+    const host = new URL(url).hostname.replace(/^www\./, "");
+    return SITE_NAMES[host] ?? host;
+  } catch { return url; }
 }
 
 /** 一覧のリンク列に出すリンク: 編集したリンク + ノートのリンクカード。 */
@@ -122,9 +131,9 @@ export function ChikirinApp({ initialPage = null, initialRun = null }: { initial
       {!loading && programs.length === 0 && <div className="empty-state"><strong>該当する番組はありません。</strong><p>{initialRun || query || kind !== "all" ? "条件を変えてみてください。" : "同期が終わるとここに表示されます。"}</p></div>}
       {programs.length > 0 && <div className={loading ? "table-scroll is-loading" : "table-scroll"} aria-busy={loading}>
         <table className="content-table chikirin-table">
-          <colgroup><col className="col-kind" /><col className="col-broadcaster" /><col className="col-episode" /><col className="col-program" /><col className="col-owner" /><col className="col-posted" /><col className="col-count" /><col className="col-count" /><col className="col-posted" /><col className="col-status" /><col className="col-links" /></colgroup>
+          <colgroup><col className="col-kind" /><col className="col-broadcaster" /><col className="col-program" /><col className="col-owner" /><col className="col-posted" /><col className="col-count" /><col className="col-count" /><col className="col-posted" /><col className="col-status" /><col className="col-links" /></colgroup>
           <thead><tr>
-            <th scope="col" className="kind-head">種別</th><th scope="col">放送局</th><th scope="col">放送タイトル</th><th scope="col" title="LINEのスレッドの1行目">スレッド</th><th scope="col">スレ主</th><th scope="col">投稿</th>
+            <th scope="col" className="kind-head">種別</th><th scope="col">放送局</th><th scope="col">タイトル</th><th scope="col">スレ主</th><th scope="col">投稿</th>
             <th scope="col" className="num" title="ノート全体のコメント数"><span className="head-2">コメント<br />全体</span></th><th scope="col" className="num" title="ちきりんが書いたコメントの数"><span className="head-2">コメント<br />ちきりん</span></th><th scope="col" title="ちきりんの最新の投稿の日時"><span className="head-2">最新<br />ちきりん</span></th><th scope="col" className="center">状態</th><th scope="col">リンク</th>
           </tr></thead>
           <tbody>{programs.map((program) => {
@@ -132,8 +141,10 @@ export function ChikirinApp({ initialPage = null, initialRun = null }: { initial
             return <tr key={program.noteId}>
               <td className="kind-cell"><span className={program.noteByTarget ? "chikirin-tag is-thread" : "chikirin-tag"}>{program.noteByTarget ? "スレッド" : "コメント"}</span></td>
               <td className="broadcaster-cell">{program.meta.broadcaster || <span className="empty-cell">—</span>}</td>
-              <td className="episode-cell">{program.meta.episodeTitle || <span className="empty-cell">—</span>}</td>
-              <td className="program-cell"><Link className="chikirin-row-title" href={`/chikirin/${encodeURIComponent(program.noteId)}`} prefetch={false} title={program.programTitle}>{isNew(program, initialRun) && <span className="chikirin-new" title="最後の取得で、ちきりんの新しい投稿が見つかりました">新着</span>}{program.programTitle || "（題名なし）"}</Link><p className="description" title={preview(program)}>{preview(program) || " "}</p></td>
+              <td className="program-cell">{(() => {
+                const { title, head } = titleLines(program);
+                return <><Link className="chikirin-row-title" href={`/chikirin/${encodeURIComponent(program.noteId)}`} prefetch={false} title={title}>{isNew(program, initialRun) && <span className="chikirin-new" title="最後の取得で、ちきりんの新しい投稿が見つかりました">新着</span>}{title}</Link><p className="description" title={head}>{head || " "}</p></>;
+              })()}</td>
               <td className="owner-cell">{program.noteByTarget ? "ちきりん" : program.noteAuthor}</td>
               <td className="date-cell"><time dateTime={program.notePostedAt}>{formatPostedAt(program.notePostedAt, program.notePrecision)}</time></td>
               <td className="num-cell">{program.commentCount}</td>

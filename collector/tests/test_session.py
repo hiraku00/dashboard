@@ -197,3 +197,24 @@ def test_unknown_counts_never_mark_comments_deleted_and_are_reread_next_time():
     assert stats2.notes_opened >= 4                          # 件数が分からないので、毎回開いて確かめる
     assert not any(c.get("deleted_at") for n in ledger2.notes for c in n["comments"])
     assert {c["id"] for n in ledger2.notes for c in n["comments"]} == ids     # 重複も増えない
+
+
+def test_a_body_warning_is_withdrawn_when_the_capture_reads_the_whole_body():
+    """走査の途中で「本文を開けませんでした」と警告したノートでも、撮影した画像で本文が最後まで読めていれば、警告を取り下げる(実機で、全文が取れているのに警告が残った)."""
+    from line_openchat.parse import Block
+    from line_openchat.session import note_obs
+    chat = SimChat([SimNote("参加者A", "9/16 番組の感想\n二行目です。", "昨日 午前 9:45", reactions=3)], jitter=False)
+    ledger = Ledger()
+    session = Session(SimDriver(chat), ledger, NOW, Options(first_run=True))
+    obs = note_obs(Block(kind="note", author="参加者A", time_raw="昨日 午前 9:45", y_top=0, y_time=0, complete=True, lines=[]), NOW)
+    note, _ = ledger.upsert_note(obs, "2026-09-24T12:00:00+09:00")
+    note["program_title"] = "9/16 番組の感想"
+    session.stats.warnings.append(f"本文を開けませんでした: {session._label(note)}")
+    session.stats.warnings.append("別の警告")
+    full = Block(kind="note", author="参加者A", time_raw="昨日 午前 9:45", y_top=0, y_time=0, complete=True, lines=[])
+    session._adopt_full_body(note, full)
+    assert session.stats.warnings == ["別の警告"]
+    partial = Block(kind="note", author="参加者A", time_raw="昨日 午前 9:45", y_top=0, y_time=0, complete=True, lines=[], more_y=100.0)
+    session.stats.warnings.append(f"本文を開けませんでした: {session._label(note)}")
+    session._adopt_full_body(note, partial)                      # 「もっと見る」が残っていれば、取り下げない
+    assert len(session.stats.warnings) == 2
