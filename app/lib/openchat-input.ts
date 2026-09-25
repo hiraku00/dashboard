@@ -155,3 +155,12 @@ export function normalizeComplete(raw: Record<string, unknown>): Normalized<Comp
     },
   };
 }
+
+/** collector が読み取りを始めた時刻。送信(=同期の完了)が遅れても、「いつ取得したか」を正しく残す。
+ *  形式が不正・未来(5分超)・7日より古い場合は、受け取った時刻(now)を使う。 */
+export function normalizeStartedAt(value: unknown, now: Date): string {
+  if (typeof value !== "string" || !ISO_UTC_RE.test(value)) return now.toISOString();
+  const t = Date.parse(value);
+  if (Number.isNaN(t) || t > now.getTime() + 5 * 60_000 || t < now.getTime() - 7 * 86_400_000) return now.toISOString();
+  return new Date(t).toISOString();
+}

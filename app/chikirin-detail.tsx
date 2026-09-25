@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { PortalHeader } from "./portal-nav";
 import { Body } from "./chikirin-body";
+import { MetaForm } from "./chikirin-meta-form";
 import { readErrorMessage, readJson } from "./lib/json";
 import { formatPostedAt, type Program } from "./lib/openchat-query.ts";
 import { linkText } from "./chikirin-app";
@@ -43,12 +44,16 @@ export function ChikirinDetail({ id, initialProgram = null, initialError = "" }:
             <span>コメント {program.commentCount} 件</span>
             <span>ちきりんのコメント {program.targetComments.length} 件</span>
           </p>
-          {(program.meta.broadcaster || program.meta.episodeTitle) && <p className="chikirin-meta"><span>放送局: {program.meta.broadcaster || "—"}</span><span>放送タイトル: {program.meta.episodeTitle || "—"}</span></p>}
           {program.meta.links.length > 0 && <p className="chikirin-link">{program.meta.links.map((l) => <a key={l.url} href={l.url} target="_blank" rel="noreferrer">{linkText(l.url, l.label)} <span aria-hidden="true">↗</span></a>)}</p>}
           {(program.linkTitle || program.linkUrl) && <p className="chikirin-link">
             {program.linkUrl ? <a href={program.linkUrl} target="_blank" rel="noreferrer">{program.linkTitle || program.linkUrl} <span aria-hidden="true">↗</span></a> : program.linkTitle}
           </p>}
         </header>
+        {program.issues.length > 0 && <div className="chikirin-issue-box" role="status"><strong>要確認</strong><ul>{program.issues.map((issue) => <li key={issue}>{issue}</li>)}</ul></div>}
+        <section className="chikirin-meta-edit" aria-labelledby="chikirin-meta-title">
+          <h3 id="chikirin-meta-title">放送情報（編集）</h3>
+          <MetaForm key={JSON.stringify(program.meta)} program={program} onSaved={setProgram} />
+        </section>
         {program.noteBody && <section className={program.noteByTarget ? "chikirin-post is-thread" : "chikirin-post is-owner"} aria-label={program.noteByTarget ? "ちきりんのスレッド" : "スレッド主の投稿"}>
           <strong className="chikirin-badge">{program.noteByTarget ? "ちきりんのスレッド" : "スレッド主の投稿（番組の情報）"}</strong>
           <Body text={program.noteBody} full />

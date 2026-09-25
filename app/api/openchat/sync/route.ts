@@ -2,7 +2,7 @@ import { env } from "cloudflare:workers";
 import { ensureSchema } from "@/db";
 import { clean } from "@/app/lib/text";
 import { route } from "@/app/lib/route";
-import { normalizeComplete, normalizeNotesBatch, type NoteInput } from "@/app/lib/openchat-input";
+import { normalizeComplete, normalizeNotesBatch, normalizeStartedAt, type NoteInput } from "@/app/lib/openchat-input";
 
 // ちきりんオプチャの同期。collector/line_openchat/uploader.py が start → notes(何回か) → complete の
 // 順に呼ぶ(Manage Assetの /api/manage-asset/sync と同じ3段階)。
@@ -14,7 +14,7 @@ import { normalizeComplete, normalizeNotesBatch, type NoteInput } from "@/app/li
 // INSERT ... ON CONFLICT DO UPDATE する。通信のタイムアウト後の再送や、同じノートのコメントを
 // 複数リクエストに分けて送ることがある。
 
-type Body = { action?: unknown; clientRunId?: unknown; clientVersion?: unknown; notes?: unknown; status?: unknown; stats?: unknown; warnings?: unknown };
+type Body = { action?: unknown; clientRunId?: unknown; clientVersion?: unknown; startedAt?: unknown; notes?: unknown; status?: unknown; stats?: unknown; warnings?: unknown };
 
 const BATCH = 50;   // 1回のD1 batchに入れる文の数(manage-asset/sync と同じ)
 
@@ -57,7 +57,7 @@ export const POST = route(async (request: Request) => {
     const existing = (await env.DB.prepare("SELECT id FROM openchat_sync_runs WHERE client_run_id=?").bind(clientRunId).all<{ id: string }>()).results?.[0];
     if (existing) return Response.json({ runId: existing.id });
     const runId = crypto.randomUUID();
-    await env.DB.prepare("INSERT INTO openchat_sync_runs (id,client_run_id,client_version,started_at,status) VALUES (?,?,?,?,'started')").bind(runId, clientRunId, clean(body.clientVersion, 100), now).run();
+    await env.DB.prepare("INSERT INTO openchat_sync_runs (id,client_run_id,client_version,started_at,status) VALUES (?,?,?,?,'started')").bind(runId, clientRunId, clean(body.clientVersion, 100), normalizeStartedAt(body.startedAt, new Date(now))).run();
     return Response.json({ runId });
   }
 

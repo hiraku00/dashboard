@@ -8,7 +8,7 @@ from __future__ import annotations
 import fcntl
 import time
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
 
@@ -133,6 +133,7 @@ def run_sync(cfg: SyncConfig, *, log: Callable[[str], None] = lambda s: None,
         opts = Options(scan_days=cfg.scan_days, first_run=first_run, max_notes=cfg.max_notes, pause=pause,
                        checkpoint=lambda: ledger.save(ledger_path))
         started = time.time()
+        started_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")     # 読み取りを始めた時刻(送信が遅れても、取得の時刻として残す)
         session = Session(driver, ledger, when, opts, log=note)
         try:
             stats = session.run()
@@ -145,7 +146,7 @@ def run_sync(cfg: SyncConfig, *, log: Callable[[str], None] = lambda s: None,
         if uploader is not None:
             client_run_id = f"line-openchat-{when.strftime('%Y%m%dT%H%M%S%z')}"
             try:
-                uploader.start(client_run_id, VERSION)
+                uploader.start(client_run_id, VERSION, started_at=started_iso)
                 pending = ledger.pending_notes()
                 sent = set(uploader.send_notes(client_run_id, pending))
                 for n in pending:

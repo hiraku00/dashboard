@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import {
-  MAX_COMMENTS_PER_NOTE, MAX_NOTES_PER_REQUEST, normalizeComment, normalizeComplete, normalizeNote, normalizeNotesBatch, normalizeUtc,
+  MAX_COMMENTS_PER_NOTE, MAX_NOTES_PER_REQUEST, normalizeComment, normalizeComplete, normalizeNote, normalizeNotesBatch, normalizeStartedAt, normalizeUtc,
 } from "../app/lib/openchat-input.ts";
 
 const ID = "11111111-2222-3333-4444-555555555555";
@@ -97,5 +97,15 @@ describe("normalizeComplete", () => {
     const r = normalizeComplete({ status: "partial", stats: { notesScanned: 5, commentsNew: -3, targetCommentsNew: "x" }, warnings: ["a", "", 5] });
     expect(r.value).toMatchObject({ status: "partial", notesScanned: 5, commentsNew: 0, targetCommentsNew: 0, warnings: ["a"] });
     expect(normalizeComplete({ status: "started" }).error).toBeTruthy();
+  });
+});
+
+describe("normalizeStartedAt", () => {
+  const now = new Date("2026-09-25T10:00:00Z");
+  test("keeps a valid recent start time, so a late upload still shows when the data was read", () => {
+    expect(normalizeStartedAt("2026-09-24T23:30:42Z", now)).toBe("2026-09-24T23:30:42.000Z");
+  });
+  test("falls back to now for a bad, future or stale value", () => {
+    for (const bad of [undefined, null, 5, "yesterday", "2026-09-25T10:30:00Z", "2026-09-10T00:00:00Z", "2026-09-25T09:00:00+09:00"]) expect(normalizeStartedAt(bad, now)).toBe(now.toISOString());
   });
 });

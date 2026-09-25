@@ -191,6 +191,37 @@ describe("programs list", () => {
     expect((await programPut(new Request("http://x/", { method: "PUT", body: "not json" }), { params: Promise.resolve({ id: p.noteId }) })).status).toBe(400);
   });
 
+  test("a run keeps the time the collector started reading, even when the upload comes later", async () => {
+    const id = `run-${uid("r")}`;
+    const started = "2026-09-24T23:30:42Z";
+    const { response } = await sync({ action: "start", clientRunId: id, clientVersion: "test", startedAt: started });
+    expect(response.status).toBe(200);
+    const row = await env.DB.prepare("SELECT started_at FROM openchat_sync_runs WHERE client_run_id = ?").bind(id).first<{ started_at: string }>();
+    expect(row?.started_at).toBe("2026-09-24T23:30:42.000Z");
+    const bad = `run-${uid("r")}`;
+    await sync({ action: "start", clientRunId: bad, clientVersion: "test", startedAt: "2999-01-01T00:00:00Z" });      // 未来は受け付けず、受け取った時刻にする
+    const badRow = await env.DB.prepare("SELECT started_at FROM openchat_sync_runs WHERE client_run_id = ?").bind(bad).first<{ started_at: string }>();
+    expect(Date.parse(badRow!.started_at)).toBeLessThan(Date.now() + 60_000);
+  });
+
+  test("the latest run carries its warning messages, not only a count", async () => {
+    const id = `run-${uid("r")}`;
+    await sync({ action: "start", clientRunId: id, clientVersion: "test" });
+    await sync({ action: "complete", clientRunId: id, status: "partial", stats: {}, warnings: ["本文を開けませんでした: 対象のノート"] });
+    const latest = await latestOpenchatRun();
+    expect(latest?.warningCount).toBe(1);
+    expect(latest?.warnings).toEqual(["本文を開けませんでした: 対象のノート"]);
+  });
+
+  test("a program's issues say why it needs checking (recheck, incomplete body); a clean one has none", async () => {
+    const p = (await listPrograms({ q: "他人のノートに複数" })).programs[0];
+    expect(p.issues).toEqual(expect.arrayContaining([expect.stringContaining("本文が途中")]));   // note()の既定は body_complete=false
+    await env.DB.prepare("UPDATE openchat_notes SET needs_recheck = 1, body_complete = 0 WHERE id = ?").bind(p.noteId).run();
+    expect((await getProgram(p.noteId))?.issues).toHaveLength(2);
+    await env.DB.prepare("UPDATE openchat_notes SET needs_recheck = 0, body_complete = 1 WHERE id = ?").bind(p.noteId).run();
+    expect((await getProgram(p.noteId))?.issues).toEqual([]);
+  });
+
   test("the target's own thread shows her body and her comments on it", async () => {
     const p = (await listPrograms({ q: "本人スレッド" })).programs[0];
     expect(p.noteByTarget).toBe(true);

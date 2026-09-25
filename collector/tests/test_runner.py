@@ -2,6 +2,8 @@
 import json
 from datetime import datetime, timedelta, timezone
 
+import re
+
 import pytest
 
 from line_openchat.ledger import Ledger
@@ -15,7 +17,8 @@ class FakeUploader:
         self.calls = []
         self.sent = []
 
-    def start(self, client_run_id, version):
+    def start(self, client_run_id, version, started_at=None):
+        self.started_at = started_at
         self.calls.append("start")
         return "run-1"
 
@@ -43,6 +46,7 @@ def go(tmp_path, chat, **kw):
 def test_full_run_reads_uploads_and_saves_the_ledger(tmp_path):
     outcome, up, progress = go(tmp_path, build(jitter=False))
     assert outcome.status == "success" and outcome.uploaded
+    assert re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z", up.started_at)        # 読み取りを始めた時刻を送る
     assert up.calls[:2] == ["fetch", "start"] and up.calls[-1][0] == "complete" and up.calls[-1][1] == "success"
     assert up.calls[-1][2]["notesScanned"] == 6
     ledger = Ledger.load(tmp_path / "ledger.json")
