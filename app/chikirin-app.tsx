@@ -52,11 +52,9 @@ export function displayBroadcaster(program: Program): string {
   return program.meta.broadcaster || inferBroadcaster([...program.meta.links.map((l) => l.url), program.linkUrl].filter(Boolean));
 }
 
-/** 一覧のリンク列に出すリンク: 編集したリンク + ノートのリンクカード。 */
+/** 一覧のリンク列に出すリンク: 放送情報で編集したリンクだけ(ノートの生のリンクカードは、詳細でも編集・削除できないため出さない)。 */
 function listLinks(program: Program) {
-  const links = program.meta.links.map((l) => ({ url: l.url, text: linkText(l.url, l.label) }));
-  if (program.linkUrl && !links.some((l) => l.url === program.linkUrl)) links.push({ url: program.linkUrl, text: linkText(program.linkUrl, "") });
-  return links;
+  return program.meta.links.map((l) => ({ url: l.url, text: linkText(l.url, l.label) }));
 }
 
 export function ChikirinApp({ initialPage = null, initialRun = null }: { initialPage?: ProgramsPage | null; initialRun?: RunSummary } = {}) {
