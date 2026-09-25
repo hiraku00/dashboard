@@ -26,7 +26,9 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="ちきりんオプチャの同期")
     ap.add_argument("portal_url", nargs="?", default=os.environ.get("PORTAL_URL", ""), help="PortalのURL(省略時は環境変数 PORTAL_URL)")
     ap.add_argument("--dry-run", action="store_true", help="Portalへ送らない")
-    ap.add_argument("--first-run", action="store_true", help="一覧の最後まで全件を読む")
+    ap.add_argument("--first-run", action="store_true",
+                    help="一覧の最後まで全件を読む。ローカル台帳が無く、Portalからの復元もできないときは、"
+                         "この指定が無いと(既存データとの重複を避けるため)実行を中断する")
     ap.add_argument("--scan-days", type=int, default=21)
     ap.add_argument("--max-notes", type=int, default=None)
     ap.add_argument("--ledger", type=Path, default=None)
