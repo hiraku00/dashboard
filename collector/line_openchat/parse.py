@@ -37,10 +37,12 @@ class Block:
     more_x: float | None = None
     link_title: str = ""
     min_conf: float = 1.0
+    wrap_right: float = K.WRAP_RIGHT   # 折り返しの判定(ウィンドウ幅によって変わる)
+    suspicious: bool = False        # 本文の中に時刻の行のようなものが混ざっている(隣のコメントと混ざって読めた疑い)
 
     @property
     def text(self) -> str:
-        return join_lines(self.lines)
+        return join_lines(self.lines, self.wrap_right)
 
     @property
     def is_marker(self) -> bool:
@@ -133,37 +135,93 @@ def _first_int(text: str) -> int | None:
     return int(m.group()) if m else None
 
 
+_CLOCK = re.compile(r"\d{1,2}\s*[:：]\s*\d{2}")
+_AGO = re.compile(r"\d+\s*\S{0,2}\s*前$")
+
+
+def clock_like(text: str) -> bool:
+    """時刻の行に見える短い行か(読み違えた時刻の行も含む). 本文の中に混ざっていたら、隣のコメントと1つに読めた疑い."""
+    t = unicodedata.normalize("NFKC", text).strip()
+    return 0 < len(t) <= 18 and bool(_CLOCK.search(t) or _AGO.search(t))
+
+
+def digit_runs(screen: Screen, a: float, e: float, cy: float) -> int:
+    """数字の領域 [a, e] にある、文字の塊(縦に連続する明るい列のまとまり)の数 = 桁数."""
+    runs, inside = 0, False
+    x = a - 1
+    while x <= e + 1:
+        bright = any(sum(screen.pixel(x, y)) > K.COUNT_BRIGHT_SUM for y in (cy - 6 + i for i in range(13)))
+        if bright and not inside:
+            runs += 1
+        inside = bright
+        x += 0.5
+    return runs
+
+
 def read_counts(screen: Screen, cy: float):
     """[😊][数字][💬][数字][共有] の並びを画素で切り分け、数字の塊だけを読む.
 
-    戻り値: (リアクション数, コメント数, コメントアイコンの(x0,x1)) . アイコンが2つ見つからなければ None.
-    アイコンの幅は15〜18.5pt、数字は1桁6.5/2桁13〜14/3桁21.5pt。コメントが0件なら数字の塊が無い。
+    戻り値: (リアクション数, コメント数(数字が読めなければ None), コメントアイコンの(x0,x1)) . アイコンが2つ見つからなければ None.
+    共有アイコンは行の一番右端の塊とし、数字の領域から外す(実機で、共有アイコンが13.5ptと細く、
+    数字の塊と誤認して「8」を「81」と読んだため。アイコンの幅は15〜17.5ptだが、共有だけ細いことがある)。
+    リアクション・コメントのアイコンは幅15〜18.5pt、数字は1桁6.5/2桁13〜14/3桁21.5pt。コメントが0件なら数字の塊が無い。
     """
     clusters = column_clusters(screen, cy - 8, cy + 8)
-    groups: list[list[tuple[float, float]]] = []
-    icons: list[tuple[float, float]] = []
-    for a, e in clusters:
-        if K.ICON_W_MIN <= e - a <= K.ICON_W_MAX:
-            icons.append((a, e))
-            groups.append([])
-        elif groups:
-            groups[-1].append((a, e))
-    if len(icons) < 2:
+    if len(clusters) < 4:
+        return None
+    body = clusters[:-1]                                   # 右端の共有アイコンを除く
+    icon_like = [i for i, (a, e) in enumerate(body) if K.ICON_W_MIN <= e - a <= K.ICON_W_MAX]
+    if not icon_like or icon_like[0] != 0 or len(icon_like) < 2:
+        return None
+    first, second = icon_like[0], icon_like[-1]            # リアクション(左端)と、コメント(数字の後ろの最後のアイコン)
+    if second == first:
         return None
 
     def read(g: list[tuple[float, float]]) -> int | None:
         if not g:
             return None
         a, e = g[0][0], g[-1][1]
-        # 1桁だけだとOCRが読まないので、同じ画像を3つ並べて読む
-        return _first_int(screen.ocr_digits(a - 1, cy - 9, e - a + 3, 18, repeat=3))
+        runs = digit_runs(screen, a, e, cy)
+        if not 1 <= runs <= 4:
+            return None
+        # 数字の塊の数(1桁なら1つ)と桁数が合う読みだけを採る(実機で、表示が「6」なのに「999」と読んだ)。
+        # 1桁だけだとOCRが読まないので同じ画像を並べ、それでも読めなければ、拡大率を変えて読み直し、多数決にする
+        votes: list[str] = []
+        repeats: set[int] = set()
+        for repeat, enlarge in ((3, 5), (5, 5), (5, 8), (5, 12), (3, 8)):
+            text = unicodedata.normalize("NFKC", screen.ocr_digits(a - 1, cy - 9, e - a + 3, 18, repeat=repeat, enlarge=enlarge))
+            if runs == 1:
+                # 同じ画像を並べているので、詰まって「111」「11171」のように読まれることがある。数字は、その中の多数派の1文字
+                chars = re.findall(r"\d", text)
+                # 詰まった読みが本物か(表示が「6」なのに「999」と読む誤読と区別)は、並べた数と文字数が合うかで見る
+                if chars and repeat - 1 <= len(chars) <= repeat + 1:
+                    top = max(set(chars), key=chars.count)
+                    if chars.count(top) * 10 >= len(chars) * 7:
+                        votes.append(top)
+                        repeats.add(repeat)
+            else:
+                votes += [t for t in re.findall(r"\d+", text) if len(t) == runs]
+            if len(votes) >= 2 and len(set(votes)) == 1:
+                break
+        if not votes or (runs == 1 and len(repeats) < 2):
+            return None
+        best = max(set(votes), key=votes.count)
+        return int(best) if votes.count(best) * 2 > len(votes) else None
 
-    return read(groups[0]), read(groups[1]) or 0, icons[1]
+    reactions = read(body[first + 1:second])
+    digits = body[second + 1:]
+    # 数字の塊が無ければ0件。塊があるのに読めなかったときは「不明」(None)にする: 0件と取り違えると、コメントが増えても開かなくなる。
+    # 実機では、Retinaでない(1倍の)ディスプレイに映すと、1桁の小さな数字をOCRが読めなかった。
+    comments = read(digits) if digits else 0
+    if digits and comments == 0:
+        comments = None            # 0件のときは数字の塊が無い。塊があるのに0と読んだのは誤読(1倍の画面で「8」を「0」と読んだ)
+    return reactions, comments, body[second]
 
 
 # ---------- 文章の組み立て ----------
-def join_lines(lines: list[Line]) -> str:
-    """視覚上の行を文章に戻す. 折り返しはつなぎ、行間が空いたところは空行にする."""
+def join_lines(lines: list[Line], wrap_right: float = K.WRAP_RIGHT) -> str:
+    """視覚上の行を文章に戻す. 折り返しはつなぎ、行間が空いたところは空行にする.
+    wrap_right: 行の右端がこの位置(pt)以上なら折り返し(ウィンドウ幅が違うと変わるので、呼び出し側で幅から求める)."""
     out = ""
     prev: Line | None = None
     for ln in lines:
@@ -174,7 +232,7 @@ def join_lines(lines: list[Line]) -> str:
             out = t
         elif ln.y - prev.y > K.PARAGRAPH_GAP:
             out += "\n\n" + t
-        elif prev.x + prev.w >= K.WRAP_RIGHT:
+        elif prev.x + prev.w >= wrap_right:
             out += t                       # 前の行が右端まで届いている = 折り返し
         else:
             out += "\n" + t
@@ -252,7 +310,14 @@ def split_blocks(screen: Screen) -> list[Block]:
         prev_idx = idx
         prev_y = tl.y + tl.h
         if tl.text in (MARK_CUT, MARK_END):
-            blocks.append(Block(kind="cut" if tl.text == MARK_CUT else "end", y_top=tl.y, y_time=tl.y, complete=True))
+            marker = Block(kind="cut" if tl.text == MARK_CUT else "end", y_top=tl.y, y_time=tl.y, complete=True)
+            if marker.kind == "end":
+                # コメント欄の終わりの直前(最後のコメントの時刻行のすぐ下)には、本来、文字が無い。あれば、最後のコメントの
+                # 時刻の行を読み落とし、そのコメントが終端の手前に埋もれた疑い
+                stray = [l for l in seg if l.x >= K.NAME_X_MIN and not (l.x > K.SIDE_X_MIN and l.w < K.SIDE_W_MAX) and len(l.text.strip()) >= 3]
+                marker.lines = stray
+                marker.suspicious = bool(stray)
+            blocks.append(marker)
             continue
 
         kind = "note" if tl.x < K.NOTE_X_MAX else "comment"
@@ -307,5 +372,6 @@ def split_blocks(screen: Screen) -> list[Block]:
             b.lines = list(rest)
         confs = [l.conf for l in b.lines]
         b.min_conf = min(confs) if confs else 1.0
+        b.suspicious = any(clock_like(l.text) for l in b.lines)
         blocks.append(b)
     return blocks

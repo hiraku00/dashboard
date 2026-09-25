@@ -275,7 +275,7 @@ describe("Storage usage page", () => {
     await seedOneItem();
     const [pageResponse, apiBody] = await Promise.all([
       SELF.fetch(`${BASE}/settings/storage`),
-      SELF.fetch(`${BASE}/api/settings/storage`).then((response) => response.json() as Promise<{ databaseRecords: { watchList: number } }>),
+      SELF.fetch(`${BASE}/api/settings/storage`).then((response) => response.json() as Promise<{ databaseRecords: { watchList: number; openchatNotes: number; openchatComments: number } }>),
     ]);
     const html = await pageResponse.text();
     expect(html).toContain("主な保存データ");
@@ -286,6 +286,9 @@ describe("Storage usage page", () => {
     const watchListRow = html.match(/Watch List<\/span><strong>(\d+)/);
     expect(watchListRow, "expected a Watch List row with a numeric count in the raw HTML").toBeTruthy();
     expect(Number(watchListRow![1])).toBe(apiBody.databaseRecords.watchList);
+    // ちきりんオプチャ(D1のノート・コメント)も保存データとして数える
+    expect(Number(html.match(/ちきりんオプチャのノート<\/span><strong>(\d+)/)?.[1])).toBe(apiBody.databaseRecords.openchatNotes);
+    expect(Number(html.match(/ちきりんオプチャのコメント<\/span><strong>(\d+)/)?.[1])).toBe(apiBody.databaseRecords.openchatComments);
   });
 
   // The functional tests above would all still pass even if someone

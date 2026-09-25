@@ -3,27 +3,35 @@
  *  app/lib/openchat-query.ts にある(cloudflare:workers を読み込むとunit testできないため)。 */
 import { env } from "cloudflare:workers";
 import { ensureSchema } from "@/db";
+import { normalizeMeta } from "@/app/lib/openchat-meta";
 import {
-  buildProgramsFilter, encodeCursor, PROGRAMS_ORDER_BY, toProgram, ROOM,
+  buildProgramsFilter, PROGRAMS_ORDER_BY, toProgram, ROOM,
   type Program, type ProgramsQuery,
 } from "@/app/lib/openchat-query";
 
-export type ProgramsPage = { programs: Program[]; nextCursor: string | null };
+export type ProgramsPage = { programs: Program[]; total: number; page: number; pageSize: number };
 
-/** 一覧: ちきりんさんが立てたノート、または、ちきりんさんのコメントがあるノートだけ。
+/** 一覧: ちきりんが立てたノート、または、ちきりんのコメントがあるノートだけ。
  *  ほかの人のコメントは読み込まない(SQLの時点で is_target = 1 に絞る)。 */
 export async function listPrograms(query: ProgramsQuery = {}): Promise<ProgramsPage> {
   await ensureSchema({ seed: false });
-  const { where, values, limit } = buildProgramsFilter(query);
-  const notes = (await env.DB.prepare(
-    `SELECT n.id, n.author_name, n.author_is_target, n.program_title, n.link_title, n.link_url, n.body_text,
-            n.posted_at, n.posted_at_precision, n.comment_count, n.last_checked_at
-       FROM openchat_notes n ${where} ${PROGRAMS_ORDER_BY} LIMIT ?`,
-  ).bind(...values, limit + 1).all<Record<string, unknown>>()).results ?? [];
-  const page = notes.slice(0, limit);
-  const nextCursor = notes.length > limit ? encodeCursor({ postedAt: String(page[page.length - 1].posted_at), id: String(page[page.length - 1].id) }) : null;
-  if (!page.length) return { programs: [], nextCursor: null };
+  const { where, values, limit, offset, page } = buildProgramsFilter(query);
+  const [countRow, rows] = await Promise.all([
+    env.DB.prepare(`SELECT COUNT(*) AS c FROM openchat_notes n ${where}`).bind(...values).first<{ c: number }>(),
+    env.DB.prepare(
+      `SELECT n.id, n.author_name, n.author_is_target, n.program_title, n.link_title, n.link_url, n.body_text,
+              n.posted_at, n.posted_at_precision, n.comment_count, n.last_checked_at
+         FROM openchat_notes n ${where} ${PROGRAMS_ORDER_BY} LIMIT ? OFFSET ?`,
+    ).bind(...values, limit, offset).all<Record<string, unknown>>(),
+  ]);
+  const notes = rows.results ?? [];
+  const total = Number(countRow?.c ?? 0);
+  if (!notes.length) return { programs: [], total, page, pageSize: limit };
+  return { programs: await withComments(notes), total, page, pageSize: limit };
+}
 
+/** ノート行に、ちきりんのコメント(古い順)をつけて、画面・APIの形にする。ほかの人のコメントは読み込まない。 */
+async function withComments(page: Array<Record<string, unknown>>): Promise<Program[]> {
   const ids = page.map((n) => String(n.id));
   const placeholders = ids.map(() => "?").join(",");
   const comments = (await env.DB.prepare(
@@ -36,7 +44,39 @@ export async function listPrograms(query: ProgramsQuery = {}): Promise<ProgramsP
     const key = String(c.note_id);
     byNote.set(key, [...(byNote.get(key) ?? []), c]);
   }
-  return { programs: page.map((n) => toProgram(n, byNote.get(String(n.id)) ?? [])), nextCursor };
+  const metas = (await env.DB.prepare(
+    `SELECT note_id, broadcaster, episode_title, links_json FROM openchat_note_meta WHERE note_id IN (${placeholders})`,
+  ).bind(...ids).all<Record<string, unknown>>()).results ?? [];
+  const metaByNote = new Map(metas.map((m) => [String(m.note_id), m]));
+  return page.map((n) => toProgram({ ...n, meta_row: metaByNote.get(String(n.id)) }, byNote.get(String(n.id)) ?? []));
+}
+
+/** 人が編集する情報(放送局・その日の放送タイトル・リンク)を保存する。対象のノートが無ければ null、入力が不正なら { error }。 */
+export async function saveProgramMeta(id: string, input: unknown): Promise<Program | null | { error: string }> {
+  const parsed = normalizeMeta(input);
+  if ("error" in parsed) return { error: parsed.error };
+  const program = await getProgram(id);
+  if (!program) return null;
+  const { meta } = parsed;
+  await env.DB.prepare(
+    `INSERT INTO openchat_note_meta (note_id, broadcaster, episode_title, links_json, updated_at) VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT(note_id) DO UPDATE SET broadcaster = excluded.broadcaster, episode_title = excluded.episode_title,
+       links_json = excluded.links_json, updated_at = excluded.updated_at`,
+  ).bind(id, meta.broadcaster, meta.episodeTitle, JSON.stringify(meta.links), new Date().toISOString().replace(/\.\d+Z$/, "Z")).run();
+  return { ...program, meta };
+}
+
+/** 詳細: 1ノート(1番組)。一覧に載る条件(ちきりんが立てた、またはコメントがある)を満たさないノートは null。 */
+export async function getProgram(id: string): Promise<Program | null> {
+  await ensureSchema({ seed: false });
+  const note = (await env.DB.prepare(
+    `SELECT n.id, n.author_name, n.author_is_target, n.program_title, n.link_title, n.link_url, n.body_text,
+            n.posted_at, n.posted_at_precision, n.comment_count, n.last_checked_at
+       FROM openchat_notes n
+      WHERE n.id = ? AND n.room = ? AND n.deleted_at IS NULL AND (n.author_is_target = 1 OR n.target_comment_count > 0)`,
+  ).bind(id, ROOM).first<Record<string, unknown>>());
+  if (!note) return null;
+  return (await withComments([note]))[0];
 }
 
 export type LatestRun = {

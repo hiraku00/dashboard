@@ -17,7 +17,7 @@ APIキー・API Secret・Passphraseはプロジェクト内に保存しません
 
 ## ちきりんオプチャ（LINE）
 
-`line_openchat/` は、Mac版LINEのオープンチャット「集まれテレビっ子」のノートを画面から読み取り、ちきりんさんのスレッド・コメントをPortalへ同期します。**LINEは参照のみ**で、投稿・リアクション・削除などは行いません（`safety.py`と`tests/test_safety.py`が機械的に禁止・確認しています）。設計・前提・注意点は [docs/chikirin-openchat.md](../docs/chikirin-openchat.md)。
+`line_openchat/` は、Mac版LINEのオープンチャット「集まれテレビっ子」のノートを画面から読み取り、ちきりんのスレッド・コメントをPortalへ同期します。**LINEは参照のみ**で、投稿・リアクション・削除などは行いません（`safety.py`と`tests/test_safety.py`が機械的に禁止・確認しています）。設計・前提・注意点は [docs/chikirin-openchat.md](../docs/chikirin-openchat.md)。
 
 ```bash
 cd collector

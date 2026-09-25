@@ -5,6 +5,8 @@ Driver への「押す」操作は Session._click だけが行い、必ず safet
 """
 from __future__ import annotations
 
+import os
+import re
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -25,6 +27,8 @@ class Driver(Protocol):
     def scroll(self, lines: int) -> None: ...
     def click_at(self, x: float, y: float) -> None:
         """ウィンドウ内の(x, y)を左クリックする. 呼べるのは Session._click だけ."""
+
+    def thread_reader(self): ...     # 開いたコメント欄を、末尾まで撮って読む(threadread.ThreadReader)
 
 
 class SessionError(RuntimeError):
@@ -80,25 +84,20 @@ def comment_obs(b: Block, now: datetime) -> CommentObs | None:
                       posted_raw=t.raw, min_conf=b.min_conf)
 
 
-def merge_sequence(observed: list, new: list) -> tuple[int, list]:
-    """連続する2画面の重なりを見つけ、新しく現れた分だけを返す. (重なった件数, 新しい分).
-    同じ人の同じ短文が続く場合も、順序ごと照合するので1件にまとめてしまわない."""
-    for j in range(min(len(observed), len(new)), 0, -1):
-        if all(identity.same_block(observed[-j + i].as_match_dict(), new[i].as_match_dict()) for i in range(j)):
-            return j, new[j:]
-    return 0, list(new)
-
-
 class Session:
     def __init__(self, driver: Driver, ledger: Ledger, now: datetime, opts: Options | None = None,
-                 log: Callable[[str], None] = lambda s: None):
+                 log: Callable[[str], None] = lambda s: None, reader=None):
         self.d = driver
+        self.reader = reader or driver.thread_reader()
         self.ledger = ledger
         self.now = now
         self.now_iso = now.astimezone().isoformat(timespec="seconds")
         self.opts = opts or Options()
         self.log = log
+        # 画面1枚ごとの細かいログは、調べるとき(LINE_OPENCHAT_DEBUG=1)だけ出す
+        self.debug = log if os.environ.get("LINE_OPENCHAT_DEBUG") else (lambda s: None)
         self.stats = RunStats()
+        self._pending: list[tuple[dict, int | None]] = []       # コメント欄を開いたノート(読み取りは走査のあと)
         self._carry: tuple[Screen, list[Block]] | None = None   # _advance が撮った画面を、次の shot() で再利用する
 
     # ---------- 画面 ----------
@@ -141,7 +140,9 @@ class Session:
     def run(self) -> RunStats:
         stats = self.stats
         try:
+            self.reader.prepare()                 # 撮影の調整(一覧の先頭へ戻る)
             self._scan()
+            self._capture_pending()
         except Aborted as exc:
             stats.aborted = True
             stats.warnings.append(f"中断: {exc}")
@@ -212,18 +213,26 @@ class Session:
         return [(b.kind, b.author, round(b.y_top / 6), b.time_raw) for b in blocks]
 
     def _advance(self, blocks: list[Block], step: int) -> int:
-        """次の画面へ進む. 画面が重ならないほど飛んだら、半分戻して小さい歩幅でやり直す."""
+        """次の画面へ進む. 画面が重ならないほど飛んだら、半分戻して小さい歩幅でやり直す.
+        重なりは、実機では画素で測る(threadread.motion)。文字で見ると、コメントの多い所(ブロックが小さい)で見失う。"""
         before = [b for b in blocks if b.kind in ("note", "comment") and b.complete]
+        f0 = self.reader.frame()
         self.scroll(step)
-        if not before:
+        if f0 is None and not before:
             return step
         for attempt in range(3):
             screen, after = self.shot()
-            after_c = [b for b in after if b.kind in ("note", "comment")]
-            if any(identity_block_same(a, c) for a in before for c in after_c):
-                overlap = sum(1 for a in before if any(identity_block_same(a, c) for c in after_c))
-                self._carry = (screen, after)
-                return min(30, step + 3) if overlap >= 3 else step
+            if f0 is not None:
+                m = self.reader.motion(f0, self.reader.frame())
+                if m in ("ok", "unchanged"):
+                    self._carry = (screen, after)
+                    return min(30, step + 3) if m == "ok" and attempt == 0 else step
+            else:
+                after_c = [b for b in after if b.kind in ("note", "comment")]
+                if any(identity_block_same(a, c) for a in before for c in after_c):
+                    overlap = sum(1 for a in before if any(identity_block_same(a, c) for c in after_c))
+                    self._carry = (screen, after)
+                    return min(30, step + 3) if overlap >= 3 else step
             smaller = max(3, step // 2)
             self.scroll(-(step - smaller))   # 半分の歩幅になる位置まで戻す
             step = smaller
@@ -233,11 +242,13 @@ class Session:
     # ---------- 1件のノート ----------
     def _process_note(self, note: dict, is_new: bool, obs: NoteObs, block: Block, screen: Screen) -> bool:
         """開く必要があれば開いて集める. 画面を動かしたら True."""
-        need_body = note["author_is_target"] and not note["body_complete"]
         expected = obs.comments
         need_comments = expected is None or expected != note["comment_count"] or note.get("needs_recheck", False)
+        # ちきりんのノートに加え、コメント欄を読むノートは本文(番組の情報)も全文取る: ちきりんが関わるかは開いてから分かり、
+        # 関わるノートは画面に、スレッド主の投稿として本文を出す
+        need_body = not note["body_complete"] and (note["author_is_target"] or need_comments)
         if expected is None:
-            self.stats.warnings.append(f"コメント数を読めませんでした: {note['author_name']} {obs.posted_raw}")
+            self.stats.warnings.append(f"コメント数を読めませんでした(1倍のディスプレイでは小さい数字を読めないことがあります。Retinaディスプレイでの実行を推奨): {note['author_name']} {obs.posted_raw}")
         if not need_body and not need_comments:
             return False
         moved = False
@@ -272,8 +283,14 @@ class Session:
             note["pending_upload"] = True
             return False
         self._click(ClickTarget("expand_body", block.more_x or 24, block.more_y, expect_text=TXT_MORE), screen)
-        screen2, blocks2 = self.shot()
-        b2 = self._find_block(blocks2, note)
+        b2 = None
+        for _ in range(8):
+            screen2, blocks2 = self.shot()
+            b2 = self._find_block(blocks2, note)
+            if b2 is not None:
+                break
+            # 本文が縦に長くなり、末尾(時刻行)が画面の下にはみ出した(実機で確認)。投稿の末尾が見えるまで少しずつ下へ進む
+            self.scroll(8)
         if b2 is None or b2.more_y is not None:
             self.stats.warnings.append(f"本文を開けませんでした: {note['author_name']} {note['posted_at_raw']}")
             return True
@@ -285,25 +302,85 @@ class Session:
 
     # ---------- コメント欄 ----------
     def _collect_thread(self, note: dict, expected: int | None) -> None:
-        last_error = ""
-        for attempt in range(2):
-            try:
-                observed = self._read_thread(note)
-            except Aborted:
-                raise                                       # ユーザーの操作による中断は、ノートの失敗として握りつぶさない
-            except SessionError as exc:
-                last_error = str(exc)
-                self.stats.warnings.append(f"{note['author_name']} {note['posted_at_raw']}: {exc}")
+        """コメント欄を開き、「前のコメントを見る」を押し切る. 読み取りは、走査が終わってから全体を1回で行う(_capture_pending)."""
+        try:
+            self._open_thread(note)
+        except Aborted:
+            raise                                       # ユーザーの操作による中断は、ノートの失敗として握りつぶさない
+        except SessionError as exc:
+            self.stats.warnings.append(f"{note['author_name']} {note['posted_at_raw']}: {exc}")
+            note["needs_recheck"] = True
+            note["pending_upload"] = True
+            return
+        self._pending.append((note, expected))
+
+    def _capture_pending(self) -> None:
+        """開いたコメント欄をまとめて読む: 一覧の先頭から末尾まで、スクロールだけで撮ってつなぎ、1回OCRして区切る(threadread.py)."""
+        if not self._pending:
+            return
+        self.opts.pause()
+        groups, warnings = self.reader.read_all()
+        for w in warnings:
+            self.stats.warnings.append(w)
+        for note, expected in self._pending:
+            best, best_s = None, 0.0
+            for g in groups:
+                o = note_obs(g.note, self.now)
+                s = identity.note_score(note, o.as_match_dict()) if o else 0.0
+                if s > best_s:
+                    best, best_s = g, s
+            label = f"{note['author_name']} {note['posted_at_raw']}"
+            if best is None:
+                self.stats.warnings.append(f"{label}: 撮影した画像の中にノートが見つかりませんでした")
                 note["needs_recheck"] = True
                 note["pending_upload"] = True
-                return
-            if expected is None or len(observed) == expected or attempt == 1:
-                break
-            self.log(f"件数不一致 {len(observed)}/{expected}: やり直し")
-        res = self.ledger.apply_collection(note, observed, expected, self.now_iso)
-        self._count(res)
-        for w in res.warnings:
-            self.stats.warnings.append(f"{note['author_name']} {note['posted_at_raw']}: {w}")
+                continue
+            observed = []
+            for b in best.comments:
+                c = comment_obs(b, self.now)
+                if c is None:
+                    self.stats.warnings.append(f"時刻を読めないコメントがあります: {b.time_raw!r}")
+                    continue
+                observed.append(c)
+            shown = best.note.comments
+            if shown is not None and shown != expected:
+                self.log(f"開いた後の件数に更新: {expected} → {shown}")
+                expected = shown                        # 読んでいる間に増減したことがある。開いた後の見出しの件数が最新
+            res = self.ledger.apply_collection(note, observed, expected, self.now_iso)
+            self._count(res)
+            for w in res.warnings:
+                self.stats.warnings.append(f"{label}: {w}")
+            self.opts.checkpoint()
+        handled = {id(n) for n, _ in self._pending}
+        self._pending.clear()
+        self._apply_unvisited(groups, handled)
+
+    def _apply_unvisited(self, groups: list, handled: set[int]) -> None:
+        """走査で完全な形が見えなかったノート(画面の切れ目に掛かるなど)も、撮影した画像には写っている。
+        コメント欄が開いていて、表示の件数と読めた件数が合うものは、ここで台帳に反映する(合わなければ、次回の再確認に回す)."""
+        for g in groups:
+            obs = note_obs(g.note, self.now)
+            if obs is None:
+                continue
+            existing = identity.match_note(self.ledger.notes, obs.as_match_dict())
+            if existing is not None and id(existing) in handled:
+                continue
+            if existing is None and self._reached_old({"posted_at": obs.posted_at}) and not self.opts.first_run:
+                continue
+            note, is_new = self.ledger.upsert_note(obs, self.now_iso)
+            shown = g.note.comments
+            observed = [c for c in (comment_obs(b, self.now) for b in g.comments) if c is not None]
+            label = f"{note['author_name']} {note['posted_at_raw']}"
+            if shown is not None and shown == len(observed) and (observed or shown == 0):
+                res = self.ledger.apply_collection(note, observed, shown, self.now_iso)
+                self._count(res)
+                self.stats.notes_scanned += 1 if is_new else 0
+                self.log(f"note {label} 💬{shown} (撮影から)")
+            else:
+                note["needs_recheck"] = True
+                note["pending_upload"] = True
+                self.stats.warnings.append(f"{label}: 走査で見えず、撮影でも件数が合わないため、次回に確認します(表示{shown} / 取得{len(observed)})")
+            self.opts.checkpoint()
 
     def _count(self, res: CollectionResult) -> None:
         self.stats.comments_new += res.new_comments
@@ -315,23 +392,45 @@ class Session:
             return None                      # ノートの下が画面の外で、開いているか分からない
         return blocks[i + 1].kind in ("comment", "cut", "end")
 
-    def _read_thread(self, note: dict) -> list[CommentObs]:
+    def _open_thread(self, note: dict) -> None:
         # 1. ノートの見出しを画面に出す
         header, screen, blocks = self._seek_header(note)
         # 2. コメント欄が閉じていれば開く. ノートの下が画面の外なら、少し進めて確かめる
         is_open = self._is_open(blocks, header)
+        moved = 0
+        stale = False                            # 最後に見つけた見出しが、画面の上に出て不完全(押す位置を測り直す必要がある)
         for _ in range(8):
             if is_open is not None:
                 break
             before = self._signature(blocks)
             self.scroll(6)
+            moved += 6
             screen, blocks = self.shot()
             if self._signature(blocks) == before:
                 is_open = False                  # これ以上進めない = 一覧の末尾のノートで、下に何も無い(閉じている)
                 break
-            header = self._find_block(blocks, note) or header
-            is_open = self._is_open(blocks, header) if header in blocks else None
+            found = self._find_block(blocks, note)
+            if found is None:
+                # 長いノートは、スクロールで見出し(アバター)が画面の上に出ると「不完全なブロック」になる。時刻の表示が同じ、不完全なノートで探し直す
+                key = re.sub(r"\s", "", header.time_raw)
+                found = next((b for b in blocks if b.kind == "note" and re.sub(r"\s", "", b.time_raw) == key), None)
+            if found is not None:
+                stale = not found.complete
+                if found.complete:
+                    header = found                    # 画面ごとに別のオブジェクトになるので、見つけ直す
+                is_open = self._is_open(blocks, found)
+            else:
+                is_open = None
+        if is_open is None:
+            raise SessionError("コメント欄が開いているか判定できません")
         if is_open is False:
+            if moved and stale:
+                # 押すアイコンの位置は、見出しが完全に見える画面で測り直す(進んだ分を戻す)
+                self.scroll(-moved)
+                screen, blocks = self.shot()
+                fresh = self._find_block(blocks, note)
+                if fresh is not None:
+                    header = fresh                # 見つからなければ、直前の画面の位置を使う(押す前に、画面で確認される)
             if not header.comment_icon or header.counts_y is None:
                 raise SessionError("コメントアイコンの位置を特定できません")
             x0, x1 = header.comment_icon
@@ -339,18 +438,46 @@ class Session:
                                     counts_y=header.counts_y), screen)
         # 3. 「前のコメントを見る」を押し切って、見出しが見える位置まで戻る
         self._load_earlier(note)
-        # 4. 見出しから下へ、コメント欄の終わりまで読む
-        return self._read_down(note)
+
+    def _hint_y(self, screen: Screen, note: dict) -> float | None:
+        """画面のどこかに、このノートの1行目が写っていれば、そのy(見出しが近い手がかり)."""
+        head = identity.norm_text(note.get("body_text", ""))[:16]
+        if len(head) < 12:
+            return None
+        for line in screen.lines:
+            if line.y > K.TOP_MARGIN and identity.contain_sim(head, line.text) >= 0.85 and len(identity.norm_text(line.text)) >= 6:
+                return line.y
+        return None
 
     def _seek_header(self, note: dict):
-        for _ in range(120):
+        """ノートの見出し(作者〜時刻行がすべて見える位置)を画面に出す.
+        1行目の文字が画面に写っていれば、その位置から上下どちらへ動くかを決める。写っていなければ、上下に順に探す。"""
+        seen_up = seen_down = 0
+        for i in range(48):
             screen, blocks = self.shot()
             h = self._find_block(blocks, note)
             if h is not None:
                 return h, screen, blocks
-            # 見つからないときは、上下どちらにあるか分からないので、まず上へ、次に下へ探す
-            self.scroll(-24 if _ < 60 else 24)   # 1画面(約1100pt)より小さい歩幅で探す
+            y = self._hint_y(screen, note)
+            self.debug("  seek#%d hint_y=%s notes=%s" % (i, y and round(y), [(b.author[:4], b.complete, round(identity.note_score(note, o.as_match_dict()), 2))
+                                                              for b in blocks if b.kind == "note" and (o := note_obs(b, self.now))]))
+            if y is not None:
+                # 見出しは、写っている1行目のすぐ上(作者行)から、時刻行までの高さ。下寄りなら下へ、上寄りなら上へ少し動かす
+                self.scroll(8 if y > screen.height * 0.45 else -6)
+            elif i < 24:
+                self.scroll(-24)          # 手がかりが無い: まず上へ(1画面より小さい歩幅で)
+            else:
+                self.scroll(24)           # 上に無ければ下へ
         raise SessionError("ノートの見出しが見つかりません")
+
+    def _header_y(self, screen: Screen, blocks: list[Block], note: dict) -> float | None:
+        """ノートの見出し(作者行)の上端y. 時刻行まで見えていればそのブロックから、本文が画面より長く時刻行が見えないときは、
+        本文の1行目の位置から求める(長いノートは、見出しと時刻行が同時に画面に入らない)."""
+        h = self._find_block(blocks, note)
+        if h is not None:
+            return h.y_top
+        y = self._hint_y(screen, note)
+        return None if y is None else y - 42.0
 
     def _load_earlier(self, note: dict) -> None:
         for _ in range(120):
@@ -360,59 +487,10 @@ class Session:
                 l = cut[0]
                 self._click(ClickTarget("load_earlier_comments", l.x + l.w / 2, l.cy, expect_text=TXT_CUT), screen)
                 continue
-            h = self._find_block(blocks, note)
-            if h is not None:
+            if self._header_y(screen, blocks, note) is not None:
                 return
             self.scroll(-24)
         raise SessionError("ノートの見出しまで戻れません")
-
-    def _read_down(self, note: dict) -> list[CommentObs]:
-        observed: list[CommentObs] = []
-        inside = False                # 見出しを見つけ、コメント欄の中を読んでいる
-        step = 9
-        for _ in range(400):
-            screen, blocks = self.shot()
-            hi = next((i for i, b in enumerate(blocks) if b.kind == "note" and self._same_note(b, note)), None)
-            if hi is not None:
-                region, inside = blocks[hi + 1:], True       # 見出しより上(前のノートのコメント欄など)は読まない
-            elif inside:
-                region = blocks
-            else:
-                self.scroll(step)                             # 見出しがまだ見えない
-                continue
-            seq: list[CommentObs] = []
-            finished = False
-            self.log("  read " + " ".join(f"{b.kind[0]}{'' if b.complete else '?'}:{b.author[:4]}:{b.time_raw.replace(' ', '')[:5]}" for b in region))
-            for i, b in enumerate(region):
-                if b.kind == "cut":
-                    raise SessionError("「前のコメントを見る」が残っています")
-                if b.kind == "end" or b.kind == "note":
-                    if b.kind == "note" and hi is None and i == 0 and not b.complete:
-                        continue                              # 画面の上端で切れた、このノート自身
-                    finished = True
-                    break
-                if b.kind == "comment" and b.complete:
-                    c = comment_obs(b, self.now)
-                    if c is None:
-                        self.stats.warnings.append(f"時刻を読めないコメントがあります: {b.time_raw!r}")
-                        continue
-                    seq.append(c)
-            overlap, fresh = merge_sequence(observed, seq)
-            self.log(f"  merge observed={len(observed)} new={len(seq)} overlap={overlap} fresh={len(fresh)}")
-            if observed and seq and overlap == 0:
-                # 画面が重なっていない: 飛ばした可能性. 半分戻して撮り直す
-                step = max(3, step // 2)
-                self.scroll(-step * 2)
-                continue
-            for a, c in zip(observed[len(observed) - overlap:], seq[:overlap]):
-                if (c.min_conf, len(c.body_text)) > (a.min_conf, len(a.body_text)):
-                    a.body_text, a.min_conf = c.body_text, c.min_conf
-                a.badge = a.badge or c.badge
-            observed.extend(fresh)
-            if finished:
-                return observed
-            self.scroll(step)
-        raise SessionError("コメント欄の終わりまで読めませんでした")
 
     def _same_note(self, b: Block, note: dict) -> bool:
         obs = note_obs(b, self.now)

@@ -78,7 +78,7 @@ class CollectionResult:
 
 
 def _target(name: str, badge: bool) -> bool:
-    """ちきりんさんか. 公式バッジが決め手(名前だけの一致はなりすましの可能性があるので対象外)."""
+    """ちきりんか. 公式バッジが決め手(名前だけの一致はなりすましの可能性があるので対象外)."""
     return bool(badge)
 
 
@@ -226,13 +226,14 @@ class Ledger:
                                        f"{'あり' if rec['is_target'] else 'なし'}ですが、名前は{'「ちきりん」を含みます' if has_name else '「ちきりん」を含みません'}")
         active_seen = len(observed)
         result.count_matched = expected is None or active_seen == expected
-        if result.count_matched:
+        if result.count_matched and expected is not None:
             for i, rec in enumerate(existing):
                 if i not in claimed and not rec.get("deleted_at"):
                     rec["deleted_at"] = now_iso           # 件数が合ったときだけ、見えなくなったものを削除扱いにする
                     result.deleted_comments += 1
-            if expected is not None:
-                note["comment_count"] = expected
+            note["comment_count"] = expected
+        elif result.count_matched:
+            pass                                    # 表示の件数を読めなかった: 取りこぼしを確かめられないので、削除扱いにも、件数の更新もしない
         else:
             result.warnings.append(f"件数不一致 表示{expected} / 取得{active_seen}")
         note["needs_recheck"] = not result.count_matched

@@ -73,3 +73,17 @@ def test_short_author_name_falls_back_to_region_ocr():
     chat.notes[1].comments[0].author = "K"
     bs = [b for b in blocks_at(chat) if b.kind == "comment"]
     assert bs[0].author in ("K", "?")
+
+
+import pytest
+
+
+@pytest.mark.parametrize("share_w", [16.0, 13.5, 12.0])
+@pytest.mark.parametrize("reactions,count", [(3, 8), (85, 8), (327, 0), (21, 24), (5, 100)])
+def test_counts_are_read_correctly_even_if_the_share_icon_is_narrow(share_w, reactions, count):
+    """実機で、共有アイコンが13.5ptと細く、数字の塊と誤認して「8」を「81」と読んだ(件数不一致を繰り返した)."""
+    chat = SimChat([SimNote("参加者A", "本文です。", "昨日 午前 9:45", reactions=reactions,
+                            comments=[SimComment("参加者B", f"コメント{i}", "1時間前") for i in range(count)])], jitter=False)
+    chat.share_w = share_w
+    note = next(b for b in blocks_at(chat) if b.kind == "note")
+    assert (note.comments, note.comment_icon is not None) == (count, True)

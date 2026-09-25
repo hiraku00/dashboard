@@ -5,5 +5,7 @@ pyobjc-framework-Cocoa>=12,<13
 pyobjc-framework-Quartz>=12,<13
 pyobjc-framework-Vision>=12,<13
 certifi>=2024.2.2
+numpy>=1.23,<3
+Pillow>=10,<12
 # テスト
 pytest>=8,<9

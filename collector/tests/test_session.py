@@ -60,7 +60,7 @@ def test_first_run_collects_all_notes_and_comments():
 def test_target_note_body_is_expanded_and_complete():
     ledger, _ = run(build())
     wbs = [n for n in by_author(ledger, "ちきりん") if n["body_complete"]]
-    assert wbs, "ちきりんさんのノートの本文が全文になっていない"
+    assert wbs, "ちきりんのノートの本文が全文になっていない"
     assert any("鉄道会社" in n["body_text"] for n in wbs)
 
 
@@ -172,3 +172,28 @@ def test_more_button_is_pressed_on_the_button_text_not_on_the_body_text():
     chat = SimChat([SimNote("ちきりん", "長い本文です。" * 40, "昨日 午後 9:46", badge=True, long_body=True, comments=[])], jitter=False)
     ledger, stats = run(chat)
     assert ledger.notes[0]["body_complete"] and len(ledger.notes[0]["body_text"]) > 200, stats.warnings
+
+
+def test_unreadable_comment_counts_are_unknown_not_zero():
+    """1倍のディスプレイで小さな数字が読めないとき: 0件と取り違えず、コメント欄を開いて全件を読み、件数の照合・削除判定はしない."""
+    chat = build(jitter=False)
+    chat.digits_unreadable = True
+    ledger, stats = run(chat)
+    assert sum(len(n["comments"]) for n in ledger.notes) == 3 + 4 + 24 + 0 + 1 + 2
+    assert not any(c.get("deleted_at") for n in ledger.notes for c in n["comments"])
+    assert any("コメント数を読めませんでした" in w for w in stats.warnings)
+    assert all(not n["needs_recheck"] for n in ledger.notes)
+
+
+def test_unknown_counts_never_mark_comments_deleted_and_are_reread_next_time():
+    chat = build(jitter=False)
+    chat.digits_unreadable = True
+    ledger, _ = run(chat)
+    ids = {c["id"] for n in ledger.notes for c in n["comments"]}
+    chat2 = build(seed=4)
+    chat2.digits_unreadable = True
+    del chat2.notes[5].comments[0]                          # 実際には1件消えているが、件数が読めないので削除とは断定しない
+    ledger2, stats2 = run(chat2, ledger=ledger)
+    assert stats2.notes_opened >= 4                          # 件数が分からないので、毎回開いて確かめる
+    assert not any(c.get("deleted_at") for n in ledger2.notes for c in n["comments"])
+    assert {c["id"] for n in ledger2.notes for c in n["comments"]} == ids     # 重複も増えない

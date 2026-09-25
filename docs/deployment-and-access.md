@@ -88,6 +88,8 @@ secret値をファイルに固定保存せず、Service Tokenを再発行した�
 
 本番D1には `migrations/0009_openchat.sql` を `wrangler d1 execute DB --remote --file=...` で直接適用済みです（2026-09-24）。`migrations apply` は使いません: 本番はこれまで `ensureSchema()` で表を作ってきたため、0004〜0008も未適用と記録されており、全部を流し直してしまいます。0009は `CREATE ... IF NOT EXISTS` だけなので、デプロイ後に `ensureSchema()`（schema version 5）が同じ内容を流しても安全です。
 
+`migrations/0010_openchat_note_meta.sql`（人が編集する放送局・放送タイトル・リンクの表 `openchat_note_meta`、schema version 6）は**まだ本番へ適用していません**。デプロイ前に、0009と同じ方法（`wrangler d1 execute DB --remote --file=migrations/0010_openchat_note_meta.sql`）で適用します。`CREATE TABLE IF NOT EXISTS` だけなので、`ensureSchema()` が先に表を作っていても安全です。
+
 ## R2
 
 `wrangler.jsonc` の `FILES` bindingが `hiraku-portal-files` を指します。本文・原本の書き込み後、D1のrevision/台帳との対応を確認します。R2の利用量は日次reconciliationで確認し、上限に近づいた場合は新規原本の保持期間や不要オブジェクトを見直します。

@@ -35,6 +35,14 @@ beforeAll(async () => {
   for (const [id, created, deleted] of [["v-old", "2026-03-01T00:00:00Z", null], ["v-new", "2026-04-01T00:00:00Z", null], ["v-deleted", "2026-05-01T00:00:00Z", T0]] as const) {
     await run("INSERT INTO text_tube_videos (id, title, channel_name, created_at, updated_at, deleted_at) VALUES (?, ?, 'ch', ?, ?, ?)", id, `title ${id}`, created, created, deleted);
   }
+  // ちきりんオプチャ: 一覧に載るノート(本人が立てた・本人のコメントがある)だけ数える。無関係なもの・削除済み・別の部屋は数えない。
+  const note = (id: string, room: string, target: number, targetComments: number, postedAt: string, deleted: string | null) =>
+    run("INSERT INTO openchat_notes (id, room, author_name, author_is_target, posted_at, posted_at_precision, target_comment_count, first_seen_at, last_checked_at, deleted_at) VALUES (?, ?, 'x', ?, ?, 'exact', ?, ?, ?, ?)", id, room, target, postedAt, targetComments, T0, T0, deleted);
+  await note("oc-thread", "atsumare-tv", 1, 0, "2026-09-20T00:00:00Z", null);
+  await note("oc-commented", "atsumare-tv", 0, 2, "2026-09-22T00:00:00Z", null);
+  await note("oc-unrelated", "atsumare-tv", 0, 0, "2026-09-23T00:00:00Z", null);
+  await note("oc-deleted", "atsumare-tv", 1, 0, "2026-09-24T00:00:00Z", T0);
+  await note("oc-other-room", "other-room", 1, 0, "2026-09-25T00:00:00Z", null);
   // To Do: today's tasks (3, one completed); a deleted one and another day's are ignored.
   const today = "strftime('%Y-%m-%d','now','+7 hours')";
   const task = (id: string, date: string, completed: string | null, deleted: string | null) =>
@@ -72,6 +80,7 @@ describe("portalSummary (behaviour that must not change)", () => {
     expect(summary.textTube.latest).toEqual({ id: "v-new", title: "title v-new", channel_name: "ch" });
     expect(summary.assets.sourceCount).toBe(3);
     expect(summary.todo).toEqual({ total: 3, completed: 1 });
+    expect(summary.openchat).toEqual({ total: 2, latestPostedAt: "2026-09-22T00:00:00Z" });
   });
 
   test("asset totals: each source's newest stored total, JPY at the newest snapshot's single rate", async () => {

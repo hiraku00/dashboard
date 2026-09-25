@@ -24,7 +24,7 @@ export type D1BackedUsage = {
   usage: { bytes: number; count: number };
   categories: Record<string, unknown>[];
   latest: Record<string, unknown> | null;
-  databaseRecords: { watchList: number; manageAsset: number; textTube: number };
+  databaseRecords: { watchList: number; manageAsset: number; textTube: number; openchatNotes: number; openchatComments: number };
   transcriptUsage: { credits: number; attempts: number; lastUsedAt: string | null };
 };
 
@@ -32,7 +32,7 @@ const emptyD1Records: Omit<D1BackedUsage, "ok" | "error"> = {
   usage: { bytes: 0, count: 0 },
   categories: [],
   latest: null,
-  databaseRecords: { watchList: 0, manageAsset: 0, textTube: 0 },
+  databaseRecords: { watchList: 0, manageAsset: 0, textTube: 0, openchatNotes: 0, openchatComments: 0 },
   transcriptUsage: { credits: 0, attempts: 0, lastUsedAt: null },
 };
 
@@ -45,12 +45,12 @@ const emptyD1Records: Omit<D1BackedUsage, "ok" | "error"> = {
 export async function d1BackedUsage(month: string): Promise<D1BackedUsage> {
   try {
     await ensureSchema({ seed: false });
-    // One D1 round trip for all six reads. They never depended on each other --
+    // One D1 round trip for all the reads. They never depended on each other --
     // they were awaited one after another (and the three counts in a separate
     // Promise.all), which cost a round trip each, ~100-300ms apiece from the
     // Worker. A failure in any statement rejects the batch, so it still lands
     // in the catch below and yields the same { ok: false } as before.
-    const [bytes, categories, latest, watchList, manageAsset, textTube, transcript] = await env.DB.batch<Record<string, unknown>>([
+    const [bytes, categories, latest, watchList, manageAsset, textTube, transcript, openchatNotes, openchatComments] = await env.DB.batch<Record<string, unknown>>([
       env.DB.prepare(STORAGE_BYTES_SQL),
       env.DB.prepare("SELECT category, COUNT(*) AS count, COALESCE(SUM(size_bytes),0) AS bytes FROM storage_objects WHERE deleted_at IS NULL GROUP BY category ORDER BY bytes DESC"),
       env.DB.prepare("SELECT * FROM storage_usage_daily ORDER BY usage_date DESC LIMIT 1"),
@@ -58,6 +58,8 @@ export async function d1BackedUsage(month: string): Promise<D1BackedUsage> {
       env.DB.prepare("SELECT COUNT(*) AS count FROM asset_snapshots"),
       env.DB.prepare("SELECT COUNT(*) AS count FROM text_tube_videos WHERE deleted_at IS NULL"),
       env.DB.prepare("SELECT COALESCE(SUM(credits),0) AS credits, COUNT(*) AS attempts, MAX(created_at) AS last_used_at FROM text_tube_api_usage WHERE provider='supadata' AND substr(created_at,1,7)=?").bind(month),
+      env.DB.prepare("SELECT COUNT(*) AS count FROM openchat_notes WHERE deleted_at IS NULL"),
+      env.DB.prepare("SELECT COUNT(*) AS count FROM openchat_comments WHERE deleted_at IS NULL"),
     ]);
     const transcriptUsage = (transcript.results?.[0] as { credits?: number; attempts?: number; last_used_at?: string | null } | undefined) ?? { credits: 0, attempts: 0, last_used_at: null };
     return {
@@ -70,6 +72,8 @@ export async function d1BackedUsage(month: string): Promise<D1BackedUsage> {
         watchList: Number(watchList.results?.[0]?.count ?? 0),
         manageAsset: Number(manageAsset.results?.[0]?.count ?? 0),
         textTube: Number(textTube.results?.[0]?.count ?? 0),
+        openchatNotes: Number(openchatNotes.results?.[0]?.count ?? 0),
+        openchatComments: Number(openchatComments.results?.[0]?.count ?? 0),
       },
       transcriptUsage: {
         credits: Number(transcriptUsage.credits ?? 0),

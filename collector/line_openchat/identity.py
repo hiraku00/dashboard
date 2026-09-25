@@ -34,11 +34,26 @@ def sim(a: str, b: str) -> float:
     return SequenceMatcher(None, na, nb).ratio()
 
 
+def contain_sim(a: str, b: str) -> float:
+    """片方がもう片方の一部(冒頭や末尾が画面の端で読めなかった)でも高くなる類似度.
+    実機で、長いコメントの冒頭2行が別の画面では読めず、通常の類似度が0.64になったため。
+    正規化した本文の、最も長い共通部分が、短い方の何割を占めるか(短すぎるときは通常の類似度)。"""
+    na = _STRIP.sub("", unicodedata.normalize("NFKC", a))[:600]
+    nb = _STRIP.sub("", unicodedata.normalize("NFKC", b))[:600]
+    if min(len(na), len(nb)) < 12:
+        return sim(a, b)
+    m = SequenceMatcher(None, na, nb, autojunk=False).find_longest_match(0, len(na), 0, len(nb))
+    return m.size / min(len(na), len(nb))
+
+
 def name_sim(a: str, b: str) -> float:
     na, nb = norm_name(a), norm_name(b)
     if not na or not nb:
         return 0.0
     return 1.0 if na == nb else SequenceMatcher(None, na, nb).ratio()
+
+
+MISREAD_HOURS = 4          # 相対表示(N時間前・N分前)の読み違いを許す幅
 
 
 def _diff(a: dict, b: dict) -> tuple[float, int]:
@@ -58,6 +73,9 @@ def note_score(existing: dict, cand: dict) -> float:
         return 2.0 + body                          # 2. 作者が似ていて、日時の誤差内、本文冒頭が似ている
     if diff <= tol and body >= BODY_SIM_STRICT:
         return 1.0 + body                          # 3. 作者名が読めなくても本文がほぼ同じ
+    approx = existing["posted_at_precision"] != EXACT and cand["posted_at_precision"] != EXACT
+    if approx and diff <= MISREAD_HOURS * 60 and same_name >= 0.9 and body >= 0.97 and len(norm_text(cand["body_text"])) >= 20:
+        return 1.5 + body                          # 4. 「N時間前」の数字の読み違い(19→17)。作者・本文が同じ長い投稿は同じノート
     return 0.0
 
 
@@ -110,9 +128,9 @@ def same_block(a: dict, b: dict) -> bool:
     names = name_sim(a["author_name"], b["author_name"])
     if not norm_text(a["body_text"]) and not norm_text(b["body_text"]):
         return names >= NAME_SIM        # 画像だけの投稿など
-    body = sim(a["body_text"], b["body_text"])
+    body = max(sim(a["body_text"], b["body_text"]), contain_sim(a["body_text"], b["body_text"]) if names >= NAME_SIM else 0.0)
     raw_a = re.sub(r"\s", "", a.get("posted_at_raw", ""))
     raw_b = re.sub(r"\s", "", b.get("posted_at_raw", ""))
     if raw_a and raw_a == raw_b:
         return body >= BODY_SIM and names >= NAME_SIM
-    return body >= 0.97 and names >= 0.7
+    return body >= 0.97 and names >= 0.9     # 表示の時刻の文字が違う(別の時刻のコメントかもしれない)ので、作者名もほぼ同じであることを求める

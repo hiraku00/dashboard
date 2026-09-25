@@ -4,10 +4,11 @@ import { ensureSchema } from "@/db";
 import { POST as syncPost } from "@/app/api/openchat/sync/route";
 import { GET as programsGet } from "@/app/api/openchat/programs/route";
 import { GET as ledgerGet } from "@/app/api/openchat/ledger/route";
-import { latestOpenchatRun, listPrograms } from "@/app/lib/queries/openchat";
+import { GET as programGet, PUT as programPut } from "@/app/api/openchat/programs/[id]/route";
+import { getProgram, latestOpenchatRun, listPrograms, saveProgramMeta } from "@/app/lib/queries/openchat";
 
 // ちきりんオプチャ: 同期API(start → notes → complete)と、画面用の一覧・台帳の復元。
-// 実際の(ephemeralな)D1に対して行う。ちきりんさん以外のコメント本文が一覧に出ないことも確かめる。
+// 実際の(ephemeralな)D1に対して行う。ちきりん以外のコメント本文が一覧に出ないことも確かめる。
 
 beforeAll(async () => {
   await ensureSchema({ seed: false });
@@ -56,7 +57,7 @@ describe("sync API", () => {
 
   test("saves a note with its comments, and the same request sent twice changes nothing", async () => {
     await startRun();
-    const n = note({ commentCount: 2, comments: [comment({ ordinal: 0 }), comment({ ordinal: 1, isTarget: true, authorName: "ちきりん", bodyText: "ちきりんさんの一つ目" })] });
+    const n = note({ commentCount: 2, comments: [comment({ ordinal: 0 }), comment({ ordinal: 1, isTarget: true, authorName: "ちきりん", bodyText: "ちきりんの一つ目" })] });
     const first = await send([n]);
     expect(first.response.status).toBe(200);
     expect(first.body.ok).toBe(true);
@@ -70,7 +71,7 @@ describe("sync API", () => {
 
   test("comments of one note split over several requests add up (multiple comments by the target)", async () => {
     await startRun();
-    const n = note({ authorName: "ちきりん", authorIsTarget: true, bodyText: "ちきりんさんのスレッド", programTitle: "分割テスト", commentCount: 3 });
+    const n = note({ authorName: "ちきりん", authorIsTarget: true, bodyText: "ちきりんのスレッド", programTitle: "分割テスト", commentCount: 3 });
     const t1 = comment({ ordinal: 0, isTarget: true, authorName: "ちきりん", bodyText: "本人コメント1" });
     const t2 = comment({ ordinal: 2, isTarget: true, authorName: "ちきりん", bodyText: "本人コメント2" });
     await send([{ ...n, comments: [t1, comment({ ordinal: 1 })] }]);
@@ -131,13 +132,13 @@ describe("programs list", () => {
   beforeAll(async () => {
     await ensureSchema({ seed: false });
     await startRun();
-    const threadMine = note({ authorName: "ちきりん", authorIsTarget: true, programTitle: "一覧テスト: 本人スレッド", bodyText: "ちきりんさんが立てた本文", bodyComplete: true,
+    const threadMine = note({ authorName: "ちきりん", authorIsTarget: true, programTitle: "一覧テスト: 本人スレッド", bodyText: "ちきりんが立てた本文", bodyComplete: true,
       postedAt: "2026-09-22T12:00:00Z", comments: [comment({ ordinal: 0, authorName: "ちきりん", isTarget: true, bodyText: "本人スレッドへの補足", postedAt: "2026-09-22T13:00:00Z" }), comment({ ordinal: 1, bodyText: SECRET })] });
-    const commentedOthers = note({ programTitle: "一覧テスト: 他人のノートに複数コメント", bodyText: "他人のノート本文(表示されない)", postedAt: "2026-09-21T06:00:00Z",
+    const commentedOthers = note({ programTitle: "一覧テスト: 他人のノートに複数コメント", bodyText: "他人のノート本文(スレッド主の番組情報)", postedAt: "2026-09-21T06:00:00Z",
       comments: [comment({ ordinal: 0, authorName: "ちきりん", isTarget: true, bodyText: "一つ目のコメント 鉄道会社", postedAt: "2026-09-21T07:00:00Z" }),
         comment({ ordinal: 1, bodyText: SECRET }),
         comment({ ordinal: 2, authorName: "ちきりん", isTarget: true, bodyText: "二つ目のコメント", postedAt: "2026-09-21T09:00:00Z", postedAtPrecision: "approx_hour" })] });
-    const noTarget = note({ programTitle: "一覧テスト: ちきりんさん無し", bodyText: "無関係", postedAt: "2026-09-20T06:00:00Z", comments: [comment({ bodyText: SECRET })] });
+    const noTarget = note({ programTitle: "一覧テスト: ちきりん無し", bodyText: "無関係", postedAt: "2026-09-20T06:00:00Z", comments: [comment({ bodyText: SECRET })] });
     const deleted = note({ programTitle: "一覧テスト: 削除済み", authorName: "ちきりん", authorIsTarget: true, deletedAt: "2026-09-24T00:00:00Z", postedAt: "2026-09-19T06:00:00Z" });
     ids.mine = threadMine.id; ids.others = commentedOthers.id; ids.none = noTarget.id; ids.deleted = deleted.id;
     for (const n of [threadMine, commentedOthers, noTarget, deleted]) await send([n]);
@@ -153,49 +154,91 @@ describe("programs list", () => {
     const p = (await listPrograms({ q: "他人のノートに複数" })).programs[0];
     expect(p.noteByTarget).toBe(false);
     expect(p.targetBody).toBeNull();
+    expect(p.noteBody).toBe("他人のノート本文(スレッド主の番組情報)");      // スレッド主の投稿(番組の情報)
     expect(p.targetComments.map((c) => c.bodyText)).toEqual(["一つ目のコメント 鉄道会社", "二つ目のコメント"]);
     expect(p.targetComments[1].precision).toBe("approx_hour");
+  });
+
+  test("detail returns one listed program with all her comments, and 404s for unlisted or unknown notes", async () => {
+    const p = (await listPrograms({ q: "他人のノートに複数" })).programs[0];
+    const detail = await getProgram(p.noteId);
+    expect(detail?.noteBody).toBe("他人のノート本文(スレッド主の番組情報)");
+    expect(detail?.targetComments.map((c) => c.bodyText)).toEqual(["一つ目のコメント 鉄道会社", "二つ目のコメント"]);
+    expect(JSON.stringify(detail)).not.toContain(SECRET);
+    expect(await getProgram(ids.none)).toBeNull();        // ちきりんが関わらないノート
+    expect(await getProgram(ids.deleted)).toBeNull();     // 削除済み
+    expect(await getProgram("no-such-id")).toBeNull();
+    const viaApi = await programGet(new Request("http://x/api/openchat/programs/x"), { params: Promise.resolve({ id: ids.none }) });
+    expect(viaApi.status).toBe(404);
+  });
+
+  test("edited broadcaster, episode title and links are saved apart from the synced data, searchable, and survive a re-sync", async () => {
+    const p = (await listPrograms({ q: "他人のノートに複数" })).programs[0];
+    expect(p.meta).toEqual({ broadcaster: "", episodeTitle: "", links: [] });
+    const saved = await saveProgramMeta(p.noteId, { broadcaster: "テスト放送局", episodeTitle: "一覧テスト独自の放送タイトル", links: [{ url: "https://example.test/ep", label: "番組ページ" }] });
+    expect(saved && "meta" in saved && saved.meta.broadcaster).toBe("テスト放送局");
+    const again = (await listPrograms({ q: "一覧テスト独自の放送タイトル" })).programs;
+    expect(again.map((x) => x.noteId)).toEqual([p.noteId]);                               // 編集した放送タイトルで探せる
+    expect((await listPrograms({ q: "テスト放送局" })).programs).toHaveLength(1);
+    await send([note({ id: ids.others, room: "atsumare-tv", programTitle: "一覧テスト: 他人のノートに複数コメント", bodyText: "他人のノート本文(スレッド主の番組情報)", postedAt: "2026-09-21T06:00:00Z",
+      comments: [] })]);                                                                       // 同期し直しても、編集した情報は消えない
+    expect((await getProgram(p.noteId))?.meta.links).toEqual([{ url: "https://example.test/ep", label: "番組ページ" }]);
+    expect(await saveProgramMeta(p.noteId, { links: [{ url: "javascript:alert(1)" }] })).toHaveProperty("error");
+    expect(await saveProgramMeta(ids.none, { broadcaster: "x" })).toBeNull();               // 一覧に載らないノートは編集できない
+    const viaApi = await programPut(new Request("http://x/api/openchat/programs/x", { method: "PUT", body: JSON.stringify({ broadcaster: "API経由" }) }), { params: Promise.resolve({ id: p.noteId }) });
+    expect(viaApi.status).toBe(200);
+    expect(((await viaApi.json()) as { program: { meta: { broadcaster: string } } }).program.meta.broadcaster).toBe("API経由");
+    expect((await programPut(new Request("http://x/", { method: "PUT", body: "not json" }), { params: Promise.resolve({ id: p.noteId }) })).status).toBe(400);
   });
 
   test("the target's own thread shows her body and her comments on it", async () => {
     const p = (await listPrograms({ q: "本人スレッド" })).programs[0];
     expect(p.noteByTarget).toBe(true);
-    expect(p.targetBody).toBe("ちきりんさんが立てた本文");
+    expect(p.targetBody).toBe("ちきりんが立てた本文");
     expect(p.targetComments.map((c) => c.bodyText)).toEqual(["本人スレッドへの補足"]);
   });
 
-  test("other people's comments and note bodies never appear in any response, and cannot be found by search", async () => {
+  test("bodies of listed notes are returned and searchable; other people's comments and unlisted notes' bodies never are", async () => {
     const everything = JSON.stringify(await listPrograms({ limit: 50 }));
     expect(everything).not.toContain(SECRET);
-    expect(everything).not.toContain("他人のノート本文(表示されない)");
+    expect(everything).toContain("他人のノート本文(スレッド主の番組情報)");       // 一覧に載るノートの本文は返す
+    expect(everything).not.toContain("無関係");                                  // ちきりんが関わらないノートの本文は返さない
     expect((await listPrograms({ q: "秘密のコメント" })).programs).toEqual([]);
-    expect((await listPrograms({ q: "他人のノート本文" })).programs).toEqual([]);
+    expect((await listPrograms({ q: "無関係" })).programs).toEqual([]);           // 一覧に載らないノートの本文は、検索でも出ない
+    expect((await listPrograms({ q: "番組情報" })).programs.map((p) => p.programTitle)).toEqual(["一覧テスト: 他人のノートに複数コメント"]);
     const viaApi = await (await programsGet(new Request("http://x/api/openchat/programs?limit=50"))).text();
     expect(viaApi).not.toContain(SECRET);
   });
 
   test("search finds titles and the target's own text; kind filters work", async () => {
     expect((await listPrograms({ q: "鉄道会社" })).programs.map((p) => p.programTitle)).toEqual(["一覧テスト: 他人のノートに複数コメント"]);
-    expect((await listPrograms({ q: "ちきりんさんが立てた" })).programs).toHaveLength(1);
+    expect((await listPrograms({ q: "ちきりんが立てた" })).programs).toHaveLength(1);
     const threads = (await listPrograms({ kind: "thread" })).programs.filter((p) => p.programTitle.startsWith("一覧テスト"));
     expect(threads.map((p) => p.noteByTarget)).toEqual([true]);
     const comments = (await listPrograms({ kind: "comment" })).programs.filter((p) => p.programTitle.startsWith("一覧テスト"));
     expect(comments).toHaveLength(2);       // 本人スレッドにも本人のコメントがある
   });
 
-  test("keyset pagination returns every program once", async () => {
+  test("paging returns every program once, with the total and page size", async () => {
     const seen: string[] = [];
-    let cursor: string | null = null;
-    for (let i = 0; i < 20; i++) {
-      const page = await listPrograms({ limit: 1, cursor });
-      seen.push(...page.programs.map((p) => p.noteId));
-      if (!page.nextCursor) break;
-      cursor = page.nextCursor;
+    const first = await listPrograms({ limit: 1, page: 1 });
+    expect(first.pageSize).toBe(1);
+    expect(first.total).toBeGreaterThanOrEqual(2);
+    for (let page = 1; page <= first.total; page++) {
+      const result = await listPrograms({ limit: 1, page });
+      expect(result.total).toBe(first.total);
+      expect(result.programs).toHaveLength(1);
+      seen.push(...result.programs.map((p) => p.noteId));
     }
     expect(new Set(seen).size).toBe(seen.length);
     expect(seen).toEqual(expect.arrayContaining([ids.mine, ids.others]));
     expect(seen).not.toContain(ids.none);
     expect(seen).not.toContain(ids.deleted);
+    const past = await listPrograms({ limit: 1, page: first.total + 5 });
+    expect(past.programs).toEqual([]);
+    expect(past.total).toBe(first.total);
+    const filtered = await listPrograms({ q: "他人のノートに複数", page: 1 });
+    expect(filtered.total).toBe(1);                           // 件数は、絞り込み後
   });
 
   test("a comment marked deleted is no longer listed", async () => {

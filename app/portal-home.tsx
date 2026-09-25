@@ -3,12 +3,14 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { PortalHeader } from "./portal-nav";
+import { formatPostedAt } from "./lib/openchat-query.ts";
 
 type DashboardState = {
   watch: { total: number; completed: number };
   textTube: { total: number; latest: { id: string; title: string; channel_name: string } | null };
   assets: { totalUsd: number; totalJpy: number; latestAt: string | null; sourceCount: number };
   todo: { total: number; completed: number };
+  openchat?: { total: number; latestPostedAt: string | null };
 };
 
 const yen = new Intl.NumberFormat("ja-JP", { maximumFractionDigits: 0 });
@@ -57,6 +59,7 @@ export function PortalHome({
       <Link className="portal-card portal-card-text" href="/text-tube" prefetch={false}><h2>TextTube</h2><strong>{state?.textTube.total ?? "—"}<small> 本</small></strong><p>{state?.textTube.latest?.title ?? (state ? "" : "読み込み中")}</p></Link>
       <Link className="portal-card portal-card-asset" href="/manage-asset" prefetch={false}><h2>Manage Asset</h2><strong>{state ? usd.format(state.assets.totalUsd) : "—"}</strong><p>{state ? `${yen.format(state.assets.totalJpy)}円` : "読み込み中"}</p></Link>
       <Link className="portal-card portal-card-todo" href="/todo" prefetch={false}><h2>To Do</h2><strong>{state?.todo.total ?? "—"}<small> 件</small></strong><p>{state ? `${state.todo.completed}件完了` : "読み込み中"}</p></Link>
+      <Link className="portal-card portal-card-openchat" href="/chikirin" prefetch={false}><h2>ちきりんオプチャ</h2><strong>{state?.openchat?.total ?? "—"}<small> 番組</small></strong><p>{state ? (state.openchat?.latestPostedAt ? `最新 ${formatPostedAt(state.openchat.latestPostedAt, "exact")}` : "同期待ち") : "読み込み中"}</p></Link>
       <Link className="portal-card" href="/settings/storage" prefetch={false}><h2>使用量</h2><strong>R2 / D1</strong><p>保存容量・DB利用量・TextTube字幕API</p></Link>
     </section>
   </main>;

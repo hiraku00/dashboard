@@ -7,6 +7,8 @@
 from __future__ import annotations
 
 import random
+
+import numpy as np
 from dataclasses import dataclass, field
 
 from line_openchat import layout as K
@@ -41,7 +43,8 @@ class SimNote:
 
 
 class SimScreen:
-    def __init__(self, lines, rects, width=K.WIN_W, height=K.WIN_H, digit_map=None, name_map=None):
+    def __init__(self, lines, rects, width=K.WIN_W, height=K.WIN_H, digit_map=None, name_map=None, digit_garbage=None):
+        self._garbage = digit_garbage
         self.width, self.height = width, height
         self.lines = lines
         self._rects = rects
@@ -67,7 +70,12 @@ class SimScreen:
                 return text
         return ""
 
-    def ocr_digits(self, x, y, w, h, repeat=1):
+    def ocr_digits(self, x, y, w, h, repeat=1, enlarge=5):
+        if self._garbage is not None:
+            toks = self._garbage.split()
+            if len(toks) > 1 and len(set(toks)) == 1:      # 同じ数字の繰り返し(並べた数に合わせて読む)
+                return " ".join([toks[0]] * repeat)
+            return self._garbage
         for (dx0, dx1, dy, text) in self._digits:
             if abs(dy - (y + h / 2)) < 12 and x - 3 <= dx0 and dx1 <= x + w + 3:
                 return " ".join([text] * repeat)
@@ -103,6 +111,11 @@ class SimChat:
         self.clicks: list[tuple[str, float, float]] = []
         self.forbidden_clicks: list[tuple[float, float]] = []
         self.ocr_noise = 0.0
+        self.digit_garbage = None          # 数字の誤読(例: 表示が「6」なのに「999」と読む)
+        self.corrupt_only = None           # 読み違える時刻の文字の集合(None なら全部)
+        self.corrupt = None                # scroll_y -> bool: その位置では、コメントの時刻の行を読み違える(隣のコメントと混ざる)
+        self.digits_unreadable = False   # 1倍のディスプレイで、小さな数字をOCRが読めない状態
+        self.share_w = 16.0            # 共有アイコンの幅(実機では13.5ptと細いことがある)
 
     # ---------- 文書の組み立て ----------
     def layout(self):
@@ -151,8 +164,11 @@ class SimChat:
             rx = 18.0
             rects.append((rx, cy - 8, rx + 17, cy + 8, WHITE))
             rd = str(n.reactions)
-            rw = 6.5 * len(rd)
-            rects.append((40, cy - 6, 40 + rw, cy + 6, WHITE))
+            # 桁ごとに別の塊(実機は3桁で約21.5pt)。4桁は実機にほぼ無いので、位置だけ収める
+            p = 7.5 if len(rd) < 4 else 6.5
+            rw = p * len(rd)
+            for k in range(len(rd)):
+                rects.append((40 + p * k, cy - 6, 40 + p * k + p - 2, cy + 6, WHITE))
             digits.append((40, 40 + rw, cy, rd))
             cx0 = 40 + rw + 10
             rects.append((cx0, cy - 8, cx0 + 16, cy + 8, WHITE))
@@ -160,13 +176,14 @@ class SimChat:
             count = len(n.comments)
             if count:
                 cd = str(count)
-                cw = 6.5 * len(cd)
-                rects.append((cx0 + 22, cy - 6, cx0 + 22 + cw, cy + 6, WHITE))
+                cw = 7.5 * len(cd)
+                for k in range(len(cd)):
+                    rects.append((cx0 + 22 + 7.5 * k, cy - 6, cx0 + 22 + 7.5 * k + 5.5, cy + 6, WHITE))
                 digits.append((cx0 + 22, cx0 + 22 + cw, cy, cd))
                 sx = cx0 + 22 + cw + 8
             else:
                 sx = cx0 + 22
-            rects.append((sx, cy - 8, sx + 16, cy + 8, WHITE))
+            rects.append((sx, cy - 8, sx + self.share_w, cy + 8, WHITE))
             # 誤読される行(アイコンを数字と読む): 実機と同じくOCR行として出す
             lines.append(Line(f"0 {rd} @ {count}山", 16.4, cy - 9, 100, 18, 0.5))
             zones.append(("reaction_icon", rx, cy - 8, rx + 17, cy + 8, n))
@@ -223,9 +240,13 @@ class SimChat:
         vis_digits = [(a, b, y - off, t) for (a, b, y, t) in digits]
         vis_names = [(y - off, t) for (y, t) in names]
         # タイトルバー(「ノート」)
+        if self.corrupt and self.corrupt(self.scroll_y):
+            for l in vis_lines:
+                if abs(l.x - 49.2) < 0.5 and ("時間前" in l.text or "午後" in l.text) and (self.corrupt_only is None or l.text in self.corrupt_only):
+                    l.text = l.text.replace("時間前", "時問前").replace("午後", "午復")
         vis_lines.append(Line("ノート", 193.5, 46, 38, 15))
         vis_lines.sort(key=lambda l: (round(l.y / 4), l.x))
-        return SimScreen(vis_lines, vis_rects, digit_map=vis_digits, name_map=vis_names)
+        return SimScreen(vis_lines, vis_rects, digit_map=[] if self.digits_unreadable else vis_digits, name_map=vis_names, digit_garbage=self.digit_garbage)
 
     def max_scroll(self) -> float:
         _, _, _, _, total, _ = self._doc()
@@ -274,3 +295,57 @@ class SimDriver:
 
     def click_at(self, x: float, y: float) -> None:
         self.chat.click_at("click", x, y)
+
+    def thread_reader(self):
+        return SimThreadReader(self.chat)
+
+
+def render_tall(chat: "SimChat"):
+    """文書全体を、1倍の縦長画像・OCR行・数字と名前の読み取り関数にする(縦長画像の区切りのテスト用)."""
+    from line_openchat import tallocr
+    lines, rects, digits, names, total, _ = chat._doc()
+    width = int(K.WIN_W)
+    arr = np.empty((int(total) + 60, width, 3), dtype=np.uint8)
+    arr[:] = K.BG
+    for x0, y0, x1, y1, c in rects:
+        arr[max(0, int(y0)):int(y1), int(x0):int(x1)] = c
+
+    def digits_reader(sub, x, y, w, h, repeat=1, enlarge=5):
+        if chat.digits_unreadable:
+            return ""
+        if chat.digit_garbage is not None:
+            toks = chat.digit_garbage.split()
+            if len(toks) > 1 and len(set(toks)) == 1:
+                return " ".join([toks[0]] * repeat)
+            return chat.digit_garbage
+        for a, b, dy, text in digits:
+            if abs(dy - (y + h / 2)) < 12 and x - 3 <= a and b <= x + w + 3:
+                return " ".join([text] * repeat)
+        return ""
+
+    def name_reader(sub, x, y, w, h):
+        return next((t for ny, t in names if y - 6 <= ny <= y + h + 6), "")
+
+    return tallocr.ArrayTall(arr), [l for l in lines if l.y > 0], digits_reader, name_reader
+
+
+class SimThreadReader:
+    """threadread.ThreadReader の模擬: 撮影の代わりに、文書全体の縦長画像を作って区切る."""
+    def __init__(self, chat: "SimChat"):
+        self.chat = chat
+        self.prepared = 0
+
+    def prepare(self) -> None:
+        self.prepared += 1
+
+    def frame(self):
+        return None
+
+    def motion(self, before, after) -> str:
+        return "ok"
+
+    def read_all(self):
+        from line_openchat import tallparse
+        image, lines, dr, nr = render_tall(self.chat)
+        blocks, warnings = tallparse.parse_tall(image, lines, 1.0, float(K.WIN_W), digits_reader=dr, name_reader=nr)
+        return tallparse.group_notes(blocks), warnings
