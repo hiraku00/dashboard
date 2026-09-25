@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { PortalHeader } from "./portal-nav";
 import { Body } from "./chikirin-body";
@@ -13,6 +14,7 @@ import { linkText } from "./chikirin-app";
 export function ChikirinDetail({ id, initialProgram = null, initialError = "" }: { id: string; initialProgram?: Program | null; initialError?: string }) {
   const [program, setProgram] = useState<Program | null>(initialProgram);
   const [error, setError] = useState(initialError);
+  const router = useRouter();
   // 画面を開くたびに最新を読む: 一覧で編集した放送局などが、先読みされた古い画面のままにならないようにする。
   // (サーバーが描いたものは最初の表示に使い、読み直せなくても、その表示は残す)
   useEffect(() => {
@@ -54,7 +56,7 @@ export function ChikirinDetail({ id, initialProgram = null, initialError = "" }:
         {program.issues.length > 0 && <div className="chikirin-issue-box" role="status"><strong>要確認</strong><ul>{program.issues.map((issue) => <li key={issue}>{issue}</li>)}</ul></div>}
         <section className="chikirin-meta-edit" aria-labelledby="chikirin-meta-title">
           <h3 id="chikirin-meta-title">放送情報（編集）</h3>
-          <MetaForm key={JSON.stringify(program.meta)} program={program} onSaved={setProgram} />
+          <MetaForm key={JSON.stringify(program.meta)} program={program} onSaved={(saved) => { setProgram(saved); router.push("/chikirin"); router.refresh(); }} />
         </section>
         {program.noteBody && <section className={program.noteByTarget ? "chikirin-post is-thread" : "chikirin-post is-owner"} aria-label={program.noteByTarget ? "ちきりんのスレッド" : "スレッド主の投稿"}>
           <strong className="chikirin-badge">{program.noteByTarget ? "ちきりんのスレッド" : "スレッド主の投稿（番組の情報）"}</strong>

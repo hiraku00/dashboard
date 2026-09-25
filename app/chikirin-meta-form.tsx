@@ -4,6 +4,7 @@ import { useState, type FormEvent } from "react";
 import { readErrorMessage, readJson } from "./lib/json";
 import { MAX_BROADCASTER, MAX_EPISODE_TITLE, MAX_LINKS, MAX_LINK_LABEL, type Meta } from "./lib/openchat-meta.ts";
 import type { Program } from "./lib/openchat-query.ts";
+import { inferBroadcaster } from "./lib/openchat-meta.ts";
 
 /** 入力欄の最初のリンク: 編集済みならそれ。未編集なら、ノートのリンクカード(あれば)を入れておき、保存でそのまま残せる。 */
 function initialLinks(program: Program): Meta["links"] {
@@ -14,7 +15,7 @@ function initialLinks(program: Program): Meta["links"] {
 /** 放送局・その日の放送タイトル・リンクの入力欄(詳細画面)。
  *  collector の同期データとは別に保存される(PUT /api/openchat/programs/:id)。 */
 export function MetaForm({ program, onSaved, onCancel }: { program: Program; onSaved: (program: Program) => void; onCancel?: () => void }) {
-  const [draft, setDraft] = useState<Meta>({ broadcaster: program.meta.broadcaster, episodeTitle: program.meta.episodeTitle, links: initialLinks(program) });
+  const [draft, setDraft] = useState<Meta>({ broadcaster: program.meta.broadcaster || inferBroadcaster(initialLinks(program).map((l) => l.url)), episodeTitle: program.meta.episodeTitle, links: initialLinks(program) });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const setLink = (index: number, patch: Partial<Meta["links"][number]>) => setDraft({ ...draft, links: draft.links.map((l, i) => (i === index ? { ...l, ...patch } : l)) });
