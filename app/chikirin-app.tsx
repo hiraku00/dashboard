@@ -139,7 +139,7 @@ export function ChikirinApp({ initialPage = null, initialRun = null, initialQuer
           <thead><tr>
             <th scope="col" className="kind-head">種別</th><th scope="col">番組</th><th scope="col">タイトル</th><th scope="col">スレ主</th><th scope="col" title="スレッドが起票された日時(日本時間)"><span className="head-2">スレッド<br />起票日時</span></th>
             <th scope="col" title="ちきりんの最新の投稿の日時"><span className="head-2">最新<br />ちきりん</span></th>
-            <th scope="col" className="num" title="ノート全体のコメント数"><span className="head-2">コメント<br />全体</span></th><th scope="col" className="num" title="ちきりんが書いたコメントの数"><span className="head-2">コメント<br />ちきりん</span></th><th scope="col" className="center">状態</th><th scope="col">リンク</th><th scope="col">Watch List</th>
+            <th scope="col" className="num" title="ノート全体のコメント数"><span className="head-2">コメント<br />全体</span></th><th scope="col" className="num" title="ちきりんが書いたコメントの数"><span className="head-2">コメント<br />ちきりん</span></th><th scope="col" className="center">状態</th><th scope="col">リンク</th><th scope="col"><span className="head-2">Watch<br />List</span></th>
           </tr></thead>
           <tbody>{programs.map((program) => {
             const links = listLinks(program);
