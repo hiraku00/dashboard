@@ -273,10 +273,10 @@ h1,h2,h3 { color:var(--ink); } h1 { margin:0; font-size:30px; line-height:1.1; l
 .chikirin-more { display:flex; justify-content:center; padding:10px 24px 22px; }.chikirin-more button { border:1px solid var(--line-strong); border-radius:10px; padding:9px 22px; background:var(--raised); }
 .chikirin-table { min-width:900px; }
 .chikirin-table th, .chikirin-table td { padding-left:6px; padding-right:6px; }
-.chikirin-table .col-kind { width:82px; }.chikirin-table .col-broadcaster { width:100px; }.chikirin-table .col-owner { width:76px; }
-.chikirin-table .col-posted { width:86px; }.chikirin-table .col-count { width:60px; }.chikirin-table .col-links { width:84px; }.chikirin-table .col-action { width:64px; }
+.chikirin-table .col-kind { width:82px; }.chikirin-table .col-broadcaster { width:136px; }.chikirin-table .col-owner { width:76px; }
+.chikirin-table .col-posted { width:86px; }.chikirin-table .col-count { width:60px; }.chikirin-table .col-links { width:140px; }.chikirin-table .col-action { width:64px; }
 .chikirin-table .kind-head, .chikirin-table .kind-cell { padding-left:8px; }
-.chikirin-table th.num, .chikirin-table td.num-cell { text-align:right; font-variant-numeric:tabular-nums; font-size:13px; }
+.chikirin-table th.num, .chikirin-table td.num-cell { text-align:right; font-variant-numeric:tabular-nums; }.chikirin-table td.num-cell { font-size:13px; }
 .chikirin-table .program-cell { min-width:0; }
 .chikirin-table .program-broadcaster { display:block; overflow:hidden; color:var(--ink); font-size:13px; font-weight:700; line-height:1.3; text-overflow:ellipsis; white-space:nowrap; }
 .chikirin-table .program-name { display:block; overflow:hidden; margin-top:2px; color:var(--ink); font-size:12px; line-height:1.3; text-overflow:ellipsis; white-space:nowrap; }
@@ -285,7 +285,7 @@ h1,h2,h3 { color:var(--ink); } h1 { margin:0; font-size:30px; line-height:1.1; l
 .chikirin-table .owner-cell { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:12px; }
 .chikirin-table .date-cell { font-size:12px; white-space:nowrap; }
 .chikirin-table .links-cell { max-width:0; }
-.chikirin-table .item-links a { max-width:76px; padding:3px 6px; font-size:11px; }
+.chikirin-table .item-links a { max-width:66px; padding:3px 5px; font-size:11px; }
 .editor .link-row { grid-template-columns:minmax(0,3fr) minmax(0,2fr) 32px; }
 .chikirin-meta-edit .link-row { grid-template-columns:minmax(0,4fr) minmax(0,1.3fr) 32px; }
 .chikirin-meta-grid { grid-template-columns:1fr 2fr 7fr; }
