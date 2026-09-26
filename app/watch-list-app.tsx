@@ -33,6 +33,7 @@ const pageSize = 10;
 export function WatchListApp({
   initialItems = null,
   initialStats = null,
+  initialQuery = "",
 }: {
   // Passed by app/watch-list/page.tsx (a Server Component) after fetching
   // this directly from D1 -- see app/lib/queries/watch-list.ts. It calls
@@ -44,10 +45,12 @@ export function WatchListApp({
   // (client-side fetch on mount) if ever rendered without them.
   initialItems?: { items: Item[]; pagination?: { total?: number } } | null;
   initialStats?: Stats | null;
+  /** From `?q=` (the ちきりんオプチャ list links here). Non-empty means the server did not render the default view. */
+  initialQuery?: string;
 } = {}) {
   const [items, setItems] = useState<Item[]>(initialItems?.items ?? []);
   const [stats, setStats] = useState<Stats>(initialStats ?? { total: 0, completed: 0, movie: 0, audio: 0, text: 0 });
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(initialQuery);
   const [type, setType] = useState<"all" | ContentType>("all");
   const [status, setStatus] = useState<"all" | Status>("all");
   const [creator, setCreator] = useState("all");

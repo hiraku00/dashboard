@@ -10,7 +10,7 @@ import { MAX_LIKE_TERM_BYTES, truncateUtf8Bytes, utf8ByteLength } from "./lib/sq
 import { useLatestRequest } from "./lib/use-latest-request";
 import { useSearchReload } from "./lib/use-search-reload";
 
-export type ProgramsPage = { programs: Program[]; total: number; page: number; pageSize: number };
+export type ProgramsPage = { programs: Program[]; total: number; page: number; pageSize: number; watched?: Record<string, { url: string; count: number }> };
 export type RunSummary = {
   status: string; startedAt: string; completedAt: string | null; notesScanned: number; notesOpened: number;
   commentsNew: number; targetCommentsNew: number; warningCount: number; warnings?: string[]; newPrograms?: number;
@@ -59,6 +59,7 @@ function listLinks(program: Program) {
 
 export function ChikirinApp({ initialPage = null, initialRun = null, initialQuery = "", initialKind = "all" }: { initialPage?: ProgramsPage | null; initialRun?: RunSummary; initialQuery?: string; initialKind?: ProgramKind } = {}) {
   const [programs, setPrograms] = useState<Program[]>(initialPage?.programs ?? []);
+  const [watched, setWatched] = useState(initialPage?.watched ?? {});
   const [total, setTotal] = useState(initialPage?.total ?? 0);
   const [pageSize, setPageSize] = useState(initialPage?.pageSize ?? 10);
   const [page, setPage] = useState(initialPage?.page ?? 1);
@@ -82,6 +83,7 @@ export function ChikirinApp({ initialPage = null, initialRun = null, initialQuer
       const next = await readJson<ProgramsPage>(response);
       if (!isCurrent(requestId)) return;
       setPrograms(next.programs);
+      setWatched(next.watched ?? {});
       setTotal(next.total);
       setPageSize(next.pageSize);
     } catch (error) {
@@ -133,14 +135,15 @@ export function ChikirinApp({ initialPage = null, initialRun = null, initialQuer
       {!loading && programs.length === 0 && <div className="empty-state"><strong>該当する番組はありません。</strong><p>{initialRun || query || kind !== "all" ? "条件を変えてみてください。" : "同期が終わるとここに表示されます。"}</p></div>}
       {programs.length > 0 && <div className={loading ? "table-scroll is-loading" : "table-scroll"} aria-busy={loading}>
         <table className="content-table chikirin-table">
-          <colgroup><col className="col-kind" /><col className="col-broadcaster" /><col className="col-title" /><col className="col-owner" /><col className="col-posted" /><col className="col-posted" /><col className="col-count" /><col className="col-count" /><col className="col-status" /><col className="col-links" /></colgroup>
+          <colgroup><col className="col-kind" /><col className="col-broadcaster" /><col className="col-title" /><col className="col-owner" /><col className="col-posted" /><col className="col-posted" /><col className="col-count" /><col className="col-count" /><col className="col-status" /><col className="col-links" /><col className="col-texttube" /></colgroup>
           <thead><tr>
             <th scope="col" className="kind-head">種別</th><th scope="col">番組</th><th scope="col">タイトル</th><th scope="col">スレ主</th><th scope="col" title="スレッドが起票された日時(日本時間)"><span className="head-2">スレッド<br />起票日時</span></th>
             <th scope="col" title="ちきりんの最新の投稿の日時"><span className="head-2">最新<br />ちきりん</span></th>
-            <th scope="col" className="num" title="ノート全体のコメント数"><span className="head-2">コメント<br />全体</span></th><th scope="col" className="num" title="ちきりんが書いたコメントの数"><span className="head-2">コメント<br />ちきりん</span></th><th scope="col" className="center">状態</th><th scope="col">リンク</th>
+            <th scope="col" className="num" title="ノート全体のコメント数"><span className="head-2">コメント<br />全体</span></th><th scope="col" className="num" title="ちきりんが書いたコメントの数"><span className="head-2">コメント<br />ちきりん</span></th><th scope="col" className="center">状態</th><th scope="col">リンク</th><th scope="col">Watch List</th>
           </tr></thead>
           <tbody>{programs.map((program) => {
             const links = listLinks(program);
+            const watchedLinks = links.filter((l) => watched[l.url]);
             return <tr key={program.noteId}>
               <td className="kind-cell"><span className={program.noteByTarget ? "chikirin-tag is-thread" : "chikirin-tag"}>{program.noteByTarget ? "スレッド" : "コメント"}</span></td>
               <td className="program-cell">
@@ -159,6 +162,7 @@ export function ChikirinApp({ initialPage = null, initialRun = null, initialQuer
               <td className="num-cell">{program.targetComments.length}</td>
               <td className="status-cell center">{program.issues.length > 0 ? <span className="chikirin-issue" title={program.issues.join("\n")}>要確認</span> : <span className="empty-cell" title="取得に問題はありません">OK</span>}</td>
               <td className="links-cell">{links.length > 0 ? <div className="item-links" aria-label={`${program.programTitle} のリンク`}>{links.slice(0, 2).map((l) => <a key={l.url} href={l.url} target="_blank" rel="noreferrer" title={l.url}>{l.text} ↗</a>)}{links.length > 2 && <span className="empty-cell">+{links.length - 2}</span>}</div> : <span className="empty-cell">—</span>}</td>
+              <td className="texttube-cell">{watchedLinks.length > 0 ? watchedLinks.map((l) => <a key={l.url} className="texttube-badge texttube-reflected" href={`/watch-list?q=${encodeURIComponent(watched[l.url].url)}`} target="_blank" rel="noreferrer" title={`${l.text} は Watch List に登録済み。開くとその項目を表示します`}>登録済{watched[l.url].count > 1 ? ` ${watched[l.url].count}件` : ""}</a>) : <span className="empty-cell">—</span>}</td>
             </tr>;
           })}</tbody>
         </table>
