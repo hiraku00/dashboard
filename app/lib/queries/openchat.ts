@@ -4,12 +4,15 @@
 import { env } from "cloudflare:workers";
 import { ensureSchema } from "@/db";
 import { normalizeMeta } from "@/app/lib/openchat-meta";
+import { canonicalUrl } from "@/app/lib/text";
 import {
   buildProgramsFilter, PROGRAMS_ORDER_BY, toProgram, ROOM,
   type Program, type ProgramsQuery,
 } from "@/app/lib/openchat-query";
 
-export type ProgramsPage = { programs: Program[]; total: number; page: number; pageSize: number };
+/** 一覧のリンクのうち、Watch List(items/item_links)にもあるもの。キーは一覧に出るURLそのまま、値はWatch Listでの保存URL(検索に使う)と該当の項目数。 */
+export type WatchedLinks = Record<string, { url: string; count: number }>;
+export type ProgramsPage = { programs: Program[]; total: number; page: number; pageSize: number; watched: WatchedLinks };
 
 /** 一覧: ちきりんが立てたノート、または、ちきりんのコメントがあるノートだけ。
  *  ほかの人のコメントは読み込まない(SQLの時点で is_target = 1 に絞る)。 */
@@ -26,8 +29,33 @@ export async function listPrograms(query: ProgramsQuery = {}): Promise<ProgramsP
   ]);
   const notes = rows.results ?? [];
   const total = Number(countRow?.c ?? 0);
-  if (!notes.length) return { programs: [], total, page, pageSize: limit };
-  return { programs: await withComments(notes), total, page, pageSize: limit };
+  if (!notes.length) return { programs: [], total, page, pageSize: limit, watched: {} };
+  const programs = await withComments(notes);
+  return { programs, total, page, pageSize: limit, watched: await watchedLinks(programs) };
+}
+
+/** 一覧に出るリンク(編集したリンク + ノートのリンクカード)が Watch List にも登録されているかを、正規化したURLで照合する。 */
+async function watchedLinks(programs: Program[]): Promise<WatchedLinks> {
+  const byCanonical = new Map<string, string[]>();
+  for (const p of programs) {
+    for (const url of [...p.meta.links.map((l) => l.url), p.linkUrl]) {
+      const canonical = url ? canonicalUrl(url) : "";
+      if (canonical) byCanonical.set(canonical, [...new Set([...(byCanonical.get(canonical) ?? []), url])]);
+    }
+  }
+  const canonicals = [...byCanonical.keys()].slice(0, 90);
+  if (!canonicals.length) return {};
+  const rows = (await env.DB.prepare(
+    `SELECT l.canonical_url, MIN(l.url) AS url, COUNT(DISTINCT l.item_id) AS c
+       FROM item_links l JOIN items i ON i.id = l.item_id
+      WHERE i.deleted_at IS NULL AND l.canonical_url IN (${canonicals.map(() => "?").join(",")})
+      GROUP BY l.canonical_url`,
+  ).bind(...canonicals).all<Record<string, unknown>>()).results ?? [];
+  const watched: WatchedLinks = {};
+  for (const row of rows) {
+    for (const shown of byCanonical.get(String(row.canonical_url)) ?? []) watched[shown] = { url: String(row.url), count: Number(row.c) };
+  }
+  return watched;
 }
 
 /** ノート行に、ちきりんのコメント(古い順)をつけて、画面・APIの形にする。ほかの人のコメントは読み込まない。 */

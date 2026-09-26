@@ -26,7 +26,7 @@ Watch List、TextTube、Manage Asset、To Doを一つのCloudflare上で管理�
 | パス | 機能 |
 | --- | --- |
 | `/` | ポータルホーム。各機能への導線とデータ基盤の状態 |
-| `/watch-list` | Watch Listの検索、フィルタ、ページング、登録・編集・削除、インポート/エクスポート |
+| `/watch-list` | Watch Listの検索、フィルタ、ページング、登録・編集・削除、インポート/エクスポート。`?q=` で検索語つきで開ける（ちきりんオプチャの「Watch List」列から） |
 | `/text-tube` | TextTubeライブラリ。検索、並び替え、ステータス管理、詳細表示への導線 |
 | `/text-tube/studio` | TextTubeの作成・編集画面 |
 | `/text-tube/watch/:id` | TextTube本文の読書画面。Markdown、GFM表、目次アンカー、Mermaidを表示 |

@@ -159,6 +159,22 @@ describe("programs list", () => {
     expect(p.targetComments[1].precision).toBe("approx_hour");
   });
 
+  test("marks links that are also in the Watch List (matched by canonical URL, ignoring deleted items)", async () => {
+    const p = (await listPrograms({ q: "他人のノートに複数" })).programs[0];
+    const now = "2026-09-26T00:00:00Z";
+    await env.DB.batch([
+      env.DB.prepare("INSERT INTO items (id, content_type, title, created_at, updated_at) VALUES ('oc-w1', 'movie', 'oc watched', ?, ?)").bind(now, now),
+      env.DB.prepare("INSERT INTO item_links (id, item_id, url, canonical_url) VALUES ('oc-w1-l', 'oc-w1', 'https://watched.example.test/v?utm_source=x#t', 'https://watched.example.test/v')").bind(),
+      env.DB.prepare("INSERT INTO items (id, content_type, title, created_at, updated_at, deleted_at) VALUES ('oc-w2', 'movie', 'oc gone', ?, ?, ?)").bind(now, now, now),
+      env.DB.prepare("INSERT INTO item_links (id, item_id, url, canonical_url) VALUES ('oc-w2-l', 'oc-w2', 'https://gone.example.test/v', 'https://gone.example.test/v')").bind(),
+    ]);
+    await saveProgramMeta(p.noteId, { links: [{ url: "https://watched.example.test/v#frag", label: "" }, { url: "https://gone.example.test/v", label: "" }, { url: "https://none.example.test/", label: "" }] });
+    const page = await listPrograms({ q: "他人のノートに複数" });
+    expect(page.watched).toEqual({ "https://watched.example.test/v#frag": { url: "https://watched.example.test/v?utm_source=x#t", count: 1 } });
+    await saveProgramMeta(p.noteId, { links: [] });
+    await env.DB.batch([env.DB.prepare("DELETE FROM items WHERE id IN ('oc-w1','oc-w2')"), env.DB.prepare("DELETE FROM item_links WHERE item_id IN ('oc-w1','oc-w2')")]);
+  });
+
   test("detail returns one listed program with all her comments, and 404s for unlisted or unknown notes", async () => {
     const p = (await listPrograms({ q: "他人のノートに複数" })).programs[0];
     const detail = await getProgram(p.noteId);
