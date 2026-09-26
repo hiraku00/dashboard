@@ -161,7 +161,7 @@ export function ChikirinApp({ initialPage = null, initialRun = null, initialQuer
               <td className="num-cell">{program.commentCount}</td>
               <td className="num-cell">{program.targetComments.length}</td>
               <td className="status-cell center">{program.issues.length > 0 ? <span className="chikirin-issue" title={program.issues.join("\n")}>要確認</span> : <span className="empty-cell" title="取得に問題はありません">OK</span>}</td>
-              <td className="links-cell">{links.length > 0 ? <div className="item-links" aria-label={`${program.programTitle} のリンク`}>{links.slice(0, 2).map((l) => <a key={l.url} href={l.url} target="_blank" rel="noreferrer" title={l.url}>{l.text} ↗</a>)}{links.length > 2 && <span className="empty-cell">+{links.length - 2}</span>}</div> : <span className="empty-cell">—</span>}</td>
+              <td className="links-cell">{links.length > 0 ? <div className="item-links" aria-label={`${program.programTitle} のリンク`}>{links.slice(0, 1).map((l) => <a key={l.url} href={l.url} target="_blank" rel="noreferrer" title={l.url}>{l.text} ↗</a>)}{links.length > 1 && <span className="link-more" title={links.slice(1).map((l) => `${l.text}\n${l.url}`).join("\n\n")}>+{links.length - 1}</span>}</div> : <span className="empty-cell">—</span>}</td>
               <td className="texttube-cell">{watchedLinks.length > 0 ? watchedLinks.map((l) => <a key={l.url} className="texttube-badge texttube-reflected" href={`/watch-list?q=${encodeURIComponent(watched[l.url].url)}`} target="_blank" rel="noreferrer" title={`${l.text} は Watch List に登録済み。開くとその項目を表示します`}>登録済{watched[l.url].count > 1 ? ` ${watched[l.url].count}件` : ""}</a>) : <span className="empty-cell">—</span>}</td>
             </tr>;
           })}</tbody>
