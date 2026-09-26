@@ -40,7 +40,7 @@ const json = (body: unknown, status = 200) => new Response(JSON.stringify(body),
 
 test("the list is a table: kind, program, title, thread, poster, times, counts, status and links (read-only; editing is on the detail page)", () => {
   render(<ChikirinApp initialPage={page([program()])} initialRun={null} />);
-  expect(screen.getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["種別", "番組", "タイトル", "スレ主", "スレッド起票日時", "最新ちきりん", "コメント全体", "コメントちきりん", "状態", "リンク", "Watch List"]);
+  expect(screen.getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["種別", "番組", "タイトル", "スレ主", "スレッド起票日時", "最新ちきりん", "コメント全体", "コメントちきりん", "状態", "リンク", "WatchList"]);
   const row = screen.getAllByRole("row")[1];
   const cells = within(row).getAllByRole("cell").map((c) => c.textContent ?? "");
   expect(cells[0]).toBe("コメント");
