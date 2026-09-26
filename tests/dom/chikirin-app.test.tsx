@@ -58,6 +58,19 @@ test("the list is a table: kind, program, title, thread, poster, times, counts, 
   expect(screen.queryByLabelText("ちきりんのコメント")).toBeNull();   // 一覧には全文を出さない
 });
 
+test("the links column shows only the first link; +N opens the rest as clickable links and 閉じる folds them again", () => {
+  const links = [{ url: "https://example.test/a", label: "A" }, { url: "https://example.test/b", label: "B" }, { url: "https://example.test/c", label: "C" }];
+  render(<ChikirinApp initialPage={page([program({ meta: { broadcaster: "", programName: "", episodeTitle: "", links } })])} initialRun={null} />);
+  const row = screen.getAllByRole("row")[1];
+  expect(within(row).getByRole("link", { name: /^A/ }).getAttribute("href")).toBe("https://example.test/a");
+  expect(within(row).queryByRole("link", { name: /^B/ })).toBeNull();
+  fireEvent.click(within(row).getByRole("button", { name: "+2" }));
+  expect(within(row).getByRole("link", { name: /^B/ }).getAttribute("href")).toBe("https://example.test/b");
+  expect(within(row).getByRole("link", { name: /^C/ }).getAttribute("href")).toBe("https://example.test/c");
+  fireEvent.click(within(row).getByRole("button", { name: "閉じる" }));
+  expect(within(row).queryByRole("link", { name: /^B/ })).toBeNull();
+});
+
 test("a row with a problem shows 要確認 with the reason, so it can be found in the list", () => {
   const bad = program({ issues: ["コメントの件数が表示と合わず、再確認待ちです（次回の同期でやり直します）。"] });
   render(<ChikirinApp initialPage={page([bad, program({ noteId: "n2" })])} initialRun={null} />);
