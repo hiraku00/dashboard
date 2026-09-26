@@ -285,7 +285,8 @@ h1,h2,h3 { color:var(--ink); } h1 { margin:0; font-size:30px; line-height:1.1; l
 .chikirin-table .owner-cell { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:12px; }
 .chikirin-table .date-cell { font-size:12px; white-space:nowrap; }
 .chikirin-table .links-cell { max-width:0; }
-.chikirin-table .item-links a { max-width:66px; padding:3px 5px; font-size:11px; }
+.chikirin-table .item-links { overflow-x:auto; scrollbar-width:thin; }
+.chikirin-table .item-links a { max-width:none; padding:3px 6px; font-size:11px; text-overflow:clip; }
 .editor .link-row { grid-template-columns:minmax(0,3fr) minmax(0,2fr) 32px; }
 .chikirin-meta-edit .link-row { grid-template-columns:minmax(0,4fr) minmax(0,1.3fr) 32px; }
 .chikirin-meta-grid { grid-template-columns:1fr 2fr 7fr; }
