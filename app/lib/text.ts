@@ -42,3 +42,22 @@ export function canonicalUrl(value: string) {
     return "";
   }
 }
+
+/** A short, URL-specific search term for jumping to one Watch List item by its saved link
+ *  (the「登録済」badge in ちきりんオプチャ links to `/watch-list?q=<this>`).
+ *
+ *  A full URL often exceeds MAX_LIKE_TERM_BYTES (sql-text.ts), and since the search box
+ *  truncates from the *start* of the string, a long prefix shared by many links in the same
+ *  series (e.g. NHK ONE's ".../series-tep-<seriesId>/ep/<episodeId>" -- the series id survives
+ *  truncation but the distinguishing episode id after it does not) makes the search match every
+ *  episode of that series instead of just the one item that was actually saved. The last path
+ *  segment is normally that distinguishing id, so searching by it alone avoids the collision.
+ *  Falls back to the full URL when it cannot be parsed as one, or has no path segment to use. */
+export function watchListSearchTerm(url: string): string {
+  try {
+    const segments = new URL(url).pathname.split("/").filter(Boolean);
+    return segments.at(-1) || url;
+  } catch {
+    return url;
+  }
+}
