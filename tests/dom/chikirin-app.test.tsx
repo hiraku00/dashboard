@@ -345,6 +345,23 @@ test("the sync warnings are listed with what they are about", () => {
   expect(screen.getByText("本文を開けませんでした: 対象のノート")).toBeTruthy();
 });
 
+test("同期コマンド popup shows the sync command with a copy button, and copies it to the clipboard", async () => {
+  const writeText = vi.fn(() => Promise.resolve());
+  Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
+  render(<ChikirinApp initialPage={page([program()])} initialRun={null} />);
+  expect(screen.queryByRole("dialog")).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "同期コマンド" }));
+  const dialog = screen.getByRole("dialog");
+  expect(within(dialog).getByText(/PORTAL_SYNC_CLIENT_ID/)).toBeTruthy();
+  expect(within(dialog).getByText(/画面ロックを解除/)).toBeTruthy();
+  const copyButtons = within(dialog).getAllByRole("button", { name: "コピー" });
+  fireEvent.click(copyButtons[0]);
+  await waitFor(() => expect(writeText).toHaveBeenCalledWith(expect.stringContaining("python3 -m line_openchat.sync")));
+  expect(within(dialog).getByText("コピーしました")).toBeTruthy();
+  fireEvent.click(within(dialog).getByRole("button", { name: "閉じる" }));
+  expect(screen.queryByRole("dialog")).toBeNull();
+});
+
 test("links without a label show the site name: www.web.nhk becomes NHK ONE, other sites their domain, a label wins", async () => {
   const { linkText } = await import("@/app/chikirin-app");
   expect(linkText("https://www.web.nhk/tv/pl/series-tep-XXXX", "")).toBe("NHK ONE");

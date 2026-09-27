@@ -84,7 +84,7 @@ Cloudflare Worker
 
 ### 実行方法
 
-- **フェーズ1（まずはこれ）**: 手動実行 `python3 collector/line_openchat/sync.py`。実行中はマウスを操作するので、数分間Macを触らないこと。
+- **フェーズ1（まずはこれ）**: 手動実行 `python3 collector/line_openchat/sync.py`。実行中はマウスを操作するので、数分間Macを触らないこと。実際のコマンド(Client ID込み)は `/chikirin` 画面右上の「同期コマンド」からもコピーできる（`app/chikirin-app.tsx` の `SyncCommandHelp`。内容は `collector/README.md`「ちきりんオプチャ（LINE）」と同じ）。
 - **フェーズ2（任意）**: launchdで1日1回、次の条件を満たすときだけ動かす。
   - 画面ロックなし、かつ操作していない時間が10分以上（`ioreg -c IOHIDSystem` の `HIDIdleTime`）
   - 実行中にユーザーがマウスやキーボードを触ったことを検知したら（`HIDIdleTime` の減少）、すぐ中断する。中断しても台帳はノート単位で保存しているので、次回はその続きから始まる。

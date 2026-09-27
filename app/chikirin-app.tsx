@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import Link from "next/link";
 import { PortalHeader } from "./portal-nav";
 import { readErrorMessage, readJson } from "./lib/json";
@@ -69,6 +69,56 @@ function ProgramLinks({ links, label }: { links: Array<{ url: string; text: stri
   </div>;
 }
 
+// collector/README.md「ちきりんオプチャ（LINE）」節と同じ内容。Client IDは秘密ではない
+// (collector/launchd/com.watch-list.manage-asset-collector.plist.template を参照。秘密のClient Secretは
+// コマンドが自動でmacOS Keychainから読むため、コマンドには含まれない)。
+const SYNC_CLIENT_ID = "f47d396cd28306989ca5737cce5a006c.access";
+const SYNC_COMMANDS = [
+  { label: "同期コマンド(collectorディレクトリで実行。数分かかる)", command: `cd collector\nPORTAL_URL=https://dashboard.hiraku00.workers.dev PORTAL_SYNC_CLIENT_ID='${SYNC_CLIENT_ID}' python3 -m line_openchat.sync` },
+  { label: "初回だけ: 依存パッケージのインストール", command: "python3 -m pip install -r line_openchat/requirements.txt" },
+  { label: "一覧の最後まで全件を読み直したいとき(台帳が無い場合など)", command: "python3 -m line_openchat.sync --first-run" },
+];
+
+/** コマンド1つ分の表示: コピー押下で navigator.clipboard へ、失敗したら選択状態にする。 */
+function CopyableCommand({ label, command }: { label: string; command: string }) {
+  const [copied, setCopied] = useState(false);
+  const preRef = useRef<HTMLPreElement>(null);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(command);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      const range = document.createRange();
+      if (preRef.current) { range.selectNodeContents(preRef.current); window.getSelection()?.removeAllRanges(); window.getSelection()?.addRange(range); }
+    }
+  };
+  return <div className="sync-command">
+    <p>{label}</p>
+    <div className="sync-command-row">
+      <pre ref={preRef}>{command}</pre>
+      <button type="button" onClick={copy}>{copied ? "コピーしました" : "コピー"}</button>
+    </div>
+  </div>;
+}
+
+/** 「同期コマンド」リンク: ノート取得(collector/line_openchat)の実行コマンドをポップアップで見せ、コピーできるようにする。
+ *  忘れがちな前提(LINEでノートを開いておく・画面ロック解除・実行中は操作しない)も添える。 */
+function SyncCommandHelp() {
+  const [open, setOpen] = useState(false);
+  return <>
+    <button type="button" className="chikirin-sync-help" onClick={() => setOpen(true)}>同期コマンド</button>
+    {open && <div className="modal-backdrop" role="presentation" onClick={() => setOpen(false)}>
+      <section className="editor sync-command-editor" role="dialog" aria-modal="true" aria-labelledby="sync-command-title" onClick={(event) => event.stopPropagation()}>
+        <div className="editor-heading"><h2 id="sync-command-title">ノートの同期コマンド</h2><button className="close-button" onClick={() => setOpen(false)} aria-label="閉じる">×</button></div>
+        <p className="sync-command-prereq">前提: LINEを起動し、対象のオープンチャットの「ノート」を開いておく(自動では開けません)。画面ロックを解除しておく。実行中(数分間)はマウス・キーボードに触らない(触ると中断します)。</p>
+        {SYNC_COMMANDS.map((c) => <CopyableCommand key={c.label} label={c.label} command={c.command} />)}
+        <p className="sync-command-doc">詳しくは <code>collector/README.md</code>「ちきりんオプチャ（LINE）」を参照。</p>
+      </section>
+    </div>}
+  </>;
+}
+
 export function ChikirinApp({ initialPage = null, initialRun = null, initialQuery = "", initialKind = "all" }: { initialPage?: ProgramsPage | null; initialRun?: RunSummary; initialQuery?: string; initialKind?: ProgramKind } = {}) {
   const [programs, setPrograms] = useState<Program[]>(initialPage?.programs ?? []);
   const [watched, setWatched] = useState(initialPage?.watched ?? {});
@@ -133,7 +183,7 @@ export function ChikirinApp({ initialPage = null, initialRun = null, initialQuer
         <h2 id="chikirin-title">番組ごとのちきりん</h2>
         <span className="result-count">{loading ? "読み込み中" : `${total} 件中 ${from}–${to}`}<small className="chikirin-tz"> ・日時は日本時間(JST)</small></span>
       </div>
-      <div className="chikirin-run" data-testid="run-line">{runLine(initialRun)}{initialRun && initialRun.warningCount > 0 && <details className="chikirin-warnings"><summary>警告 {initialRun.warningCount} 件</summary><ul>{(initialRun.warnings ?? []).map((w, i) => <li key={i}>{w}</li>)}</ul></details>}</div>
+      <div className="chikirin-run" data-testid="run-line">{runLine(initialRun)}{initialRun && initialRun.warningCount > 0 && <details className="chikirin-warnings"><summary>警告 {initialRun.warningCount} 件</summary><ul>{(initialRun.warnings ?? []).map((w, i) => <li key={i}>{w}</li>)}</ul></details>}<SyncCommandHelp /></div>
       <div className="filters chikirin-filters">
         <label className="search"><span aria-hidden="true">⌕</span>
           <input value={query} onChange={(event) => { setPage(1); setQuery(truncateUtf8Bytes(event.target.value, MAX_LIKE_TERM_BYTES)); }}
