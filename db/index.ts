@@ -28,7 +28,7 @@ let schemaReady = false;
  *  than reconciled, since the drizzle ORM was never actually used to query. */
 /** Bump whenever the DDL below changes, so existing databases re-run it once.
  *  A database whose schema_meta row already matches skips the whole batch. */
-const SCHEMA_VERSION = 7;
+const SCHEMA_VERSION = 8;
 
 /** Reads the recorded schema version. A database that predates schema_meta (or
  *  a brand new one) has no table, and the query fails rather than returning a
@@ -171,6 +171,11 @@ export async function ensureSchema({ seed = true }: { seed?: boolean } = {}) {
     )`),
     env.DB.prepare(
       "CREATE INDEX IF NOT EXISTS openchat_notes_target_idx ON openchat_notes(room, posted_at DESC) WHERE deleted_at IS NULL AND (author_is_target = 1 OR target_comment_count > 0)",
+    ),
+    // 一覧は全スレッドを出すので、絞り込みなし(kind=all)でも使えるインデックス(schema version 8)。
+    // 同じ内容が migrations/0012_openchat_notes_all_idx.sql にもある。
+    env.DB.prepare(
+      "CREATE INDEX IF NOT EXISTS openchat_notes_room_posted_idx ON openchat_notes(room, posted_at DESC) WHERE deleted_at IS NULL",
     ),
     env.DB.prepare(`CREATE TABLE IF NOT EXISTS openchat_comments (
       id TEXT PRIMARY KEY, note_id TEXT NOT NULL, ordinal INTEGER NOT NULL, author_name TEXT NOT NULL,

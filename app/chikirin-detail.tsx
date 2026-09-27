@@ -62,6 +62,7 @@ export function ChikirinDetail({ id, initialProgram = null, initialError = "", b
           <div className="chikirin-post-head"><strong className="chikirin-badge">{program.noteByTarget ? "本人コメント" : "ちきりんのコメント"}</strong><time dateTime={comment.postedAt}>{formatPostedAt(comment.postedAt, comment.precision)}</time></div>
           <Body text={comment.bodyText} full />
         </section>)}
+        {program.involvement === "none" && <p className="empty-cell">ちきりんのコメントはありません。</p>}
       </article>}
     </section>
   </main>;

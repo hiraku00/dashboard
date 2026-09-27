@@ -32,6 +32,7 @@ const program = (over: Record<string, unknown> = {}) => ({
     { id: "c1", bodyText: "私もこれ観ました。海の環境への影響が大きいと思いました。", postedAt: "2026-09-21T07:15:00Z", precision: "exact" },
     { id: "c2", bodyText: "追記: 欧州の対策が参考になった。", postedAt: "2026-09-21T09:00:00Z", precision: "approx_hour" },
   ],
+  involvement: "comment",
   commentCount: 8, lastCheckedAt: "2026-09-24T03:00:00Z", ...over,
 });
 
@@ -40,7 +41,7 @@ const json = (body: unknown, status = 200) => new Response(JSON.stringify(body),
 
 test("the list is a table: kind, program, title, thread, poster, times, counts, status and links (read-only; editing is on the detail page)", () => {
   render(<ChikirinApp initialPage={page([program()])} initialRun={null} />);
-  expect(screen.getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["種別", "番組", "タイトル", "スレ主", "スレッド起票日時", "最新ちきりん", "コメント全体", "コメントちきりん", "状態", "リンク", "WatchList"]);
+  expect(screen.getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["ちきりん", "番組", "タイトル", "スレ主", "スレッド起票日時", "最新ちきりん", "コメント全体", "コメントちきりん", "状態", "リンク", "WatchList"]);
   const row = screen.getAllByRole("row")[1];
   const cells = within(row).getAllByRole("cell").map((c) => c.textContent ?? "");
   expect(cells[0]).toBe("コメント");
@@ -118,11 +119,27 @@ test("rows first seen in the last run are marked 新着, and the header says how
 });
 
 test("the target's own thread is marked in the list and previews her body", () => {
-  const own = program({ noteByTarget: true, noteAuthor: "ちきりん", targetBody: "9月23日の報道特集の真ん中あたり。", noteBody: "9月23日の報道特集の真ん中あたり。" });
+  const own = program({ noteByTarget: true, involvement: "thread", noteAuthor: "ちきりん", targetBody: "9月23日の報道特集の真ん中あたり。", noteBody: "9月23日の報道特集の真ん中あたり。" });
   render(<ChikirinApp initialPage={page([own])} initialRun={null} />);
   const row = screen.getAllByRole("row")[1];
   expect(within(row).getAllByRole("cell")[0].textContent).toBe("スレッド");
   expect(row.textContent).toContain("9月23日の報道特集");
+});
+
+test("a thread the target has nothing to do with shows なし and — for the comment count, but its body still appears", () => {
+  const none = program({ noteByTarget: false, involvement: "none", targetComments: [] });
+  render(<ChikirinApp initialPage={page([none])} initialRun={null} />);
+  const cells = within(screen.getAllByRole("row")[1]).getAllByRole("cell");
+  expect(cells[0].textContent).toBe("なし");
+  expect(cells[7].textContent).toBe("—");
+  expect(screen.getAllByRole("row")[1].textContent).toContain("海の環境を扱った回でした");   // スレッド主の投稿(本文)は関わりが無くても出る
+});
+
+test("all five kind filters are offered, including ちきりんあり and ちきりんなし", () => {
+  render(<ChikirinApp initialPage={page([program()])} initialRun={null} />);
+  for (const label of ["すべて", "ちきりんあり", "ちきりんのスレッド", "ちきりんのコメント", "ちきりんなし"]) {
+    expect(screen.getByRole("button", { name: label })).toBeTruthy();
+  }
 });
 
 test("shows the total and the range, and numbered pagination when there is more than one page", () => {
@@ -177,6 +194,14 @@ test("detail shows the thread owner's post and every comment by the target, olde
   expect(posts[0].textContent).toContain("09.21 16:15");
   expect(screen.getByRole("link", { name: /番組ページ/ }).getAttribute("href")).toBe("https://example.test/ep");
   expect(screen.queryByRole("link", { name: /地球超解析 NHKオンデマンド/ })).toBeNull();   // ノート生のリンクカードは出さない(放送情報の編集で設定したリンクだけ)
+});
+
+test("detail of a thread the target has nothing to do with still shows its body, and says she has no comments", () => {
+  const none = program({ noteByTarget: false, involvement: "none", targetComments: [] });
+  render(<ChikirinDetail id="n1" initialProgram={none as never} />);
+  expect(screen.getByLabelText("スレッド主の投稿").textContent).toContain("海の環境を扱った回");
+  expect(screen.queryAllByLabelText("ちきりんのコメント")).toHaveLength(0);
+  expect(screen.getByText("ちきりんのコメントはありません。")).toBeTruthy();
 });
 
 test("saving 放送情報 redirects back to the list", async () => {
