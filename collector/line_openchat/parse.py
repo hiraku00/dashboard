@@ -201,7 +201,9 @@ def read_counts(screen: Screen, cy: float):
                         repeats.add(repeat)
             else:
                 votes += [t for t in re.findall(r"\d+", text) if len(t) == runs]
-            if len(votes) >= 2 and len(set(votes)) == 1:
+            # 1桁は、異なる repeat で2回以上一致するまでは打ち切らない(1回目(repeat=3)が読めず、2・3回目がどちらも
+            # repeat=5 で一致しただけで打ち切ると、下の「異なる repeat で2回」の条件を満たせず、確からしい読みを捨てていた)
+            if len(votes) >= 2 and len(set(votes)) == 1 and (runs != 1 or len(repeats) >= 2):
                 break
         if not votes or (runs == 1 and len(repeats) < 2):
             return None

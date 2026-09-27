@@ -153,7 +153,7 @@ def test_stop_condition_ends_the_scan_early():
         seen["n"] += 1
         return seen["n"] >= 5
     result = scan_down(src, cal, first, stop=stop)
-    assert not result.reached_end and result.frames == 6
+    assert not result.reached_end and result.frames == 5      # 先頭の画像でも判定するので、5回目の画像で止まる
     assert result.stitcher.height > 0
     result.stitcher.close()
 
@@ -195,3 +195,15 @@ def test_measure_shift_reports_unchanged_for_identical_frames():
     a = scroll_to_top(src)
     fp, bl = row_fingerprints(a, cal.x1), blank_mask(a, cal.x1)
     assert measure_shift(fp, fp, bl, cal.band_top, cal.band_bottom, 1.0).kind == "unchanged"
+
+
+def test_stop_is_also_checked_on_the_first_frame():
+    """先頭の画像だけで条件を満たすなら、スクロールせずに終わる."""
+    doc, src = setup(1.0, blocks=200)
+    cal = calibrate(src)
+    first = scroll_to_top(src)
+    grabs = src.grabs
+    result = scan_down(src, cal, first, stop=lambda frame, offset=0: True)
+    assert result.frames == 1 and src.grabs == grabs and not result.reached_end
+    assert result.stitcher.height > 0
+    result.stitcher.close()
