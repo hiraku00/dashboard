@@ -340,6 +340,9 @@ def scan_down(src: FrameSource, cal: Calibration, first: np.ndarray, *, max_fram
     fails = end_hits = rejected = 0
     frames = 1
     try:
+        if stop and stop(first, 0):                          # 先頭の画像だけで条件を満たすこともある
+            st.finish()
+            return ScanResult(st, frames, rejected, False)
         while frames < max_frames:
             src.scroll(step)
             frame = src.grab()

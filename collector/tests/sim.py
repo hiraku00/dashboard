@@ -43,13 +43,15 @@ class SimNote:
 
 
 class SimScreen:
-    def __init__(self, lines, rects, width=K.WIN_W, height=K.WIN_H, digit_map=None, name_map=None, digit_garbage=None):
+    def __init__(self, lines, rects, width=K.WIN_W, height=K.WIN_H, digit_map=None, name_map=None, digit_garbage=None,
+                flaky_first=False):
         self._garbage = digit_garbage
         self.width, self.height = width, height
         self.lines = lines
         self._rects = rects
         self._digits = digit_map or []
         self._names = name_map or []
+        self._flaky_first = flaky_first
 
     def pixel(self, x, y):
         color = K.BG
@@ -78,6 +80,8 @@ class SimScreen:
             return self._garbage
         for (dx0, dx1, dy, text) in self._digits:
             if abs(dy - (y + h / 2)) < 12 and x - 3 <= dx0 and dx1 <= x + w + 3:
+                if self._flaky_first and (repeat, enlarge) == (3, 5):
+                    return ""            # 実機で見られた: 最初の1回(repeat=3, enlarge=5)だけ読めないことがある
                 return " ".join([text] * repeat)
         return ""
 
@@ -115,6 +119,7 @@ class SimChat:
         self.corrupt_only = None           # 読み違える時刻の文字の集合(None なら全部)
         self.corrupt = None                # scroll_y -> bool: その位置では、コメントの時刻の行を読み違える(隣のコメントと混ざる)
         self.digits_unreadable = False   # 1倍のディスプレイで、小さな数字をOCRが読めない状態
+        self.digit_flaky_first = False   # 実機で見られた: 1桁の数字の最初の読み取り(repeat=3, enlarge=5)だけ失敗する
         self.share_w = 16.0            # 共有アイコンの幅(実機では13.5ptと細いことがある)
 
     # ---------- 文書の組み立て ----------
@@ -246,7 +251,8 @@ class SimChat:
                     l.text = l.text.replace("時間前", "時問前").replace("午後", "午復")
         vis_lines.append(Line("ノート", 193.5, 46, 38, 15))
         vis_lines.sort(key=lambda l: (round(l.y / 4), l.x))
-        return SimScreen(vis_lines, vis_rects, digit_map=[] if self.digits_unreadable else vis_digits, name_map=vis_names, digit_garbage=self.digit_garbage)
+        return SimScreen(vis_lines, vis_rects, digit_map=[] if self.digits_unreadable else vis_digits, name_map=vis_names,
+                         digit_garbage=self.digit_garbage, flaky_first=self.digit_flaky_first)
 
     def max_scroll(self) -> float:
         _, _, _, _, total, _ = self._doc()
@@ -334,6 +340,8 @@ class SimThreadReader:
     def __init__(self, chat: "SimChat"):
         self.chat = chat
         self.prepared = 0
+        self.calls: list = []               # read_all に渡された expect_ends
+        self.last_info: dict = {}
 
     def prepare(self) -> None:
         self.prepared += 1
@@ -344,8 +352,19 @@ class SimThreadReader:
     def motion(self, before, after) -> str:
         return "ok"
 
-    def read_all(self):
+    def read_all(self, expect_ends=None):
+        """expect_ends を渡されたら、実機と同じく、開いたコメント欄の終わりをその数だけ数えたところで撮影を止めた状態にする
+        (それより下のノートは、画像に入らない)."""
         from line_openchat import tallparse
+        self.calls.append(expect_ends)
         image, lines, dr, nr = render_tall(self.chat)
         blocks, warnings = tallparse.parse_tall(image, lines, 1.0, float(K.WIN_W), digits_reader=dr, name_reader=nr)
-        return tallparse.group_notes(blocks), warnings
+        groups = tallparse.group_notes(blocks)
+        self.last_info = {}
+        if expect_ends and len(groups) == len(self.chat.notes):
+            open_idx = [i for i, n in enumerate(self.chat.notes) if n.open]
+            if len(open_idx) >= expect_ends:
+                groups = groups[: open_idx[expect_ends - 1] + 1]
+                self.last_info = {"frames": 1, "stopped": True, "ends": expect_ends, "expect": expect_ends,
+                                  "scan_sec": 0.0, "stop_ocr_sec": 0.0, "ocr_sec": 0.0, "parse_sec": 0.0}
+        return groups, warnings

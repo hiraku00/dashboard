@@ -99,6 +99,7 @@ class Session:
         self.stats = RunStats()
         self._pending: list[tuple[dict, int | None]] = []       # コメント欄を開いたノート(読み取りは走査のあと)
         self._visited: set[str] = set()                         # 走査で件数を見て、開くかを判断したノートのID
+        self._threads_open = 0                                  # この実行で開いた(開いているのを見つけた)コメント欄の数
         self._carry: tuple[Screen, list[Block]] | None = None   # _advance が撮った画面を、次の shot() で再利用する
 
     # ---------- 画面 ----------
@@ -320,7 +321,13 @@ class Session:
         if not self._pending:
             return
         self.opts.pause()
-        groups, warnings = self.reader.read_all()
+        # 開いたコメント欄の数だけ「コメントを入力」を数えたら、撮影を止める(それより下は、走査で「変化なし」と判断したノート)。
+        # 初回は、一覧の最後まで全件を読む前提なので止めない
+        expect = None if self.opts.first_run else self._threads_open
+        groups, warnings = self.reader.read_all(expect_ends=expect)
+        info = getattr(self.reader, "last_info", None)
+        if info:
+            self._log_capture(info)
         for w in warnings:
             self.stats.warnings.append(w)
         for note, expected in self._pending:
@@ -334,7 +341,8 @@ class Session:
             if best is not None:
                 self._adopt_full_body(note, best.note)
             if best is None:
-                self.stats.warnings.append(f"{label}: 撮影した画像の中にノートが見つかりませんでした")
+                stopped = "(撮影を途中で止めていたため、止めた位置より下にあった可能性があります)" if info and info.get("stopped") else ""
+                self.stats.warnings.append(f"{label}: 撮影した画像の中にノートが見つかりませんでした{stopped}")
                 note["needs_recheck"] = True
                 note["pending_upload"] = True
                 continue
@@ -357,6 +365,13 @@ class Session:
         handled = {id(n) for n, _ in self._pending}
         self._pending.clear()
         self._apply_unvisited(groups, handled)
+
+    def _log_capture(self, info: dict) -> None:
+        """撮影の記録(枚数・止めたか・各段の秒数). 撮影を止める効果を、実機で確かめるためのログ."""
+        end = (f"停止(コメント欄の終わり {info['ends']}/{info['expect']})" if info.get("stopped")
+               else ("最後まで撮影" + (f"(コメント欄の終わり {info['ends']}/{info['expect']} で止まらず)" if info.get("expect") else "")))
+        self.log(f"撮影: {info['frames']}枚 / {end} / 撮影+判定 {info['scan_sec']:.0f}秒(うち停止の判定 {info['stop_ocr_sec']:.1f}秒)"
+                 f"・OCR {info['ocr_sec']:.0f}秒・区切り {info['parse_sec']:.0f}秒")
 
     def _apply_unvisited(self, groups: list, handled: set[int]) -> None:
         """走査で完全な形が見えなかったノート(画面の切れ目に掛かるなど)も、撮影した画像には写っている。
@@ -467,6 +482,7 @@ class Session:
             x0, x1 = header.comment_icon
             self._click(ClickTarget("toggle_comments", (x0 + x1) / 2, header.counts_y, icon_span=(x0, x1),
                                     counts_y=header.counts_y), screen)
+        self._threads_open += 1                  # 開いた(または、開いていた). 撮影は、この数だけコメント欄の終わりを数えたら止める
         # 3. 「前のコメントを見る」を押し切って、見出しが見える位置まで戻る
         self._load_earlier(note)
 

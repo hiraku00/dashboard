@@ -87,3 +87,14 @@ def test_counts_are_read_correctly_even_if_the_share_icon_is_narrow(share_w, rea
     chat.share_w = share_w
     note = next(b for b in blocks_at(chat) if b.kind == "note")
     assert (note.comments, note.comment_icon is not None) == (count, True)
+
+
+def test_single_digit_count_is_not_lost_when_the_first_ocr_attempt_returns_nothing():
+    """1桁の数字は、異なる repeat(横に並べる数)で2回以上一致するまで確定させない。
+    ただし、打ち切りの判定にその条件が抜けていて、最初の読み取り(repeat=3)がたまたま失敗し、
+    続く2回がどちらも repeat=5 で一致しただけで打ち切ってしまい、確からしい読みを「不明」として捨てていた(実機で発生)。"""
+    chat = SimChat([SimNote("参加者A", "本文です。", "昨日 午前 9:45", reactions=25,
+                            comments=[SimComment("参加者B", "コメント", "1時間前") for _ in range(8)])], jitter=False)
+    chat.digit_flaky_first = True
+    note = next(b for b in blocks_at(chat) if b.kind == "note")
+    assert note.comments == 8

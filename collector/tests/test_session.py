@@ -244,3 +244,58 @@ def test_unchanged_notes_are_not_reopened_on_later_runs():
         assert not any(n["needs_recheck"] for n in ledger.notes)
     assert opened == [1, 0, 0]              # コメントが増えた1件だけを開き、その後は何も開かない
     assert len(by_author(ledger, "参加者A")[0]["comments"]) == 4
+
+
+def _close_window(chat):
+    for n in chat.notes:
+        n.open = n.expanded = n.earlier_loaded = False
+    chat.scroll_y = 0.0
+
+
+def _next_run(chat, ledger, first_run=False):
+    s = Session(SimDriver(chat), ledger, NOW, Options(first_run=first_run))
+    return s, s.run()
+
+
+@pytest.mark.parametrize("changed_index", [0, 5])
+def test_capture_stops_after_the_last_opened_thread(changed_index):
+    """撮影は、開いたコメント欄の数だけ「コメントを入力」を数えたところで止める. 上のノートだけが変わったなら、下は撮らない。
+    一番下のノートが変わったなら、最後まで撮る。どちらも、読み取りの結果と警告は、最後まで撮った場合と同じ."""
+    chat = build(jitter=False)
+    ledger = Ledger()
+    run(chat, ledger)
+    _close_window(chat)
+    chat.notes[changed_index].comments.append(SimComment("参加者Z", "新しいコメントです。", "1時間前"))
+    s, stats = _next_run(chat, ledger)
+    assert s.reader.calls == [1]                                     # 開いたコメント欄は1つ
+    assert s.reader.last_info["stopped"]
+    assert stats.notes_opened == 1 and stats.comments_new == 1, stats.warnings
+    assert not stats.warnings
+    assert not any(n["needs_recheck"] for n in ledger.notes)
+    assert len(ledger.notes[changed_index]["comments"]) == len(chat.notes[changed_index].comments)
+    assert chat.forbidden_clicks == []
+
+
+def test_first_run_never_stops_the_capture_early():
+    chat = build(jitter=False)
+    ledger = Ledger()
+    s, stats = _next_run(chat, ledger, first_run=True)
+    assert s.reader.calls == [None] and not s.reader.last_info
+    assert sum(len(n["comments"]) for n in ledger.notes) == 3 + 4 + 24 + 0 + 1 + 2
+
+
+def test_stopped_capture_gives_the_same_ledger_as_a_full_capture():
+    """止めた場合と最後まで撮った場合で、台帳の中身(コメント)が同じ."""
+    def contents(stop):
+        chat = build(jitter=False)
+        ledger = Ledger()
+        run(chat, ledger)
+        _close_window(chat)
+        chat.notes[1].comments.append(SimComment("ちきりん", "補足: 三つ目です。", "1時間前", badge=True))
+        s = Session(SimDriver(chat), ledger, NOW, Options(first_run=False))
+        if not stop:
+            orig = s.reader.read_all
+            s.reader.read_all = lambda expect_ends=None: orig(None)
+        s.run()
+        return [(n["author_name"], n["posted_at_raw"], [c["body_text"] for c in n["comments"]]) for n in ledger.notes]
+    assert contents(stop=True) == contents(stop=False)
