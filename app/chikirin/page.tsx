@@ -4,6 +4,12 @@ import { latestOpenchatRun, listPrograms } from "@/app/lib/queries/openchat";
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
+// vinextの静的解析はsearchParamsの読み取りだけでは動的ページと判定しない(ビルド時に "?"
+// (未分類)になる。実機で「詳細から一覧に戻ると、URLはpage=2なのにpage=1の内容が表示される」
+// ことを確認した: このページのSSRキャッシュがパス名だけで作られ、クエリ文字列(page/q/kind)を
+// 区別していないため。force-dynamicで、このページを常にキャッシュさせない。
+export const dynamic = "force-dynamic";
+
 // Server Component: 最初のページをD1から直接読む。/api/openchat/programs と同じ
 // app/lib/queries/openchat.ts を呼ぶので、ページとAPIで一覧の中身がずれない。
 // クエリ(q・kind・page)は、詳細から「一覧に戻る」ときに元の検索・絞り込み・ページへ戻すためのもの。
