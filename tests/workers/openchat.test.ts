@@ -177,7 +177,7 @@ describe("programs list", () => {
     ]);
     await saveProgramMeta(p.noteId, { links: [{ url: "https://watched.example.test/v#frag", label: "" }, { url: "https://gone.example.test/v", label: "" }, { url: "https://none.example.test/", label: "" }] });
     const page = await listPrograms({ q: "他人のノートに複数" });
-    expect(page.watched).toEqual({ "https://watched.example.test/v#frag": { url: "https://watched.example.test/v?utm_source=x#t", count: 1 } });
+    expect(page.watched).toEqual({ "https://watched.example.test/v#frag": { url: "https://watched.example.test/v?utm_source=x#t", title: "oc watched", count: 1 } });
     await saveProgramMeta(p.noteId, { links: [] });
     await env.DB.batch([env.DB.prepare("DELETE FROM items WHERE id IN ('oc-w1','oc-w2')"), env.DB.prepare("DELETE FROM item_links WHERE item_id IN ('oc-w1','oc-w2')")]);
   });

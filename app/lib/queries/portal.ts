@@ -34,8 +34,10 @@ export async function portalSummary(): Promise<PortalSummary> {
     env.DB.prepare("SELECT COUNT(*) AS count FROM todo_tasks WHERE deleted_at IS NULL AND occurrence_date = strftime('%Y-%m-%d','now','+7 hours')"),
     env.DB.prepare("SELECT COUNT(*) AS count FROM todo_tasks WHERE deleted_at IS NULL AND occurrence_date = strftime('%Y-%m-%d','now','+7 hours') AND completed_at IS NOT NULL"),
     env.DB.prepare(LATEST_SNAPSHOTS),
-    // /chikirin の一覧に載るノートと同じ条件(app/lib/openchat-query.ts の buildProgramsFilter の既定)。
-    env.DB.prepare("SELECT COUNT(*) AS count, MAX(posted_at) AS latest_at FROM openchat_notes WHERE room = ? AND deleted_at IS NULL AND (author_is_target = 1 OR target_comment_count > 0)").bind(ROOM),
+    // /chikirin の一覧に載るノートと同じ条件(app/lib/openchat-query.ts の buildProgramsFilter の既定、kind=all)。
+    // 2026-09-27: 一覧が全スレッドを出すようになった(#172)のに合わせて、この集計も全スレッドにする
+    // (以前はちきりんが関わるスレッドだけを数えており、一覧の総数・最新日時とずれていた)。
+    env.DB.prepare("SELECT COUNT(*) AS count, MAX(posted_at) AS latest_at FROM openchat_notes WHERE room = ? AND deleted_at IS NULL").bind(ROOM),
   ]);
   const latestSnapshots = (latestSnapshotResult.results ?? []) as Array<Record<string, unknown>>;
   const totals = assetTotals(latestSnapshots);

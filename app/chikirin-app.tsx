@@ -11,7 +11,7 @@ import { watchListSearchTerm } from "./lib/text.ts";
 import { useLatestRequest } from "./lib/use-latest-request";
 import { useSearchReload } from "./lib/use-search-reload";
 
-export type ProgramsPage = { programs: Program[]; total: number; page: number; pageSize: number; watched?: Record<string, { url: string; count: number }> };
+export type ProgramsPage = { programs: Program[]; total: number; page: number; pageSize: number; watched?: Record<string, { url: string; title: string; count: number }> };
 export type RunSummary = {
   status: string; startedAt: string; completedAt: string | null; notesScanned: number; notesOpened: number;
   commentsNew: number; targetCommentsNew: number; warningCount: number; warnings?: string[]; newPrograms?: number;
@@ -227,7 +227,7 @@ export function ChikirinApp({ initialPage = null, initialRun = null, initialQuer
               <td className="num-cell is-target-count">{program.involvement === "none" ? <span className="empty-cell">—</span> : program.targetComments.length}</td>
               <td className="status-cell center">{program.issues.length > 0 ? <span className="chikirin-issue" title={program.issues.join("\n")}>要確認</span> : <span className="empty-cell" title="取得に問題はありません">OK</span>}</td>
               <td className="links-cell">{links.length > 0 ? <ProgramLinks links={links} label={`${program.programTitle} のリンク`} /> : <span className="empty-cell">—</span>}</td>
-              <td className="texttube-cell is-watchlist">{watchedLinks.length > 0 ? watchedLinks.map((l) => <a key={l.url} className="texttube-badge texttube-reflected" href={`/watch-list?q=${encodeURIComponent(watchListSearchTerm(watched[l.url].url))}`} target="_blank" rel="noreferrer" title={`${l.text} は Watch List に登録済み。開くとその項目を表示します`}>登録済{watched[l.url].count > 1 ? ` ${watched[l.url].count}件` : ""}</a>) : <span className="empty-cell">—</span>}</td>
+              <td className="texttube-cell is-watchlist">{watchedLinks.length > 0 ? watchedLinks.map((l) => <a key={l.url} className="texttube-badge texttube-reflected" href={`/watch-list?q=${encodeURIComponent(watched[l.url].title || watchListSearchTerm(watched[l.url].url))}`} target="_blank" rel="noreferrer" title={`${l.text} は Watch List に登録済み(「${watched[l.url].title}」)。開くとその項目を表示します`}>登録済{watched[l.url].count > 1 ? ` ${watched[l.url].count}件` : ""}</a>) : <span className="empty-cell">—</span>}</td>
             </tr>;
           })}</tbody>
         </table>
