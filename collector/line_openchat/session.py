@@ -98,6 +98,7 @@ class Session:
         self.debug = log if os.environ.get("LINE_OPENCHAT_DEBUG") else (lambda s: None)
         self.stats = RunStats()
         self._pending: list[tuple[dict, int | None]] = []       # コメント欄を開いたノート(読み取りは走査のあと)
+        self._visited: set[str] = set()                         # 走査で件数を見て、開くかを判断したノートのID
         self._carry: tuple[Screen, list[Block]] | None = None   # _advance が撮った画面を、次の shot() で再利用する
 
     # ---------- 画面 ----------
@@ -151,7 +152,7 @@ class Session:
     def _scan(self) -> None:
         o, stats = self.opts, self.stats
         self.to_top()
-        visited: set[str] = set()
+        visited = self._visited
         unchanged = 0
         step = o.start_step
         prev_sig: list | None = None
@@ -359,13 +360,20 @@ class Session:
 
     def _apply_unvisited(self, groups: list, handled: set[int]) -> None:
         """走査で完全な形が見えなかったノート(画面の切れ目に掛かるなど)も、撮影した画像には写っている。
-        コメント欄が開いていて、表示の件数と読めた件数が合うものは、ここで台帳に反映する(合わなければ、次回の再確認に回す)."""
+        コメント欄が開いていて、表示の件数と読めた件数が合うものは、ここで台帳に反映する(合わなければ、次回の再確認に回す).
+
+        走査で件数を見て「変化なし」と判断したノートは、コメント欄を開いていないので、撮影には「表示N件 / 取得0件」と写る。
+        これを件数の不一致として再確認に回すと、次の実行で開き、その実行で開かなかったノートがまた再確認に回る(1回おきに
+        ほぼ全部のノートを開き直していた)。走査で判断済みのノートは、本文の補完だけにとどめる。"""
         for g in groups:
             obs = note_obs(g.note, self.now)
             if obs is None:
                 continue
             existing = identity.match_note(self.ledger.notes, obs.as_match_dict())
             if existing is not None and id(existing) in handled:
+                continue
+            if existing is not None and existing["id"] in self._visited:
+                self._adopt_full_body(existing, g.note)
                 continue
             if existing is None and self._reached_old({"posted_at": obs.posted_at}) and not self.opts.first_run:
                 continue
@@ -379,6 +387,8 @@ class Session:
                 self._count(res)
                 self.stats.notes_scanned += 1 if is_new else 0
                 self.log(f"note {label} 💬{shown} (撮影から)")
+            elif not is_new and not g.comments and shown is not None and shown == note["comment_count"] and not note.get("needs_recheck"):
+                pass                    # コメント欄は閉じているが、件数は台帳と同じ(変化なし)
             else:
                 note["needs_recheck"] = True
                 note["pending_upload"] = True

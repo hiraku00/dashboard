@@ -218,3 +218,29 @@ def test_a_body_warning_is_withdrawn_when_the_capture_reads_the_whole_body():
     session.stats.warnings.append(f"本文を開けませんでした: {session._label(note)}")
     session._adopt_full_body(note, partial)                      # 「もっと見る」が残っていれば、取り下げない
     assert len(session.stats.warnings) == 2
+
+
+def test_unchanged_notes_are_not_reopened_on_later_runs():
+    """実行のたびにノートウィンドウを閉じる運用(毎回、コメント欄も本文も閉じた状態から始まる)で、
+    変化の無いノートを撮影の画像から「表示N件 / 取得0件」と読んで再確認に回し、次の実行で開き直していた(1回おきにほぼ全部を開いた)."""
+    chat = build(jitter=False)
+    ledger = Ledger()
+
+    def close_window():
+        for n in chat.notes:
+            n.open = n.expanded = n.earlier_loaded = False
+        chat.scroll_y = 0.0
+
+    _, first = run(chat, ledger)
+    assert first.notes_opened == 5
+    chat.notes[0].comments.append(SimComment("参加者Z", "新しいコメントです。", "1時間前"))
+    opened = []
+    for _ in range(3):
+        close_window()
+        s = Session(SimDriver(chat), ledger, NOW, Options(first_run=False))
+        stats = s.run()
+        opened.append(stats.notes_opened)
+        assert not any("走査で見えず" in w for w in stats.warnings), stats.warnings
+        assert not any(n["needs_recheck"] for n in ledger.notes)
+    assert opened == [1, 0, 0]              # コメントが増えた1件だけを開き、その後は何も開かない
+    assert len(by_author(ledger, "参加者A")[0]["comments"]) == 4
