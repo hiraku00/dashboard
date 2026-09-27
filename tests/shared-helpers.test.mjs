@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 
-import { canonicalUrl, clean, validDate } from "../app/lib/text.ts";
+import { canonicalUrl, clean, validDate, watchListSearchTerm } from "../app/lib/text.ts";
 import { youTubeVideoId } from "../app/lib/youtube.ts";
 import {
   toLegacyExchangeSnapshot,
@@ -27,6 +27,18 @@ test("canonicalUrl rejects schemes other than http/https", () => {
   expect(canonicalUrl("javascript:alert(1)")).toBe("");
   expect(canonicalUrl("data:text/html,<script>alert(1)</script>")).toBe("");
   expect(canonicalUrl("ftp://example.com/file")).toBe("");
+});
+
+test("watchListSearchTerm searches by the last path segment, not the whole URL", () => {
+  // ちきりんオプチャの「登録済」リンクが渡す検索語。フルURLだと、検索ボックスの
+  // 48バイト切り詰め(sql-text.ts)が先頭から効くため、同じシリーズの多くのエピソードが
+  // 共有する長い接頭辞(.../series-tep-<シリーズID>/ep/<エピソードID>)は残っても、
+  // 区別できるはずの末尾のエピソードIDが切り捨てられ、シリーズ内の全エピソードに
+  // ヒットしてしまう(実機で確認)。末尾のパス segment だけを検索語にすることで防ぐ。
+  expect(watchListSearchTerm("https://www.web.nhk/tv/pl/series-tep-P1124VMJ6R/ep/4N6PM42X7K")).toBe("4N6PM42X7K");
+  expect(watchListSearchTerm("https://example.com/a/b/c?x=1#y")).toBe("c");
+  expect(watchListSearchTerm("https://example.com/")).toBe("https://example.com/");   // パスが無ければ全体にフォールバック
+  expect(watchListSearchTerm("not a url")).toBe("not a url");
 });
 
 test("clean trims, truncates and rejects non-strings", () => {
