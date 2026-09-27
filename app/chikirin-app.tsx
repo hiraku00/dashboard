@@ -52,9 +52,11 @@ export function displayBroadcaster(program: Program): string {
   return program.meta.broadcaster || inferBroadcaster([...program.meta.links.map((l) => l.url), program.linkUrl].filter(Boolean));
 }
 
-/** 一覧のリンク列に出すリンク: 放送情報で編集したリンクだけ(ノートの生のリンクカードは、詳細でも編集・削除できないため出さない)。 */
-function listLinks(program: Program) {
-  return program.meta.links.map((l) => ({ url: l.url, text: linkText(l.url, l.label) }));
+/** 一覧・詳細に出すリンク: 放送情報で編集したリンクがあればそれ、無ければノートの生リンクカードのURL
+ *  (放送局の自動設定と同じ扱い。編集・削除はできない参考表示で、保存すると編集したリンクに置き換わる)。 */
+export function displayLinks(program: Program): Array<{ url: string; label: string; text: string }> {
+  if (program.meta.links.length > 0) return program.meta.links.map((l) => ({ url: l.url, label: l.label, text: linkText(l.url, l.label) }));
+  return program.linkUrl ? [{ url: program.linkUrl, label: "", text: linkText(program.linkUrl, "") }] : [];
 }
 
 /** 一覧のリンク列: 1件目だけを出し、2件目以降は「+N」で開閉する(開くと残りが縦に並び、それぞれ押せる)。 */
@@ -152,7 +154,7 @@ export function ChikirinApp({ initialPage = null, initialRun = null, initialQuer
             <th scope="col" className="num" title="ノート全体のコメント数"><span className="head-2">コメント<br />全体</span></th><th scope="col" className="num" title="ちきりんが書いたコメントの数"><span className="head-2">コメント<br />ちきりん</span></th><th scope="col" className="center">状態</th><th scope="col">リンク</th><th scope="col"><span className="head-2">Watch<br />List</span></th>
           </tr></thead>
           <tbody>{programs.map((program) => {
-            const links = listLinks(program);
+            const links = displayLinks(program);
             const watchedLinks = links.filter((l) => watched[l.url]);
             return <tr key={program.noteId}>
               <td className="kind-cell">{program.involvement === "none"

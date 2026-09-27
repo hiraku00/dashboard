@@ -72,6 +72,20 @@ test("the links column shows only the first link; +N opens the rest as clickable
   expect(within(row).queryByRole("link", { name: /^B/ })).toBeNull();
 });
 
+test("when no link has been saved yet, the list shows the note's raw link (same as the broadcaster auto-fill), not a dash", () => {
+  const unedited = program({ meta: { broadcaster: "", programName: "", episodeTitle: "", links: [] }, linkUrl: "https://www.nhk-ondemand.jp/x" });
+  render(<ChikirinApp initialPage={page([unedited])} initialRun={null} />);
+  const row = screen.getAllByRole("row")[1];
+  expect(within(row).getByRole("link", { name: /nhk-ondemand\.jp/ }).getAttribute("href")).toBe("https://www.nhk-ondemand.jp/x");
+});
+
+test("with no saved link and no raw link either, the list shows a dash", () => {
+  const none = program({ meta: { broadcaster: "", programName: "", episodeTitle: "", links: [] }, linkUrl: "" });
+  render(<ChikirinApp initialPage={page([none])} initialRun={null} />);
+  const row = screen.getAllByRole("row")[1];
+  expect(within(row).queryByRole("link", { name: /↗/ })).toBeNull();
+});
+
 test("a row with a problem shows 要確認 with the reason, so it can be found in the list", () => {
   const bad = program({ issues: ["コメントの件数が表示と合わず、再確認待ちです（次回の同期でやり直します）。"] });
   render(<ChikirinApp initialPage={page([bad, program({ noteId: "n2" })])} initialRun={null} />);
@@ -193,7 +207,13 @@ test("detail shows the thread owner's post and every comment by the target, olde
   expect(posts[1].textContent).toContain("09.21 18:00");
   expect(posts[0].textContent).toContain("09.21 16:15");
   expect(screen.getByRole("link", { name: /番組ページ/ }).getAttribute("href")).toBe("https://example.test/ep");
-  expect(screen.queryByRole("link", { name: /地球超解析 NHKオンデマンド/ })).toBeNull();   // ノート生のリンクカードは出さない(放送情報の編集で設定したリンクだけ)
+  expect(screen.queryByRole("link", { name: /地球超解析 NHKオンデマンド/ })).toBeNull();   // ノートのリンクカードの題名(OCR文字列)自体はリンク名として出さない
+});
+
+test("detail falls back to the note's raw link when nothing has been saved yet (same as the list)", () => {
+  const unedited = program({ meta: { broadcaster: "", programName: "", episodeTitle: "", links: [] }, linkUrl: "https://www.nhk-ondemand.jp/x" });
+  render(<ChikirinDetail id="n1" initialProgram={unedited as never} />);
+  expect(screen.getByRole("link", { name: /nhk-ondemand\.jp/ }).getAttribute("href")).toBe("https://www.nhk-ondemand.jp/x");
 });
 
 test("detail of a thread the target has nothing to do with still shows its body, and says she has no comments", () => {
@@ -204,11 +224,12 @@ test("detail of a thread the target has nothing to do with still shows its body,
   expect(screen.getByText("ちきりんのコメントはありません。")).toBeTruthy();
 });
 
-test("saving 放送情報 redirects back to the list", async () => {
+test("saving 放送情報 redirects back to the list and refreshes it, so the just-saved link isn't served from a stale cache", async () => {
   vi.stubGlobal("fetch", vi.fn(() => Promise.resolve(json({ program: program() }))));
   render(<ChikirinDetail id="n1" initialProgram={program() as never} />);
   fireEvent.click(screen.getByRole("button", { name: "保存" }));
   await waitFor(() => expect(nav.push).toHaveBeenCalledWith("/chikirin"));
+  expect(nav.refresh).toHaveBeenCalled();
 });
 
 test("opened from page 2 (backHref carries the list's page/query/kind), back link and save both return to page 2", async () => {

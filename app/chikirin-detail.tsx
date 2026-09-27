@@ -8,7 +8,7 @@ import { Body } from "./chikirin-body";
 import { MetaForm } from "./chikirin-meta-form";
 import { readErrorMessage, readJson } from "./lib/json";
 import { formatPostedAt, type Program } from "./lib/openchat-query.ts";
-import { linkText } from "./chikirin-app";
+import { displayLinks } from "./chikirin-app";
 
 /** 1番組(1ノート)の詳細: スレッド主の投稿(番組の情報)と、ちきりんのコメントを全文で。 */
 export function ChikirinDetail({ id, initialProgram = null, initialError = "", backHref = "/chikirin" }: { id: string; initialProgram?: Program | null; initialError?: string; backHref?: string }) {
@@ -42,7 +42,7 @@ export function ChikirinDetail({ id, initialProgram = null, initialError = "", b
       {program && <article className="chikirin-detail">
         <section className="chikirin-meta-edit" aria-labelledby="chikirin-meta-title">
           <h2 id="chikirin-meta-title">放送情報（編集）</h2>
-          <MetaForm key={JSON.stringify(program.meta)} program={program} onSaved={() => router.push(backHref)} />
+          <MetaForm key={JSON.stringify(program.meta)} program={program} onSaved={() => { router.push(backHref); router.refresh(); }} />
         </section>
         <header>
           <p className="chikirin-meta">
@@ -51,7 +51,10 @@ export function ChikirinDetail({ id, initialProgram = null, initialError = "", b
             <span>コメント {program.commentCount} 件</span>
             <span>ちきりんのコメント {program.targetComments.length} 件</span>
           </p>
-          {program.meta.links.length > 0 && <p className="chikirin-link">{program.meta.links.map((l) => <a key={l.url} href={l.url} target="_blank" rel="noreferrer">{linkText(l.url, l.label)} <span aria-hidden="true">↗</span></a>)}</p>}
+          {(() => {
+            const links = displayLinks(program);
+            return links.length > 0 && <p className="chikirin-link">{links.map((l) => <a key={l.url} href={l.url} target="_blank" rel="noreferrer">{l.text} <span aria-hidden="true">↗</span></a>)}</p>;
+          })()}
         </header>
         {program.issues.length > 0 && <div className="chikirin-issue-box" role="status"><strong>要確認</strong><ul>{program.issues.map((issue) => <li key={issue}>{issue}</li>)}</ul></div>}
         {program.noteBody && <section className={program.noteByTarget ? "chikirin-post is-thread" : "chikirin-post is-owner"} aria-label={program.noteByTarget ? "ちきりんのスレッド" : "スレッド主の投稿"}>
