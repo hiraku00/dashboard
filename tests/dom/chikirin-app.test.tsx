@@ -39,6 +39,15 @@ const program = (over: Record<string, unknown> = {}) => ({
 const page = (programs: unknown[], total = programs.length, pageNo = 1, pageSize = 20) => ({ programs, total, page: pageNo, pageSize }) as unknown as ProgramsPage;
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
+/** 保存後、`window.location.href = ...` で一覧へ戻る(次のテストのために元に戻す)ことをスパイする。
+ *  router.push(単なるクライアント側の遷移)ではフルロードでの遷移を確認できない。 */
+function spyOnLocationHref() {
+  const original = Object.getOwnPropertyDescriptor(window, "location")!;
+  let assigned = "";
+  Object.defineProperty(window, "location", { configurable: true, value: { ...window.location, set href(v: string) { assigned = v; }, get href() { return assigned; } } });
+  return { get: () => assigned, restore: () => Object.defineProperty(window, "location", original) };
+}
+
 test("the list is a table: kind, program, title, thread, poster, times, counts, status and links (read-only; editing is on the detail page)", () => {
   render(<ChikirinApp initialPage={page([program()])} initialRun={null} />);
   expect(screen.getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["ちきりん", "番組", "タイトル", "スレ主", "スレッド起票日時", "最新ちきりん", "コメント全体", "コメントちきりん", "状態", "リンク", "WatchList"]);
@@ -140,6 +149,18 @@ test("the target's own thread is marked in the list and previews her body", () =
   expect(row.textContent).toContain("9月23日の報道特集");
 });
 
+test("the スレ主 column highlights ちきりん with its own color so it stands out from other posters", () => {
+  const own = program({ noteByTarget: true, involvement: "thread", noteAuthor: "ちきりん" });
+  const other = program({ noteId: "n2", noteByTarget: false, noteAuthor: "参加者B" });
+  render(<ChikirinApp initialPage={page([own, other])} initialRun={null} />);
+  const rows = screen.getAllByRole("row");
+  const ownerCell = (row: HTMLElement) => within(row).getAllByRole("cell")[3];
+  expect(ownerCell(rows[1]).textContent).toBe("ちきりん");
+  expect(ownerCell(rows[1]).className).toContain("is-target");
+  expect(ownerCell(rows[2]).textContent).toBe("参加者B");
+  expect(ownerCell(rows[2]).className).not.toContain("is-target");
+});
+
 test("a thread the target has nothing to do with shows なし and — for the comment count, but its body still appears", () => {
   const none = program({ noteByTarget: false, involvement: "none", targetComments: [] });
   render(<ChikirinApp initialPage={page([none])} initialRun={null} />);
@@ -224,20 +245,29 @@ test("detail of a thread the target has nothing to do with still shows its body,
   expect(screen.getByText("ちきりんのコメントはありません。")).toBeTruthy();
 });
 
-test("saving 放送情報 redirects back to the list and refreshes it, so the just-saved link isn't served from a stale cache", async () => {
+test("saving 放送情報 redirects back to the list with a full page load, so it never shows a stale cache", async () => {
   vi.stubGlobal("fetch", vi.fn(() => Promise.resolve(json({ program: program() }))));
   render(<ChikirinDetail id="n1" initialProgram={program() as never} />);
-  fireEvent.click(screen.getByRole("button", { name: "保存" }));
-  await waitFor(() => expect(nav.push).toHaveBeenCalledWith("/chikirin"));
-  expect(nav.refresh).toHaveBeenCalled();
+  const location = spyOnLocationHref();
+  try {
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    await waitFor(() => expect(location.get()).toBe("/chikirin"));
+  } finally {
+    location.restore();
+  }
 });
 
 test("opened from page 2 (backHref carries the list's page/query/kind), back link and save both return to page 2", async () => {
   vi.stubGlobal("fetch", vi.fn(() => Promise.resolve(json({ program: program() }))));
   render(<ChikirinDetail id="n1" initialProgram={program() as never} backHref="/chikirin?page=2" />);
   expect(screen.getByRole("link", { name: "← 一覧に戻る" }).getAttribute("href")).toBe("/chikirin?page=2");
-  fireEvent.click(screen.getByRole("button", { name: "保存" }));
-  await waitFor(() => expect(nav.push).toHaveBeenCalledWith("/chikirin?page=2"));
+  const location = spyOnLocationHref();
+  try {
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    await waitFor(() => expect(location.get()).toBe("/chikirin?page=2"));
+  } finally {
+    location.restore();
+  }
 });
 
 test("detail of the target's own thread shows her body once and labels her comments 本人コメント", () => {
