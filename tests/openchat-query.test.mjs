@@ -4,10 +4,11 @@ import {
 } from "../app/lib/openchat-query.ts";
 
 describe("buildProgramsFilter", () => {
-  test("default view: target notes or notes with a target comment, never deleted", () => {
+  test("default view (all): every thread, never deleted, with no involvement condition", () => {
     const f = buildProgramsFilter({});
     expect(f.where).toContain("n.deleted_at IS NULL");
-    expect(f.where).toContain("(n.author_is_target = 1 OR n.target_comment_count > 0)");
+    expect(f.where).not.toContain("author_is_target");
+    expect(f.where).not.toContain("target_comment_count");
     expect(f.limit).toBe(PAGE_SIZE);
   });
 
@@ -15,16 +16,18 @@ describe("buildProgramsFilter", () => {
     expect(buildProgramsFilter({ kind: "thread" }).where).toContain("n.author_is_target = 1");
     expect(buildProgramsFilter({ kind: "thread" }).where).not.toContain("target_comment_count");
     expect(buildProgramsFilter({ kind: "comment" }).where).toContain("n.target_comment_count > 0");
+    expect(buildProgramsFilter({ kind: "involved" }).where).toContain("(n.author_is_target = 1 OR n.target_comment_count > 0)");
+    expect(buildProgramsFilter({ kind: "none" }).where).toContain("n.author_is_target = 0 AND n.target_comment_count = 0");
     expect(parseKind("weird")).toBe("all");
   });
 
-  test("search looks at titles, the listed note's body and the target's own comments only", () => {
+  test("search looks at titles, every thread's body and the target's own comments only", () => {
     const f = buildProgramsFilter({ q: "鉄道" });
     expect(f.values.filter((v) => v === "%鉄道%")).toHaveLength(6);      // 番組名・リンク題名・本文・ちきりんのコメント・放送局・放送タイトル
     expect(f.where).toContain("c.is_target = 1");
-    // 一覧に載るノート(ちきりんが関わるもの)の本文は探すが、ほかの人のコメント本文を直接探す条件は無い
+    // 全スレッドの本文は探すが、ほかの人のコメント本文を直接探す条件は無い
     expect(f.where).toContain("n.body_text LIKE");
-    expect(f.where).toContain("(n.author_is_target = 1 OR n.target_comment_count > 0)");
+    expect(f.where).not.toContain("author_is_target");
     expect(f.where.match(/body_text LIKE/g)).toHaveLength(2);
     expect(f.where).toContain("openchat_note_meta");                       // 編集した放送局・放送タイトルも探す
   });
@@ -62,6 +65,7 @@ describe("toProgram", () => {
     expect(p.noteByTarget).toBe(false);
     expect(p.targetBody).toBeNull();
     expect(p.noteBody).toBe("他の人が書いた本文");
+    expect(p.involvement).toBe("comment");
     expect(p.targetComments.map((c) => c.id)).toEqual(["c1", "c2"]);
     expect(p.latestAt).toBe("2026-09-21T09:00:00Z");                    // ちきりんの最新のコメント
     expect(p.latestPrecision).toBe("approx_hour");
@@ -74,13 +78,24 @@ describe("toProgram", () => {
     expect(p.noteByTarget).toBe(true);
     expect(p.targetBody).toBe("報道特集の本文");
     expect(p.noteBody).toBe("報道特集の本文");
+    expect(p.involvement).toBe("thread");
     expect(p.latestAt).toBe("2026-09-21T09:00:00Z");
     expect(p.targetComments).toHaveLength(1);
+  });
+
+  test("a note the target has nothing to do with: still returns the body, but no involvement and no latest date", () => {
+    const p = toProgram(noteRow(), []);
+    expect(p.involvement).toBe("none");
+    expect(p.noteBody).toBe("他の人が書いた本文");
+    expect(p.targetComments).toEqual([]);
+    expect(p.latestAt).toBe("");
+    expect(p.latestPrecision).toBe("");
   });
 
   test("a non-target comment row passed in by mistake is never returned", () => {
     const p = toProgram(noteRow(), [{ id: "x", body_text: "他人", posted_at: "2026-09-21T09:00:00Z", posted_at_precision: "exact", is_target: 0 }]);
     expect(p.targetComments).toEqual([]);
+    expect(p.involvement).toBe("none");
   });
 });
 

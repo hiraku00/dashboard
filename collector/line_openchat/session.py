@@ -246,9 +246,8 @@ class Session:
         """開く必要があれば開いて集める. 画面を動かしたら True."""
         expected = obs.comments
         need_comments = expected is None or expected != note["comment_count"] or note.get("needs_recheck", False)
-        # ちきりんのノートに加え、コメント欄を読むノートは本文(番組の情報)も全文取る: ちきりんが関わるかは開いてから分かり、
-        # 関わるノートは画面に、スレッド主の投稿として本文を出す
-        need_body = not note["body_complete"] and (note["author_is_target"] or need_comments)
+        # 全スレッドを画面に出すので、本文(番組の情報)は全スレッドで全文取る(1スレッドにつき「もっと見る」を1回押すだけ)
+        need_body = not note["body_complete"]
         if expected is None:
             self.stats.warnings.append(f"コメント数を読めませんでした(1倍のディスプレイでは小さい数字を読めないことがあります。Retinaディスプレイでの実行を推奨): {note['author_name']} {obs.posted_raw}")
         if not need_body and not need_comments:

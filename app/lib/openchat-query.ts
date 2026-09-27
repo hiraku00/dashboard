@@ -1,6 +1,7 @@
 /** ちきりんオプチャの一覧(/chikirin と /api/openchat/programs)の、純粋な決定ロジック。
  *  D1には触れない(app/lib/queries/openchat.ts が呼ぶ)。vitestの "node" project でテストする。
  *
+ *  一覧には全スレッドを出す(ちきりんが関わるかどうかは involvement で示す)。
  *  ちきりん以外のコメント本文は、ここのどの関数の出力にも含めない。 */
 import { MAX_LIKE_TERM_BYTES, truncateUtf8Bytes } from "./sql-text.ts";
 import { metaFromRow, type Meta } from "./openchat-meta.ts";
@@ -9,15 +10,18 @@ export const PAGE_SIZE = 10;
 export const MAX_PAGE = 10000;
 export const ROOM = "atsumare-tv";
 
-export type ProgramKind = "all" | "thread" | "comment";
+/** all: 全スレッド(既定)。involved: ちきりんが関わる(旧仕様の一覧と同じ)。thread/comment: involved の内訳。none: 関わらないスレッドだけ。 */
+export type ProgramKind = "all" | "involved" | "thread" | "comment" | "none";
 export type ProgramsQuery = { q?: string | null; kind?: string | null; page?: number | string | null; limit?: number | null };
 
 function clean(value: unknown, max = 200): string {
   return typeof value === "string" ? value.trim().slice(0, max) : "";
 }
 
+const KINDS: ProgramKind[] = ["all", "involved", "thread", "comment", "none"];
+
 export function parseKind(value: unknown): ProgramKind {
-  return value === "thread" || value === "comment" ? value : "all";
+  return (KINDS as string[]).includes(value as string) ? (value as ProgramKind) : "all";
 }
 
 /** LIKEの特殊文字(% _ \)を文字として扱う。 */
@@ -26,20 +30,22 @@ export function likePattern(term: string): string {
   return `%${safe}%`;
 }
 
-/** 一覧に載るノート: ちきりんが立てたノート、または、ちきりんのコメントがあるノート。 */
+/** 一覧に載るノート: 既定(all)は全スレッド。kind で、ちきりんの関わり方に絞り込める。 */
 export function buildProgramsFilter(query: ProgramsQuery): { where: string; values: unknown[]; limit: number; offset: number; page: number; kind: ProgramKind } {
   const kind = parseKind(query.kind);
   const clauses = ["n.room = ?", "n.deleted_at IS NULL"];
   const values: unknown[] = [ROOM];
   if (kind === "thread") clauses.push("n.author_is_target = 1");
   else if (kind === "comment") clauses.push("n.target_comment_count > 0");
-  else clauses.push("(n.author_is_target = 1 OR n.target_comment_count > 0)");
+  else if (kind === "involved") clauses.push("(n.author_is_target = 1 OR n.target_comment_count > 0)");
+  else if (kind === "none") clauses.push("n.author_is_target = 0 AND n.target_comment_count = 0");
+  // all: 関わり方の条件を付けない
 
   const q = clean(query.q, 120);
   if (q) {
     const pattern = likePattern(q);
-    // 番組名(ノートの1行目・リンクカードの題名)、一覧に載るノートの本文(スレッド主の投稿=番組の情報)、ちきりんのコメント本文を探す。
-    // 一覧に載らないノートと、ほかの人のコメント本文は、検索の対象にもしない(件数などから内容が推測できてしまうため)。
+    // 番組名(ノートの1行目・リンクカードの題名)、スレッド主の投稿(本文)、ちきりんのコメント本文を探す。
+    // ほかの人のコメント本文は、検索の対象にしない(件数などから内容が推測できてしまうため)。
     clauses.push(`(n.program_title LIKE ? ESCAPE '\\' OR n.link_title LIKE ? ESCAPE '\\'
       OR n.body_text LIKE ? ESCAPE '\\'
       OR EXISTS (SELECT 1 FROM openchat_comments c WHERE c.note_id = n.id AND c.is_target = 1 AND c.deleted_at IS NULL AND c.body_text LIKE ? ESCAPE '\\')
@@ -56,26 +62,30 @@ export function buildProgramsFilter(query: ProgramsQuery): { where: string; valu
 export const PROGRAMS_ORDER_BY = "ORDER BY n.posted_at DESC, n.id ASC";
 
 export type ProgramComment = { id: string; bodyText: string; postedAt: string; precision: string };
+/** ちきりんの関わり方: thread=ちきりんが立てたスレッド、comment=他の人のスレッドにちきりんのコメントがある、none=どちらでもない。 */
+export type Involvement = "thread" | "comment" | "none";
 export type Program = {
   noteId: string; programTitle: string; linkTitle: string; linkUrl: string;
   noteAuthor: string; noteByTarget: boolean; notePostedAt: string; notePrecision: string;
   /** ちきりんが立てたノートのときだけ本文が入る。ほかの人のノートは null。 */
   targetBody: string | null;
-  /** スレッド主の投稿(番組の情報)。一覧に載るノートは、ちきりんが立てたか、ちきりんのコメントがあるノートだけ。 */
+  /** スレッド主の投稿(番組の情報)。全スレッドに入る。 */
   noteBody: string;
+  /** ちきりんの関わり方。一覧の「ちきりん」列・絞り込みに使う。 */
+  involvement: Involvement;
   targetComments: ProgramComment[];
-  /** ちきりんの最新の投稿(コメント、なければスレッド自身)の日時。一覧の列に使う。 */
+  /** ちきりんの最新の投稿(コメント、なければスレッド自身)の日時。関わりが無ければ空。一覧の列に使う。 */
   latestAt: string; latestPrecision: string;
   /** 人が編集した情報(放送局・その日の放送タイトル・リンク)。未編集なら空。 */
   meta: Meta;
   /** 取得の状態。要確認(コメント件数が合わず再確認待ち)・本文が途中の可能性。どちらでもなければ空。 */
   issues: string[];
-  /** ちきりんの投稿(スレッド・コメント)を、collector が最初に見つけた日時のうち最新のもの(UTC, ISO)。「新着」の判定に使う。 */
+  /** このスレッド・ちきりんの投稿を、collector が最初に見つけた日時のうち最新のもの(UTC, ISO)。「新着」の判定に使う。 */
   newestSeenAt: string;
   commentCount: number; lastCheckedAt: string;
 };
 
-/** ノート行とちきりんのコメント行から、画面・APIの形にする。ノート行は、一覧に載る(ちきりんが関わる)ものだけを渡すこと。ほかの人のコメントは受け取らない。 */
+/** ノート行とちきりんのコメント行から、画面・APIの形にする。ノート行はどのスレッドでもよい。ほかの人のコメントは受け取らない。 */
 function isoUtc(value: unknown): string {
   const t = new Date(String(value ?? "")).getTime();
   return Number.isNaN(t) ? "" : new Date(t).toISOString().replace(/\.\d+Z$/, "Z");
@@ -83,8 +93,8 @@ function isoUtc(value: unknown): string {
 
 export function toProgram(note: Record<string, unknown>, targetComments: Array<Record<string, unknown>>): Program {
   const p = buildProgram(note, targetComments);
-  const seen = targetComments.filter((c) => Number(c.is_target ?? 1) === 1).map((c) => isoUtc(c.first_seen_at));
-  if (p.noteByTarget) seen.push(isoUtc(note.first_seen_at));
+  // 新着の判定: スレッドが見つかった日時(全スレッド共通)と、ちきりんのコメントが見つかった日時のうち、最新のもの。
+  const seen = [isoUtc(note.first_seen_at), ...targetComments.filter((c) => Number(c.is_target ?? 1) === 1).map((c) => isoUtc(c.first_seen_at))];
   p.newestSeenAt = seen.filter(Boolean).sort().pop() ?? "";
   const last = p.targetComments[p.targetComments.length - 1];
   p.latestAt = last ? last.postedAt : p.noteByTarget ? p.notePostedAt : "";
@@ -94,15 +104,18 @@ export function toProgram(note: Record<string, unknown>, targetComments: Array<R
 
 function buildProgram(note: Record<string, unknown>, targetComments: Array<Record<string, unknown>>): Program {
   const byTarget = Number(note.author_is_target) === 1;
+  const filteredComments = targetComments
+    .filter((c) => Number(c.is_target ?? 1) === 1)
+    .map((c) => ({ id: String(c.id), bodyText: String(c.body_text ?? ""), postedAt: String(c.posted_at), precision: String(c.posted_at_precision) }));
+  const involvement: Involvement = byTarget ? "thread" : filteredComments.length > 0 ? "comment" : "none";
   return {
     noteId: String(note.id), programTitle: String(note.program_title ?? ""), linkTitle: String(note.link_title ?? ""),
-    linkUrl: String(note.link_url ?? ""), noteAuthor: byTarget ? String(note.author_name ?? "") : String(note.author_name ?? ""),
+    linkUrl: String(note.link_url ?? ""), noteAuthor: String(note.author_name ?? ""),
     noteByTarget: byTarget, notePostedAt: String(note.posted_at), notePrecision: String(note.posted_at_precision),
     targetBody: byTarget ? String(note.body_text ?? "") : null,
     noteBody: String(note.body_text ?? ""),
-    targetComments: targetComments
-      .filter((c) => Number(c.is_target ?? 1) === 1)
-      .map((c) => ({ id: String(c.id), bodyText: String(c.body_text ?? ""), postedAt: String(c.posted_at), precision: String(c.posted_at_precision) })),
+    involvement,
+    targetComments: filteredComments,
     latestAt: "", latestPrecision: "", issues: programIssues(note), newestSeenAt: "", meta: metaFromRow(note.meta_row as Record<string, unknown> | undefined),
     commentCount: Number(note.comment_count ?? 0), lastCheckedAt: String(note.last_checked_at ?? ""),
   };

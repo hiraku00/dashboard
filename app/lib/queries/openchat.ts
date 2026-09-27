@@ -14,7 +14,7 @@ import {
 export type WatchedLinks = Record<string, { url: string; count: number }>;
 export type ProgramsPage = { programs: Program[]; total: number; page: number; pageSize: number; watched: WatchedLinks };
 
-/** 一覧: ちきりんが立てたノート、または、ちきりんのコメントがあるノートだけ。
+/** 一覧: 既定(kind=all)は全スレッド。kind でちきりんの関わり方に絞り込める(buildProgramsFilter参照)。
  *  ほかの人のコメントは読み込まない(SQLの時点で is_target = 1 に絞る)。 */
 export async function listPrograms(query: ProgramsQuery = {}): Promise<ProgramsPage> {
   await ensureSchema({ seed: false });
@@ -94,14 +94,14 @@ export async function saveProgramMeta(id: string, input: unknown): Promise<Progr
   return { ...program, meta };
 }
 
-/** 詳細: 1ノート(1番組)。一覧に載る条件(ちきりんが立てた、またはコメントがある)を満たさないノートは null。 */
+/** 詳細: 1ノート(1番組)。削除済み・存在しないノートは null(ちきりんが関わらないスレッドも開ける)。 */
 export async function getProgram(id: string): Promise<Program | null> {
   await ensureSchema({ seed: false });
   const note = (await env.DB.prepare(
     `SELECT n.id, n.author_name, n.author_is_target, n.program_title, n.link_title, n.link_url, n.body_text,
             n.posted_at, n.posted_at_precision, n.comment_count, n.last_checked_at, n.needs_recheck, n.body_complete, n.first_seen_at
        FROM openchat_notes n
-      WHERE n.id = ? AND n.room = ? AND n.deleted_at IS NULL AND (n.author_is_target = 1 OR n.target_comment_count > 0)`,
+      WHERE n.id = ? AND n.room = ? AND n.deleted_at IS NULL`,
   ).bind(id, ROOM).first<Record<string, unknown>>());
   if (!note) return null;
   return (await withComments([note]))[0];
@@ -123,11 +123,12 @@ export async function latestOpenchatRun(): Promise<LatestRun | null> {
   let warnings: string[] = [];
   try { warnings = (JSON.parse(String(row.warnings_json ?? "[]")) as unknown[]).map((w) => String(w).slice(0, 300)).slice(0, 50); } catch { /* 壊れていても件数0として扱う */ }
   const warningCount = warnings.length;
-  // 最後の取得(started_at)以降に初めて見つかった投稿がある番組。first_seen_at は「+07:00」付きのことがあるので datetime() でUTCにそろえる。
+  // 最後の取得(started_at)以降に初めて見つかった番組: 新しいスレッド、またはちきりんの新しい投稿(スレッド・コメント)。
+  // first_seen_at は「+07:00」付きのことがあるので datetime() でUTCにそろえる。
   const fresh = (await env.DB.prepare(
     `SELECT COUNT(*) AS c FROM openchat_notes n
-      WHERE n.room = ? AND n.deleted_at IS NULL AND (n.author_is_target = 1 OR n.target_comment_count > 0)
-        AND ((n.author_is_target = 1 AND datetime(n.first_seen_at) >= datetime(?))
+      WHERE n.room = ? AND n.deleted_at IS NULL
+        AND (datetime(n.first_seen_at) >= datetime(?)
              OR EXISTS (SELECT 1 FROM openchat_comments c WHERE c.note_id = n.id AND c.is_target = 1 AND c.deleted_at IS NULL AND datetime(c.first_seen_at) >= datetime(?)))`,
   ).bind(ROOM, String(row.started_at), String(row.started_at)).first<{ c: number }>());
   return {

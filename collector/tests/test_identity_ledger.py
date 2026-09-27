@@ -98,6 +98,9 @@ def test_needs_open_rules():
     assert led.needs_open(note, False, nobs(comments=4))                 # 件数が増えた
     note["needs_recheck"] = True
     assert led.needs_open(note, False, nobs(comments=3))                 # 前回、件数が合わなかった
+    note["needs_recheck"] = False
+    note["body_complete"] = False
+    assert led.needs_open(note, False, nobs(comments=3))                 # 全スレッドを画面に出すので、本文が途中なら関わりを問わず開く
 
 
 def test_save_load_roundtrip_is_atomic_and_private(tmp_path):

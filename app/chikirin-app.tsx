@@ -16,7 +16,7 @@ export type RunSummary = {
   commentsNew: number; targetCommentsNew: number; warningCount: number; warnings?: string[]; newPrograms?: number;
 } | null;
 
-const kindLabel: Record<ProgramKind, string> = { all: "すべて", thread: "ちきりんのスレッド", comment: "ちきりんのコメント" };
+const kindLabel: Record<ProgramKind, string> = { all: "すべて", involved: "ちきりんあり", thread: "ちきりんのスレッド", comment: "ちきりんのコメント", none: "ちきりんなし" };
 const runStatusLabel: Record<string, string> = { success: "成功", partial: "一部に警告あり", failed: "失敗", aborted: "中断", started: "実行中" };
 
 /** 最後の取得: collector が読み取りを始めた時刻(送信が遅れても、取得の時刻)。日時はすべて日本時間(JST)。 */
@@ -24,10 +24,10 @@ function runLine(run: RunSummary) {
   if (!run) return "まだ同期されていません。Macで collector/line_openchat の同期を実行してください。";
   const stamp = new Date(run.startedAt);
   const when = Number.isNaN(stamp.getTime()) ? "" : formatPostedAt(stamp.toISOString().replace(/\.\d+Z$/, "Z"), "exact");
-  return `最後の取得: ${when} JST（${runStatusLabel[run.status] ?? run.status}）${run.newPrograms === undefined ? "" : `・新着 ${run.newPrograms} 番組（ちきりんの新しいスレッド・コメントが見つかった番組。一覧の「新着」）`}`;
+  return `最後の取得: ${when} JST（${runStatusLabel[run.status] ?? run.status}）${run.newPrograms === undefined ? "" : `・新着 ${run.newPrograms} 番組（新しいスレッド、またはちきりんの新しい投稿が見つかった番組。一覧の「新着」）`}`;
 }
 
-/** 最後の取得で、ちきりんの投稿(スレッド・コメント)が初めて見つかった番組か。 */
+/** 最後の取得で、新しいスレッド、またはちきりんの新しい投稿(スレッド・コメント)が見つかった番組か。 */
 function isNew(program: Program, run: RunSummary) {
   if (!run || !program.newestSeenAt) return false;
   const seen = Date.parse(program.newestSeenAt), started = Date.parse(run.startedAt);
@@ -147,7 +147,7 @@ export function ChikirinApp({ initialPage = null, initialRun = null, initialQuer
         <table className="content-table chikirin-table">
           <colgroup><col className="col-kind" /><col className="col-broadcaster" /><col className="col-title" /><col className="col-owner" /><col className="col-posted" /><col className="col-posted" /><col className="col-count" /><col className="col-count" /><col className="col-status" /><col className="col-links" /><col className="col-texttube" /></colgroup>
           <thead><tr>
-            <th scope="col" className="kind-head">種別</th><th scope="col">番組</th><th scope="col">タイトル</th><th scope="col">スレ主</th><th scope="col" title="スレッドが起票された日時(日本時間)"><span className="head-2">スレッド<br />起票日時</span></th>
+            <th scope="col" className="kind-head" title="ちきりんの関わり方">ちきりん</th><th scope="col">番組</th><th scope="col">タイトル</th><th scope="col">スレ主</th><th scope="col" title="スレッドが起票された日時(日本時間)"><span className="head-2">スレッド<br />起票日時</span></th>
             <th scope="col" title="ちきりんの最新の投稿の日時"><span className="head-2">最新<br />ちきりん</span></th>
             <th scope="col" className="num" title="ノート全体のコメント数"><span className="head-2">コメント<br />全体</span></th><th scope="col" className="num" title="ちきりんが書いたコメントの数"><span className="head-2">コメント<br />ちきりん</span></th><th scope="col" className="center">状態</th><th scope="col">リンク</th><th scope="col"><span className="head-2">Watch<br />List</span></th>
           </tr></thead>
@@ -155,7 +155,9 @@ export function ChikirinApp({ initialPage = null, initialRun = null, initialQuer
             const links = listLinks(program);
             const watchedLinks = links.filter((l) => watched[l.url]);
             return <tr key={program.noteId}>
-              <td className="kind-cell"><span className={program.noteByTarget ? "chikirin-tag is-thread" : "chikirin-tag"}>{program.noteByTarget ? "スレッド" : "コメント"}</span></td>
+              <td className="kind-cell">{program.involvement === "none"
+                ? <span className="empty-cell" title="ちきりんは関わっていません">なし</span>
+                : <span className={program.involvement === "thread" ? "chikirin-tag is-thread" : "chikirin-tag"}>{program.involvement === "thread" ? "スレッド" : "コメント"}</span>}</td>
               <td className="program-cell">
                 <strong className="program-broadcaster" title={displayBroadcaster(program) || undefined}>{displayBroadcaster(program) || "—"}</strong>
                 <span className={program.meta.programName ? "program-name" : "program-name is-unset"} title={program.meta.programName || undefined}>{program.meta.programName || "番組名未設定"}</span>
@@ -163,13 +165,13 @@ export function ChikirinApp({ initialPage = null, initialRun = null, initialQuer
               <td className="program-cell">{(() => {
                 const { title } = titleLines(program);
                 const head = program.noteBody.replace(/\s+/g, " ").trim();
-                return <><Link className={title ? "chikirin-row-title" : "chikirin-row-title is-unset"} href={`/chikirin/${encodeURIComponent(program.noteId)}${listQuerySuffix}`} prefetch={false} title={title || "タイトル未設定"}>{isNew(program, initialRun) && <span className="chikirin-new" title="最後の取得で、ちきりんの新しい投稿が見つかりました">新着</span>}{title || "（タイトル未設定）"}</Link>{head && <p className="description" title={head}>{head.slice(0, 140)}</p>}</>;
+                return <><Link className={title ? "chikirin-row-title" : "chikirin-row-title is-unset"} href={`/chikirin/${encodeURIComponent(program.noteId)}${listQuerySuffix}`} prefetch={false} title={title || "タイトル未設定"}>{isNew(program, initialRun) && <span className="chikirin-new" title="最後の取得で、新しいスレッド、またはちきりんの新しい投稿が見つかりました">新着</span>}{title || "（タイトル未設定）"}</Link>{head && <p className="description" title={head}>{head.slice(0, 140)}</p>}</>;
               })()}</td>
               <td className="owner-cell">{program.noteByTarget ? "ちきりん" : program.noteAuthor}</td>
               <td className="date-cell"><time dateTime={program.notePostedAt}>{formatPostedAt(program.notePostedAt, program.notePrecision)}</time></td>
               <td className="date-cell">{program.latestAt ? <time dateTime={program.latestAt}>{formatPostedAt(program.latestAt, program.latestPrecision)}</time> : <span className="empty-cell">—</span>}</td>
               <td className="num-cell">{program.commentCount}</td>
-              <td className="num-cell">{program.targetComments.length}</td>
+              <td className="num-cell">{program.involvement === "none" ? <span className="empty-cell">—</span> : program.targetComments.length}</td>
               <td className="status-cell center">{program.issues.length > 0 ? <span className="chikirin-issue" title={program.issues.join("\n")}>要確認</span> : <span className="empty-cell" title="取得に問題はありません">OK</span>}</td>
               <td className="links-cell">{links.length > 0 ? <ProgramLinks links={links} label={`${program.programTitle} のリンク`} /> : <span className="empty-cell">—</span>}</td>
               <td className="texttube-cell">{watchedLinks.length > 0 ? watchedLinks.map((l) => <a key={l.url} className="texttube-badge texttube-reflected" href={`/watch-list?q=${encodeURIComponent(watched[l.url].url)}`} target="_blank" rel="noreferrer" title={`${l.text} は Watch List に登録済み。開くとその項目を表示します`}>登録済{watched[l.url].count > 1 ? ` ${watched[l.url].count}件` : ""}</a>) : <span className="empty-cell">—</span>}</td>

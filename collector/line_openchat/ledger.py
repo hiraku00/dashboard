@@ -179,7 +179,7 @@ class Ledger:
             return True
         if obs.comments is not None and obs.comments != note.get("comment_count", 0):
             return True
-        if note["author_is_target"] and not note["body_complete"]:
+        if not note["body_complete"]:
             return True
         return False
 

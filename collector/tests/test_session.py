@@ -174,6 +174,14 @@ def test_more_button_is_pressed_on_the_button_text_not_on_the_body_text():
     assert ledger.notes[0]["body_complete"] and len(ledger.notes[0]["body_text"]) > 200, stats.warnings
 
 
+def test_non_target_note_with_no_comments_still_gets_its_body_expanded():
+    """全スレッドを画面に出すので、ちきりんが関わらず・コメントが無いノートでも「もっと見る」を押して全文を取る."""
+    chat = SimChat([SimNote("参加者A", "長い本文です。" * 40, "昨日 午前 9:45", long_body=True, comments=[])], jitter=False)
+    ledger, stats = run(chat)
+    assert ledger.notes[0]["body_complete"] and len(ledger.notes[0]["body_text"]) > 200, stats.warnings
+    assert not ledger.notes[0]["author_is_target"]
+
+
 def test_unreadable_comment_counts_are_unknown_not_zero():
     """1倍のディスプレイで小さな数字が読めないとき: 0件と取り違えず、コメント欄を開いて全件を読み、件数の照合・削除判定はしない."""
     chat = build(jitter=False)

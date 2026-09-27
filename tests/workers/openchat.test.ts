@@ -144,10 +144,17 @@ describe("programs list", () => {
     for (const n of [threadMine, commentedOthers, noTarget, deleted]) await send([n]);
   });
 
-  test("lists only notes with the target's thread or comments, newest first", async () => {
+  test("lists every thread by default (all), newest first; deleted notes are excluded", async () => {
     const page = await listPrograms({});
     const titles = page.programs.map((p) => p.programTitle).filter((t) => t.startsWith("一覧テスト"));
-    expect(titles).toEqual(["一覧テスト: 本人スレッド", "一覧テスト: 他人のノートに複数コメント"]);
+    expect(titles).toEqual(["一覧テスト: 本人スレッド", "一覧テスト: 他人のノートに複数コメント", "一覧テスト: ちきりん無し"]);
+  });
+
+  test("kind=involved keeps the old (target-only) view; kind=none is the notes the target has nothing to do with", async () => {
+    const involved = (await listPrograms({ kind: "involved" })).programs.map((p) => p.programTitle).filter((t) => t.startsWith("一覧テスト"));
+    expect(involved).toEqual(["一覧テスト: 本人スレッド", "一覧テスト: 他人のノートに複数コメント"]);
+    const none = (await listPrograms({ kind: "none" })).programs.map((p) => p.programTitle).filter((t) => t.startsWith("一覧テスト"));
+    expect(none).toEqual(["一覧テスト: ちきりん無し"]);
   });
 
   test("a note the target commented on more than once carries every one of her comments, oldest first", async () => {
@@ -175,17 +182,21 @@ describe("programs list", () => {
     await env.DB.batch([env.DB.prepare("DELETE FROM items WHERE id IN ('oc-w1','oc-w2')"), env.DB.prepare("DELETE FROM item_links WHERE item_id IN ('oc-w1','oc-w2')")]);
   });
 
-  test("detail returns one listed program with all her comments, and 404s for unlisted or unknown notes", async () => {
+  test("detail returns one listed program with all her comments, and 404s for deleted or unknown notes", async () => {
     const p = (await listPrograms({ q: "他人のノートに複数" })).programs[0];
     const detail = await getProgram(p.noteId);
     expect(detail?.noteBody).toBe("他人のノート本文(スレッド主の番組情報)");
     expect(detail?.targetComments.map((c) => c.bodyText)).toEqual(["一つ目のコメント 鉄道会社", "二つ目のコメント"]);
     expect(JSON.stringify(detail)).not.toContain(SECRET);
-    expect(await getProgram(ids.none)).toBeNull();        // ちきりんが関わらないノート
+    const none = await getProgram(ids.none);               // ちきりんが関わらないノートも開ける
+    expect(none?.involvement).toBe("none");
+    expect(none?.noteBody).toBe("無関係");
     expect(await getProgram(ids.deleted)).toBeNull();     // 削除済み
     expect(await getProgram("no-such-id")).toBeNull();
     const viaApi = await programGet(new Request("http://x/api/openchat/programs/x"), { params: Promise.resolve({ id: ids.none }) });
-    expect(viaApi.status).toBe(404);
+    expect(viaApi.status).toBe(200);
+    const viaApiDeleted = await programGet(new Request("http://x/api/openchat/programs/x"), { params: Promise.resolve({ id: ids.deleted }) });
+    expect(viaApiDeleted.status).toBe(404);
   });
 
   test("edited broadcaster, episode title and links are saved apart from the synced data, searchable, and survive a re-sync", async () => {
@@ -200,7 +211,9 @@ describe("programs list", () => {
       comments: [] })]);                                                                       // 同期し直しても、編集した情報は消えない
     expect((await getProgram(p.noteId))?.meta.links).toEqual([{ url: "https://example.test/ep", label: "番組ページ" }]);
     expect(await saveProgramMeta(p.noteId, { links: [{ url: "javascript:alert(1)" }] })).toHaveProperty("error");
-    expect(await saveProgramMeta(ids.none, { broadcaster: "x" })).toBeNull();               // 一覧に載らないノートは編集できない
+    const savedNone = await saveProgramMeta(ids.none, { broadcaster: "x" });                // ちきりんが関わらないノートも編集できる
+    expect(savedNone && "meta" in savedNone && savedNone.meta.broadcaster).toBe("x");
+    expect(await saveProgramMeta(ids.deleted, { broadcaster: "x" })).toBeNull();             // 削除済みは編集できない
     const viaApi = await programPut(new Request("http://x/api/openchat/programs/x", { method: "PUT", body: JSON.stringify({ broadcaster: "API経由" }) }), { params: Promise.resolve({ id: p.noteId }) });
     expect(viaApi.status).toBe(200);
     expect(((await viaApi.json()) as { program: { meta: { broadcaster: string } } }).program.meta.broadcaster).toBe("API経由");
@@ -236,11 +249,29 @@ describe("programs list", () => {
     const p = (await listPrograms({ q: "他人のノートに複数" })).programs[0];
     const older = "2026-09-01T09:00:00+07:00", fresh = new Date(Date.now() + 3_000).toISOString();          // 最後の取得のあとに見つけた投稿
     await env.DB.prepare("UPDATE openchat_comments SET first_seen_at = ? WHERE note_id = ? AND is_target = 1").bind(older, p.noteId).run();
+    await env.DB.prepare("UPDATE openchat_notes SET first_seen_at = ? WHERE id = ?").bind(older, p.noteId).run();   // スレッド自身も古い(新着では無い)ことにする
     const before = (await latestOpenchatRun())!.newPrograms;
     expect((await getProgram(p.noteId))?.newestSeenAt).toBe("2026-09-01T02:00:00Z");           // +07:00 をUTCにそろえて返す
     await env.DB.prepare("UPDATE openchat_comments SET first_seen_at = ? WHERE note_id = ? AND is_target = 1 AND ordinal = (SELECT MAX(ordinal) FROM openchat_comments WHERE note_id = ? AND is_target = 1)").bind(fresh, p.noteId, p.noteId).run();
     expect((await latestOpenchatRun())!.newPrograms).toBe(before + 1);                         // 最後の取得のあとに見つかった投稿がある番組を数える
     expect(Date.parse((await getProgram(p.noteId))!.newestSeenAt)).toBeGreaterThan(Date.now());
+  });
+
+  test("a brand-new thread the target has nothing to do with also counts as new", async () => {
+    const id = `run-${uid("r")}`;
+    await sync({ action: "start", clientRunId: id, clientVersion: "test" });
+    await sync({ action: "complete", clientRunId: id, status: "success", stats: {}, warnings: [] });
+    const before = (await latestOpenchatRun())!.newPrograms;
+    // 同じrunにあとから送る(startRun()で新しいrunを作ると、最後の取得の境目が動いてしまうため)。
+    const fresh = note({ programTitle: "一覧テスト: 新着(関わりなし)", bodyText: "新着だが番組とは無縁", postedAt: "2026-09-20T06:30:00Z",
+      firstSeenAt: new Date(Date.now() + 3_000).toISOString().replace(/\.\d+Z$/, "Z"), comments: [] });
+    const { response, body } = await sync({ action: "notes", clientRunId: id, notes: [fresh] });
+    expect(response.status).toBe(200);
+    expect(body.ok).toBe(true);
+    expect((await latestOpenchatRun())!.newPrograms).toBe(before + 1);
+    const p = await getProgram(fresh.id);
+    expect(p?.involvement).toBe("none");
+    expect(Date.parse(p!.newestSeenAt)).toBeGreaterThan(Date.now());
   });
 
   test("a program's issues say why it needs checking (recheck, incomplete body); a clean one has none", async () => {
@@ -259,13 +290,13 @@ describe("programs list", () => {
     expect(p.targetComments.map((c) => c.bodyText)).toEqual(["本人スレッドへの補足"]);
   });
 
-  test("bodies of listed notes are returned and searchable; other people's comments and unlisted notes' bodies never are", async () => {
+  test("every thread's body is returned and searchable; other people's comments never are", async () => {
     const everything = JSON.stringify(await listPrograms({ limit: 50 }));
     expect(everything).not.toContain(SECRET);
     expect(everything).toContain("他人のノート本文(スレッド主の番組情報)");       // 一覧に載るノートの本文は返す
-    expect(everything).not.toContain("無関係");                                  // ちきりんが関わらないノートの本文は返さない
+    expect(everything).toContain("無関係");                                      // 全スレッドを出すので、関わらないノートの本文も返す
     expect((await listPrograms({ q: "秘密のコメント" })).programs).toEqual([]);
-    expect((await listPrograms({ q: "無関係" })).programs).toEqual([]);           // 一覧に載らないノートの本文は、検索でも出ない
+    expect((await listPrograms({ q: "無関係" })).programs.map((p) => p.programTitle)).toEqual(["一覧テスト: ちきりん無し"]);   // 本文でも検索できる
     expect((await listPrograms({ q: "番組情報" })).programs.map((p) => p.programTitle)).toEqual(["一覧テスト: 他人のノートに複数コメント"]);
     const viaApi = await (await programsGet(new Request("http://x/api/openchat/programs?limit=50"))).text();
     expect(viaApi).not.toContain(SECRET);
@@ -292,8 +323,7 @@ describe("programs list", () => {
       seen.push(...result.programs.map((p) => p.noteId));
     }
     expect(new Set(seen).size).toBe(seen.length);
-    expect(seen).toEqual(expect.arrayContaining([ids.mine, ids.others]));
-    expect(seen).not.toContain(ids.none);
+    expect(seen).toEqual(expect.arrayContaining([ids.mine, ids.others, ids.none]));   // all は関わりのないスレッドも含む
     expect(seen).not.toContain(ids.deleted);
     const past = await listPrograms({ limit: 1, page: first.total + 5 });
     expect(past.programs).toEqual([]);
