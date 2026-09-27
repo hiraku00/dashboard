@@ -186,14 +186,22 @@ test("a thread the target has nothing to do with shows なし and — for the co
   expect(screen.getAllByRole("row")[1].textContent).toContain("海の環境を扱った回でした");   // スレッド主の投稿(本文)は関わりが無くても出る
 });
 
-test("登録済 badge links to Watch List by a short, distinguishing fragment of the URL, not the whole URL", () => {
+test("登録済 badge links to Watch List by the saved item's title, not the URL (readable, and avoids matching other episodes of the same series)", () => {
   const url = "https://www.web.nhk/tv/pl/series-tep-P1124VMJ6R/ep/4N6PM42X7K";
-  const withWatched = { ...page([program({ linkUrl: url, meta: { broadcaster: "", programName: "", episodeTitle: "", links: [] } })]), watched: { [url]: { url, count: 1 } } };
+  const withWatched = { ...page([program({ linkUrl: url, meta: { broadcaster: "", programName: "", episodeTitle: "", links: [] } })]), watched: { [url]: { url, title: "人は誰でも主役になれる〜徳島 町を変えた葉っぱの奇跡〜", count: 1 } } };
   render(<ChikirinApp initialPage={withWatched as never} initialRun={null} />);
   const badge = screen.getByRole("link", { name: /登録済/ });
   const href = badge.getAttribute("href")!;
+  expect(href).toBe(`/watch-list?q=${encodeURIComponent("人は誰でも主役になれる〜徳島 町を変えた葉っぱの奇跡〜")}`);
+  expect(href).not.toContain(encodeURIComponent(url));
+});
+
+test("登録済 badge falls back to a short URL fragment when the saved item somehow has no title", () => {
+  const url = "https://www.web.nhk/tv/pl/series-tep-P1124VMJ6R/ep/4N6PM42X7K";
+  const withWatched = { ...page([program({ linkUrl: url, meta: { broadcaster: "", programName: "", episodeTitle: "", links: [] } })]), watched: { [url]: { url, title: "", count: 1 } } };
+  render(<ChikirinApp initialPage={withWatched as never} initialRun={null} />);
+  const href = screen.getByRole("link", { name: /登録済/ }).getAttribute("href")!;
   expect(href).toBe(`/watch-list?q=${encodeURIComponent("4N6PM42X7K")}`);
-  expect(href).not.toContain(encodeURIComponent(url));   // フルURLだと検索が同シリーズの他エピソードにもヒットしてしまう
 });
 
 test("all five kind filters are offered, including ちきりんあり and ちきりんなし", () => {
