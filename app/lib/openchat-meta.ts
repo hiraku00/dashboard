@@ -64,6 +64,8 @@ type Site = { host: string; pathPrefix?: string; name: string; broadcaster: stri
 export const SITES: Site[] = [
   { host: "web.nhk", name: "NHK ONE", broadcaster: "NHK" },
   { host: "txbiz.tv-tokyo.co.jp", pathPrefix: "/wbs", name: "WBS", broadcaster: "テレ東" },
+  // /wbs 以外のテレ東BIZのページ(上のWBS専用の判定より後に置き、/wbsはそちらを優先させる)。
+  { host: "txbiz.tv-tokyo.co.jp", name: "テレ東BIZ", broadcaster: "テレ東" },
 ];
 
 export function siteOf(url: string): Site | null {
