@@ -34,13 +34,14 @@ describe("metaFromRow", () => {
 });
 
 describe("sites: link names and the broadcaster inferred from a link", () => {
-  test("NHK ONE and WBS are recognised by host (and path for WBS)", () => {
+  test("NHK ONE and WBS are recognised by host (and path for WBS); other テレ東BIZ pages fall back to the site itself", () => {
     expect(siteOf("https://www.web.nhk/tv/pl/series-tep-XXXX")).toMatchObject({ name: "NHK ONE", broadcaster: "NHK" });
     expect(siteOf("https://txbiz.tv-tokyo.co.jp/wbs")).toMatchObject({ name: "WBS", broadcaster: "テレ東" });
     expect(siteOf("https://txbiz.tv-tokyo.co.jp/wbs/")).toMatchObject({ name: "WBS" });
     expect(siteOf("https://txbiz.tv-tokyo.co.jp/wbs/feature/1")).toMatchObject({ name: "WBS" });
-    expect(siteOf("https://txbiz.tv-tokyo.co.jp/wbsx")).toBeNull();            // 前方一致で取り違えない
-    expect(siteOf("https://txbiz.tv-tokyo.co.jp/other")).toBeNull();           // 同じドメインでも、別の番組は対象外
+    expect(siteOf("https://txbiz.tv-tokyo.co.jp/wbsx")).toMatchObject({ name: "テレ東BIZ", broadcaster: "テレ東" });  // 前方一致でWBSと取り違えないが、同じテレ東BIZのページとして扱う
+    expect(siteOf("https://txbiz.tv-tokyo.co.jp/other")).toMatchObject({ name: "テレ東BIZ", broadcaster: "テレ東" });  // 同じドメインの別番組も、テレ東BIZとして表示する
+    expect(siteOf("https://txbiz.tv-tokyo.co.jp/")).toMatchObject({ name: "テレ東BIZ", broadcaster: "テレ東" });
     expect(siteOf("https://example.test/")).toBeNull();
     expect(siteOf("not a url")).toBeNull();
   });
