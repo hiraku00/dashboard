@@ -309,6 +309,33 @@ h1,h2,h3 { color:var(--ink); } h1 { margin:0; font-size:30px; line-height:1.1; l
 .chikirin-warnings { display:inline-block; margin-left:10px; }.chikirin-warnings summary { cursor:pointer; color:#b45309; font-weight:700; }.chikirin-warnings ul { margin:6px 0 0; padding-left:18px; color:var(--ink); }
 .chikirin-table .head-2 { display:inline-block; line-height:1.25; }
 .chikirin-table .col-status { width:52px; }.chikirin-table .col-texttube { width:60px; }
+/* スマホ幅では、共通の.content-tableカード変換(Watch List向けの列名・ラベル)がそのままでは
+   合わないため、ちきりんの列に合わせてラベルと並び順を上書きする(§ドキュメント参照)。 */
+@media (max-width:760px) {
+  .chikirin-table { min-width:0; }
+  .chikirin-table .kind-cell { order:1; }
+  .chikirin-table .kind-cell::before { content:"ちきりん"; }
+  .chikirin-table .owner-cell { order:2; }
+  .chikirin-table .owner-cell::before { content:"スレ主"; }
+  .chikirin-table .program-cell.is-broadcaster { order:3; grid-column:1/-1; }
+  .chikirin-table .program-cell.is-broadcaster::before { content:"番組"; }
+  .chikirin-table .program-cell.is-title { order:4; grid-column:1/-1; }
+  .chikirin-table .program-cell.is-title::before { content:"タイトル"; }
+  .chikirin-table .date-cell.is-posted { order:5; }
+  .chikirin-table .date-cell.is-posted::before { content:"スレッド起票日時"; }
+  .chikirin-table .date-cell.is-latest { order:6; }
+  .chikirin-table .date-cell.is-latest::before { content:"最新ちきりん"; }
+  .chikirin-table .num-cell.is-total { order:7; }
+  .chikirin-table .num-cell.is-total::before { content:"コメント全体"; }
+  .chikirin-table .num-cell.is-target-count { order:8; }
+  .chikirin-table .num-cell.is-target-count::before { content:"コメントちきりん"; }
+  .chikirin-table .status-cell { order:9; grid-column:1/-1; }
+  .chikirin-table .status-cell::before { content:"状態"; }
+  .chikirin-table .links-cell { order:10; max-width:none; }
+  .chikirin-table .item-links { flex-direction:row; flex-wrap:wrap; }
+  .chikirin-table .texttube-cell.is-watchlist { order:11; }
+  .chikirin-table .texttube-cell.is-watchlist::before { content:"Watch List"; }
+}
 .chikirin-issue { display:inline-block; border-radius:999px; padding:2px 10px; background:rgba(245,158,11,.16); color:#b45309; font-size:12px; font-weight:700; cursor:help; }
 .chikirin-issue-box { border-left:3px solid #f59e0b; border-radius:0 10px 10px 0; padding:10px 14px; background:rgba(245,158,11,.1); font-size:13.5px; }.chikirin-issue-box ul { margin:4px 0 0; padding-left:18px; }
 .chikirin-meta-edit { display:grid; gap:6px; border:1px solid var(--line); border-radius:12px; padding:12px 16px 14px; background:var(--surface-solid); }.chikirin-meta-edit h2 { margin:0; font-size:14px; }

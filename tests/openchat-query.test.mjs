@@ -1,7 +1,20 @@
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { describe, expect, test } from "vitest";
 import {
   buildProgramsFilter, formatPostedAt, likePattern, parseKind, toProgram, MAX_PAGE, PAGE_SIZE,
 } from "../app/lib/openchat-query.ts";
+
+// vinextの静的解析は searchParams の読み取りだけでは動的ページと判定しない(実機で確認:
+// ビルドが app/chikirin/page.tsx を "?"(未分類)にし、SSRのISRキャッシュがパス名だけで
+// 作られるため、/chikirin?page=2 のような検索パラメータ違いのURLで、別のページの内容
+// (キャッシュ済みの既定表示)を返すことがあった)。force-dynamic を明示して、このページを
+// 常にキャッシュさせないようにしている。この指定がうっかり消えるのを防ぐための回帰テスト。
+test("app/chikirin/page.tsx is explicitly marked force-dynamic (searchParams-driven SSR must never be page-cached)", () => {
+  const path = fileURLToPath(new URL("../app/chikirin/page.tsx", import.meta.url));
+  const source = readFileSync(path, "utf8");
+  expect(source).toMatch(/export const dynamic\s*=\s*["']force-dynamic["']/);
+});
 
 describe("buildProgramsFilter", () => {
   test("default view (all): every thread, never deleted, with no involvement condition", () => {

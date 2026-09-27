@@ -161,6 +161,22 @@ test("the スレ主 column highlights ちきりん with its own color so it stan
   expect(ownerCell(rows[2]).className).not.toContain("is-target");
 });
 
+test("each cell carries a distinguishing class so the mobile card CSS can label it correctly (not the shared Watch List labels)", () => {
+  render(<ChikirinApp initialPage={page([program()])} initialRun={null} />);
+  const row = screen.getAllByRole("row")[1];
+  const cells = within(row).getAllByRole("cell");
+  // program-cell(番組) と program-cell(タイトル)、date-cell(起票日時)と date-cell(最新ちきりん)、
+  // num-cell(全体)と num-cell(ちきりん) は、それぞれ同じベースクラスを2回使うので、
+  // モバイルの表示ラベルを分けるための専用クラスが付いていることを確かめる。
+  expect(cells[1].className).toContain("is-broadcaster");
+  expect(cells[2].className).toContain("is-title");
+  expect(cells[4].className).toContain("is-posted");
+  expect(cells[5].className).toContain("is-latest");
+  expect(cells[6].className).toContain("is-total");
+  expect(cells[7].className).toContain("is-target-count");
+  expect(cells[10].className).toContain("is-watchlist");
+});
+
 test("a thread the target has nothing to do with shows なし and — for the comment count, but its body still appears", () => {
   const none = program({ noteByTarget: false, involvement: "none", targetComments: [] });
   render(<ChikirinApp initialPage={page([none])} initialRun={null} />);

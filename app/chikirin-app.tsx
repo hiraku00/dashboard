@@ -210,23 +210,23 @@ export function ChikirinApp({ initialPage = null, initialRun = null, initialQuer
               <td className="kind-cell">{program.involvement === "none"
                 ? <span className="empty-cell" title="ちきりんは関わっていません">なし</span>
                 : <span className={program.involvement === "thread" ? "chikirin-tag is-thread" : "chikirin-tag"}>{program.involvement === "thread" ? "スレッド" : "コメント"}</span>}</td>
-              <td className="program-cell">
+              <td className="program-cell is-broadcaster">
                 <strong className="program-broadcaster" title={displayBroadcaster(program) || undefined}>{displayBroadcaster(program) || "—"}</strong>
                 <span className={program.meta.programName ? "program-name" : "program-name is-unset"} title={program.meta.programName || undefined}>{program.meta.programName || "番組名未設定"}</span>
               </td>
-              <td className="program-cell">{(() => {
+              <td className="program-cell is-title">{(() => {
                 const { title } = titleLines(program);
                 const head = program.noteBody.replace(/\s+/g, " ").trim();
                 return <><Link className={title ? "chikirin-row-title" : "chikirin-row-title is-unset"} href={`/chikirin/${encodeURIComponent(program.noteId)}${listQuerySuffix}`} prefetch={false} title={title || "タイトル未設定"}>{isNew(program, initialRun) && <span className="chikirin-new" title="最後の取得で、新しいスレッド、またはちきりんの新しい投稿が見つかりました">新着</span>}{title || "（タイトル未設定）"}</Link>{head && <p className="description" title={head}>{head.slice(0, 140)}</p>}</>;
               })()}</td>
               <td className={program.noteByTarget ? "owner-cell is-target" : "owner-cell"}>{program.noteByTarget ? "ちきりん" : program.noteAuthor}</td>
-              <td className="date-cell"><time dateTime={program.notePostedAt}>{formatPostedAt(program.notePostedAt, program.notePrecision)}</time></td>
-              <td className="date-cell">{program.latestAt ? <time dateTime={program.latestAt}>{formatPostedAt(program.latestAt, program.latestPrecision)}</time> : <span className="empty-cell">—</span>}</td>
-              <td className="num-cell">{program.commentCount}</td>
-              <td className="num-cell">{program.involvement === "none" ? <span className="empty-cell">—</span> : program.targetComments.length}</td>
+              <td className="date-cell is-posted"><time dateTime={program.notePostedAt}>{formatPostedAt(program.notePostedAt, program.notePrecision)}</time></td>
+              <td className="date-cell is-latest">{program.latestAt ? <time dateTime={program.latestAt}>{formatPostedAt(program.latestAt, program.latestPrecision)}</time> : <span className="empty-cell">—</span>}</td>
+              <td className="num-cell is-total">{program.commentCount}</td>
+              <td className="num-cell is-target-count">{program.involvement === "none" ? <span className="empty-cell">—</span> : program.targetComments.length}</td>
               <td className="status-cell center">{program.issues.length > 0 ? <span className="chikirin-issue" title={program.issues.join("\n")}>要確認</span> : <span className="empty-cell" title="取得に問題はありません">OK</span>}</td>
               <td className="links-cell">{links.length > 0 ? <ProgramLinks links={links} label={`${program.programTitle} のリンク`} /> : <span className="empty-cell">—</span>}</td>
-              <td className="texttube-cell">{watchedLinks.length > 0 ? watchedLinks.map((l) => <a key={l.url} className="texttube-badge texttube-reflected" href={`/watch-list?q=${encodeURIComponent(watched[l.url].url)}`} target="_blank" rel="noreferrer" title={`${l.text} は Watch List に登録済み。開くとその項目を表示します`}>登録済{watched[l.url].count > 1 ? ` ${watched[l.url].count}件` : ""}</a>) : <span className="empty-cell">—</span>}</td>
+              <td className="texttube-cell is-watchlist">{watchedLinks.length > 0 ? watchedLinks.map((l) => <a key={l.url} className="texttube-badge texttube-reflected" href={`/watch-list?q=${encodeURIComponent(watched[l.url].url)}`} target="_blank" rel="noreferrer" title={`${l.text} は Watch List に登録済み。開くとその項目を表示します`}>登録済{watched[l.url].count > 1 ? ` ${watched[l.url].count}件` : ""}</a>) : <span className="empty-cell">—</span>}</td>
             </tr>;
           })}</tbody>
         </table>
