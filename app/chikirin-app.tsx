@@ -169,7 +169,7 @@ export function ChikirinApp({ initialPage = null, initialRun = null, initialQuer
                 const head = program.noteBody.replace(/\s+/g, " ").trim();
                 return <><Link className={title ? "chikirin-row-title" : "chikirin-row-title is-unset"} href={`/chikirin/${encodeURIComponent(program.noteId)}${listQuerySuffix}`} prefetch={false} title={title || "タイトル未設定"}>{isNew(program, initialRun) && <span className="chikirin-new" title="最後の取得で、新しいスレッド、またはちきりんの新しい投稿が見つかりました">新着</span>}{title || "（タイトル未設定）"}</Link>{head && <p className="description" title={head}>{head.slice(0, 140)}</p>}</>;
               })()}</td>
-              <td className="owner-cell">{program.noteByTarget ? "ちきりん" : program.noteAuthor}</td>
+              <td className={program.noteByTarget ? "owner-cell is-target" : "owner-cell"}>{program.noteByTarget ? "ちきりん" : program.noteAuthor}</td>
               <td className="date-cell"><time dateTime={program.notePostedAt}>{formatPostedAt(program.notePostedAt, program.notePrecision)}</time></td>
               <td className="date-cell">{program.latestAt ? <time dateTime={program.latestAt}>{formatPostedAt(program.latestAt, program.latestPrecision)}</time> : <span className="empty-cell">—</span>}</td>
               <td className="num-cell">{program.commentCount}</td>

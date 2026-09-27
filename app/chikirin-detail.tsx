@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { PortalHeader } from "./portal-nav";
 import { Body } from "./chikirin-body";
@@ -14,7 +13,6 @@ import { displayLinks } from "./chikirin-app";
 export function ChikirinDetail({ id, initialProgram = null, initialError = "", backHref = "/chikirin" }: { id: string; initialProgram?: Program | null; initialError?: string; backHref?: string }) {
   const [program, setProgram] = useState<Program | null>(initialProgram);
   const [error, setError] = useState(initialError);
-  const router = useRouter();
   // 画面を開くたびに最新を読む: 一覧で編集した放送局などが、先読みされた古い画面のままにならないようにする。
   // (サーバーが描いたものは最初の表示に使い、読み直せなくても、その表示は残す)
   useEffect(() => {
@@ -42,7 +40,12 @@ export function ChikirinDetail({ id, initialProgram = null, initialError = "", b
       {program && <article className="chikirin-detail">
         <section className="chikirin-meta-edit" aria-labelledby="chikirin-meta-title">
           <h2 id="chikirin-meta-title">放送情報（編集）</h2>
-          <MetaForm key={JSON.stringify(program.meta)} program={program} onSaved={() => { router.push(backHref); router.refresh(); }} />
+          {/* 保存後は一覧へ、通常のページ遷移(フルロード)で戻る。クライアント側のナビゲーションキャッシュ
+              (router.push)だと、保存直後は一覧側が古いキャッシュのまま再利用されることがあり、
+              router.refresh()の組み合わせはvinextの実装上、保存直後のpushそのものを打ち消して
+              一覧へ遷移しなくなることを実機で確認した(pushが非同期に完了する前にrefreshが
+              window.location.hrefを読むため、詳細ページ自身を'更新'してしまう)。 */}
+          <MetaForm key={JSON.stringify(program.meta)} program={program} onSaved={() => { window.location.href = backHref; }} />
         </section>
         <header>
           <p className="chikirin-meta">

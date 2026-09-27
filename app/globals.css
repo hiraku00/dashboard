@@ -283,6 +283,7 @@ h1,h2,h3 { color:var(--ink); } h1 { margin:0; font-size:30px; line-height:1.1; l
 .chikirin-table .program-name.is-unset { color:var(--faint); }
 .chikirin-table .program-cell .description { margin:2px 0 0; overflow:hidden; color:var(--muted); font-size:12px; text-overflow:ellipsis; white-space:nowrap; display:block; }
 .chikirin-table .owner-cell { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:12px; }
+.chikirin-table .owner-cell.is-target { color:var(--audio); font-weight:700; }
 .chikirin-table .date-cell { font-size:12px; white-space:nowrap; }
 .chikirin-table .links-cell { max-width:0; padding-left:4px; padding-right:4px; }
 .chikirin-table .item-links { flex-direction:column; align-items:flex-start; gap:2px; }
