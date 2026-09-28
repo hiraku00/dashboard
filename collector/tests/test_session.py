@@ -401,6 +401,35 @@ def test_second_run_skips_earlier_click_when_new_comment_is_already_on_first_pag
     assert any(c["body_text"].startswith("新しいコメントです") for c in note["comments"])
 
 
+def test_load_earlier_does_not_declare_done_before_seeing_the_tail():
+    """コメント欄がすでに開いていて、見出しの位置から始まった場合(_open_thread がクリックせずに済ませたとき)、
+    まだ末尾(「前のコメントを見る」か「コメントを入力」欄)を一度も見ていないうちに、「ボタンが無く見出しが
+    見える」だけで「全部読んだ」と判定してはいけない(実機で、続きがあるのに見ないで済ませてしまい、
+    撮影の段階になって初めて「前のコメントを見る」が残っていたと分かる事故があった: さと 2026-09-29)。"""
+    from types import SimpleNamespace
+
+    chat = build(jitter=False)
+    s = Session(SimDriver(chat), Ledger(), NOW, Options())
+    note = {"comments": [], "comments_checked_at": None}
+
+    screen = SimpleNamespace(lines=[])
+    header_only = [Block(kind="note", author="x", time_raw="1分前", y_top=0, y_time=0, complete=True)]
+    with_end = header_only + [Block(kind="end", author="", time_raw="", y_top=0, y_time=0, complete=True)]
+
+    calls = {"n": 0}
+    def fake_shot():
+        calls["n"] += 1
+        return (screen, header_only) if calls["n"] == 1 else (screen, with_end)
+    s.shot = fake_shot
+    s._header_y = lambda screen, blocks, note: 10.0     # 見出しは常に見えている、という想定
+    scrolls: list[int] = []
+    s.scroll = lambda n: scrolls.append(n)
+
+    assert s._load_earlier(note, full_expand=False) is False
+    assert calls["n"] == 2                              # 1回目だけで即断せず、もう一度確かめてから終わる
+    assert scrolls == [24]                               # 末尾をまだ見ていない間は、上ではなく下へ進む
+
+
 def test_full_expand_option_disables_the_early_stop():
     """Options.full_expand=True(切り戻し用)なら、既読でも省かず、今までどおり押し切る."""
     chat = SimChat([SimNote("参加者A", "本文", "昨日 午前 9:45", comments=comments(30, "P"), reactions=10)], jitter=False)

@@ -620,16 +620,27 @@ class Session:
 
         戻り値: 一部だけ読んで止めたら True(_capture_pending が ledger.apply_collection の partial に渡す)。
         全部押し切った・元から閉じていた(ボタンが無かった)場合は False。
+
+        コメント欄がすでに開いていた場合(_open_thread がクリックせずに済ませた場合)は、開いた直後の
+        ジャンプが起きないため、スクロール位置は見出しのまま(前回、一部だけ読んで止めた続きかもしれない)。
+        末尾(「前のコメントを見る」か、コメント欄の終わりの「コメントを入力」欄)を一度も見ないまま
+        「ボタンが無く、見出しが見える」を「全部読んだ」と判定すると、実際には下に続きがあるのに
+        見ないで済ませてしまう(実機で発生: さと 2026-09-29、撮影では「前のコメントを見る」が残っていた)。
+        末尾を一度も確認していない間は、上ではなく下へ進んで確かめる。
         """
         active = [c for c in note["comments"] if not c.get("deleted_at")]
+        seen_tail = False           # 「前のコメントを見る」か「コメントを入力」欄を、一度でも画面で見たか
         for _ in range(120):
             screen, blocks = self.shot()
             cut = [l for l in screen.lines if TXT_CUT in l.text.replace(" ", "")]
             if not cut:
-                if self._header_y(screen, blocks, note) is not None:
-                    return False                          # ボタンが無くなるまで押し切った(全部読んだ)
-                self.scroll(-24)
+                if any(b.kind == "end" for b in blocks):
+                    seen_tail = True
+                if seen_tail and self._header_y(screen, blocks, note) is not None:
+                    return False                          # 末尾を確かめたうえで、ボタンも無い(全部読んだ)
+                self.scroll(24 if not seen_tail else -24)  # 末尾をまだ見ていなければ下へ、見終えていれば見出しへ戻る
                 continue
+            seen_tail = True
             if not full_expand:
                 oldest = self._oldest_loaded_comment(blocks)
                 if oldest is None:
