@@ -5,7 +5,7 @@ import pytest
 from line_openchat.ledger import Ledger
 from line_openchat.parse import Block
 from line_openchat.screen import Line
-from line_openchat.session import Options, Session
+from line_openchat.session import SEEK_STUCK_LIMIT, Options, Session, SessionError
 from sim import SimChat, SimComment, SimDriver, SimNote
 
 JST = timezone(timedelta(hours=9))
@@ -326,6 +326,37 @@ def test_stopped_capture_gives_the_same_ledger_as_a_full_capture():
         s.run()
         return [(n["author_name"], n["posted_at_raw"], [c["body_text"] for c in n["comments"]]) for n in ledger.notes]
     assert contents(stop=True) == contents(stop=False)
+
+
+# ---------- 見出し探索: 本文が似た別の投稿に惑わされない(2026-09-28の実機事故の再発防止) ----------
+def test_hint_y_ignores_content_match_with_very_different_time():
+    """本文が似ている(内容だけの一致)ノートでも、投稿時刻が大きく違えば手がかりとして使わない.
+    実機で、OCRの誤読で作られた重複ノート(本文はほぼ同じ、投稿時刻だけ約1時間41分ズレていた)に
+    向けて、見出し探索が延々と迷走したことがあった(_hint_y は今まで内容の一致しか見ていなかった)。"""
+    chat = SimChat([SimNote("参加者A", "特徴的な本文の冒頭がここにあります。", "昨日 午前 9:45", reactions=5)], jitter=False)
+    s = Session(SimDriver(chat), Ledger(), NOW, Options())
+    screen, blocks = s.shot()
+    from line_openchat.timeparse import parse_display_time
+    posted = parse_display_time("昨日 午前 9:45", NOW).utc
+
+    far = {"body_text": "特徴的な本文の冒頭がここにあります。", "posted_at": "2026-09-01T00:00:00Z"}
+    near = {"body_text": "特徴的な本文の冒頭がここにあります。", "posted_at": posted}
+    assert s._hint_y(screen, blocks, far) is None                    # 大きくズレている: 手がかりとして使わない
+    assert s._hint_y(screen, blocks, near) is not None                # ズレていない: 今までどおり手がかりになる
+
+
+def test_seek_header_gives_up_early_when_stuck_on_a_false_hint():
+    """手がかりはあるのに見出しが確認できない状態が続いたら、48回まで待たずに早めに諦める
+    (実機で、本文が似た別の投稿に惑わされて48回すべて迷走し、操作を検知して中断したことがあった)。"""
+    chat = build(jitter=False)
+    s = Session(SimDriver(chat), Ledger(), NOW, Options())
+    s._find_block = lambda blocks, note, kind="note": None            # 絶対に見つからない
+    s._hint_y = lambda screen, blocks, note: 100.0                    # 手がかりは常にある
+    scrolls: list[int] = []
+    s.scroll = lambda lines: scrolls.append(lines)                    # 実際には動かさず、回数だけ数える
+    with pytest.raises(SessionError, match="惑わされている"):
+        s._seek_header({"body_text": "x", "author_name": "x", "posted_at": "2026-09-23T00:00:00Z", "posted_at_precision": "exact"})
+    assert len(scrolls) == SEEK_STUCK_LIMIT - 1                       # 48回ではなく、早めに諦める
 
 
 # ---------- 段階3: 「前のコメントを見る」を必要なときだけ押す ----------
