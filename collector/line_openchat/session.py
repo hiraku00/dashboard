@@ -297,13 +297,18 @@ class Session:
 
     def _full_expand_required(self, note: dict, is_new: bool, expected: int | None) -> bool:
         """「前のコメントを見る」を、読み込み済みの所で止めず、最後まで押し切る必要があるか.
-        既読の判定(_already_read)を信用できない・安全に省けない状況では、必ず全部読む."""
+        既読の判定(_already_read)を信用できない・安全に省けない状況では、必ず全部読む.
+
+        既読の判定は、内容が一致する(a)か、前回実際に読んだ時刻より前(b)かのどちらかで成立する。
+        (a)は comments_checked_at が無くても、既存コメントさえあれば試せる。comments_checked_at の
+        有無だけで全部読むと決めると、段階3の導入後に一度も開いていないだけのノート(内容は台帳に
+        既にある)まで、無駄に全部読み直してしまう(実機で、パエリアがこれで不要に全部押していた)。"""
         if self.opts.full_expand or self.opts.first_run or is_new or note.get("needs_recheck", False):
             return True
         if expected is None or expected < note["comment_count"]:
             return True                                    # 件数が読めない・減っている(削除の可能性)は、全部読んで確かめる
-        if not note.get("comments_checked_at") or not any(not c.get("deleted_at") for c in note["comments"]):
-            return True                                    # 比べる基準(前回、実際にコメント欄を読んだ時刻・既存コメント)が無い
+        if not any(not c.get("deleted_at") for c in note["comments"]):
+            return True                                    # 比べる基準(既存コメント)が無い
         return False
 
     def _find_block(self, blocks: list[Block], note: dict, kind: str = "note") -> Block | None:
@@ -620,16 +625,27 @@ class Session:
 
         戻り値: 一部だけ読んで止めたら True(_capture_pending が ledger.apply_collection の partial に渡す)。
         全部押し切った・元から閉じていた(ボタンが無かった)場合は False。
+
+        コメント欄がすでに開いていた場合(_open_thread がクリックせずに済ませた場合)は、開いた直後の
+        ジャンプが起きないため、スクロール位置は見出しのまま(前回、一部だけ読んで止めた続きかもしれない)。
+        末尾(「前のコメントを見る」か、コメント欄の終わりの「コメントを入力」欄)を一度も見ないまま
+        「ボタンが無く、見出しが見える」を「全部読んだ」と判定すると、実際には下に続きがあるのに
+        見ないで済ませてしまう(実機で発生: さと 2026-09-29、撮影では「前のコメントを見る」が残っていた)。
+        末尾を一度も確認していない間は、上ではなく下へ進んで確かめる。
         """
         active = [c for c in note["comments"] if not c.get("deleted_at")]
+        seen_tail = False           # 「前のコメントを見る」か「コメントを入力」欄を、一度でも画面で見たか
         for _ in range(120):
             screen, blocks = self.shot()
             cut = [l for l in screen.lines if TXT_CUT in l.text.replace(" ", "")]
             if not cut:
-                if self._header_y(screen, blocks, note) is not None:
-                    return False                          # ボタンが無くなるまで押し切った(全部読んだ)
-                self.scroll(-24)
+                if any(b.kind == "end" for b in blocks):
+                    seen_tail = True
+                if seen_tail and self._header_y(screen, blocks, note) is not None:
+                    return False                          # 末尾を確かめたうえで、ボタンも無い(全部読んだ)
+                self.scroll(24 if not seen_tail else -24)  # 末尾をまだ見ていなければ下へ、見終えていれば見出しへ戻る
                 continue
+            seen_tail = True
             if not full_expand:
                 oldest = self._oldest_loaded_comment(blocks)
                 if oldest is None:
@@ -653,15 +669,25 @@ class Session:
     def _already_read(self, block: Block, active: list[dict], note: dict) -> bool:
         """このコメントを前回までに読んでいるか.
         (a) 台帳の既存コメント(削除扱いでないもの)と内容が一致する。
-        (b) 投稿時刻が、このノートのコメント欄を前回実際に読んだ時刻(comments_checked_at)より前(精度に応じた余裕つき)。
-        last_checked_at は一覧の走査で見るたびに更新される(このノート自身の判定より前に、今回の実行時刻に
-        更新されてしまう)ので使えない。どちらかを満たせば既読とみなす。読めない・分からないときは False(安全側 = 押す方)."""
+        (b) 投稿時刻が、比べる基準の時刻より前(精度に応じた余裕つき)。基準は、このノートのコメント欄を
+        前回実際に読んだ時刻(comments_checked_at)。それがまだ無ければ(このノートは今回が初めての
+        判定)、前回の同期そのものの開始時刻(ledger.meta["last_run"]["at"]。Portalの「最後の取得」と同じ値)
+        で代用する。前回の同期が最後まで終わっていれば、このノートを個別に開いていなくても、それより前の
+        コメントは存在していたはずだからである。ただし前回が中断(aborted)していた場合は、途中までしか
+        確かめていないので使わない。
+        note["last_checked_at"](一覧の走査で見るたびに更新される、このノート自身の値)は、この判定より
+        前に今回の実行時刻へ上書きされてしまうため使えない(前回の同期の値である ledger.meta とは別物)。
+        どちらか(a/b)を満たせば既読とみなす。読めない・分からないときは False(安全側 = 押す方)."""
         obs = comment_obs(block, self.now)
         if obs is None:
             return False
         if identity.match_comment(active, obs.as_match_dict(), set(), 0) is not None:
             return True
         last = note.get("comments_checked_at")
+        if not last:
+            last_run = self.ledger.meta.get("last_run") or {}
+            if last_run.get("status") != "aborted":
+                last = last_run.get("at")
         if not last:
             return False
         try:

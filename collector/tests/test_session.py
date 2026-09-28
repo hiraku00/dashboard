@@ -379,6 +379,27 @@ def test_already_read_by_content_or_by_time():
     assert not s._already_read(block("参加者C", "知らない、新しい内容です。", "9.23午後 10:00"), active, note)     # 内容も違い、前回より後(UTC13:00)
 
 
+def test_already_read_falls_back_to_the_previous_sync_run_time_when_never_opened_before():
+    """このノートを個別に開いたことが一度も無くても(comments_checked_at が無くても)、前回の同期そのものが
+    最後まで終わっていれば、その開始時刻(ledger.meta["last_run"]["at"]。Portalの「最後の取得」と同じ値)を
+    基準に既読と判定してよい。ただし前回が中断していた場合は、途中までしか確かめていないので使わない。"""
+    chat = build(jitter=False)
+    led = Ledger()
+    led.meta["last_run"] = {"at": "2026-09-23T21:00:00+09:00", "status": "success"}   # UTC 12:00
+    s = Session(SimDriver(chat), led, NOW, Options())
+    note = {"comments": [], "comments_checked_at": None}
+
+    def block(author, text, time_raw):
+        return Block(kind="comment", author=author, time_raw=time_raw, y_top=0, y_time=0, complete=True,
+                     lines=[Line(text, 0, 0, 10, 10)])
+
+    assert s._already_read(block("参加者B", "知らない内容ですが前回の同期より前です。", "9.23午後 8:00"), [], note)     # 前回(UTC11:00)より前
+    assert not s._already_read(block("参加者C", "知らない、新しい内容です。", "9.23午後 10:00"), [], note)            # 前回(UTC13:00)より後
+
+    led.meta["last_run"] = {"at": "2026-09-23T23:00:00+09:00", "status": "aborted"}    # 中断した回(途中までしか見ていない)
+    assert not s._already_read(block("参加者B", "知らない内容ですが前回の同期より前です。", "9.23午後 8:00"), [], note)
+
+
 def test_second_run_skips_earlier_click_when_new_comment_is_already_on_first_page():
     """新しいコメントが1件だけ増えても、読み込み済みの最初の10件の中に既読のコメントが見つかれば、
     「前のコメントを見る」を1回も押さずに済む(実機の実測: 開いた直後N=10件・1回押すごとにM=10件)."""
@@ -399,6 +420,55 @@ def test_second_run_skips_earlier_click_when_new_comment_is_already_on_first_pag
     assert sorted(c["ordinal"] for c in note["comments"]) == list(range(31))
     assert sum(1 for c in note["comments"] if c.get("deleted_at")) == 0
     assert any(c["body_text"].startswith("新しいコメントです") for c in note["comments"])
+
+
+def test_load_earlier_does_not_declare_done_before_seeing_the_tail():
+    """コメント欄がすでに開いていて、見出しの位置から始まった場合(_open_thread がクリックせずに済ませたとき)、
+    まだ末尾(「前のコメントを見る」か「コメントを入力」欄)を一度も見ていないうちに、「ボタンが無く見出しが
+    見える」だけで「全部読んだ」と判定してはいけない(実機で、続きがあるのに見ないで済ませてしまい、
+    撮影の段階になって初めて「前のコメントを見る」が残っていたと分かる事故があった: さと 2026-09-29)。"""
+    from types import SimpleNamespace
+
+    chat = build(jitter=False)
+    s = Session(SimDriver(chat), Ledger(), NOW, Options())
+    note = {"comments": [], "comments_checked_at": None}
+
+    screen = SimpleNamespace(lines=[])
+    header_only = [Block(kind="note", author="x", time_raw="1分前", y_top=0, y_time=0, complete=True)]
+    with_end = header_only + [Block(kind="end", author="", time_raw="", y_top=0, y_time=0, complete=True)]
+
+    calls = {"n": 0}
+    def fake_shot():
+        calls["n"] += 1
+        return (screen, header_only) if calls["n"] == 1 else (screen, with_end)
+    s.shot = fake_shot
+    s._header_y = lambda screen, blocks, note: 10.0     # 見出しは常に見えている、という想定
+    scrolls: list[int] = []
+    s.scroll = lambda n: scrolls.append(n)
+
+    assert s._load_earlier(note, full_expand=False) is False
+    assert calls["n"] == 2                              # 1回目だけで即断せず、もう一度確かめてから終わる
+    assert scrolls == [24]                               # 末尾をまだ見ていない間は、上ではなく下へ進む
+
+
+def test_second_run_skips_earlier_click_even_without_a_comments_checked_at_baseline():
+    """comments_checked_at が無くても(段階3を入れる前から台帳にあったノートなど)、既存コメントの
+    内容と一致すれば既読と判定でき、全部読み直す必要はない(実機で、まだ comments_checked_at の付いて
+    いないノートが、それだけを理由に不要な全部読みをしていたことがあった。パエリア 2026-09-29)。"""
+    chat = SimChat([SimNote("参加者A", "本文", "昨日 午前 9:45", comments=comments(26, "P"), reactions=10)], jitter=False)
+    ledger, stats = run(chat)
+    note = by_author(ledger, "参加者A")[0]
+    assert note["comment_count"] == 26
+    note["comments_checked_at"] = None                                # 段階3導入前からの台帳を想定
+
+    chat.notes[0].comments.append(SimComment("参加者Z", "新しいコメントです。", "1時間前"))
+    _close_window(chat)
+    s2, stats2 = _next_run(chat, ledger)
+    assert not any("走査で見えず" in w or "件数不一致" in w for w in stats2.warnings), stats2.warnings
+    assert chat.notes[0].earlier_loaded == 0                          # 押さずに済んだ(内容一致だけで既読と判定)
+    note = by_author(ledger, "参加者A")[0]
+    assert note["comment_count"] == 27 and not note["needs_recheck"]
+    assert len(note["comments"]) == 27
 
 
 def test_full_expand_option_disables_the_early_stop():
