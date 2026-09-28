@@ -448,7 +448,31 @@ def test_load_earlier_does_not_declare_done_before_seeing_the_tail():
 
     assert s._load_earlier(note, full_expand=False) is False
     assert calls["n"] == 2                              # 1回目だけで即断せず、もう一度確かめてから終わる
-    assert scrolls == [24]                               # 末尾をまだ見ていない間は、上ではなく下へ進む
+    assert scrolls == [60]                               # 末尾をまだ見ていない間は、上ではなく大きめの歩幅で下へ進む
+
+
+def test_load_earlier_stops_scrolling_down_forever_when_stuck_at_the_bottom():
+    """下へスクロールしても画面が変わらなくなったら(スクロールの底に達した)、末尾に着いたものとみなし、
+    下へ進み続けない(実機で、下まで来てもなお下へスクロールし続け、操作を検知して中断したことがあった:
+    てんぷら 2026-09-29。「コメントを入力」欄の文字が何らかの理由で読めない場合の保険)。"""
+    from types import SimpleNamespace
+
+    chat = build(jitter=False)
+    s = Session(SimDriver(chat), Ledger(), NOW, Options())
+    note = {"comments": [], "comments_checked_at": None}
+
+    screen = SimpleNamespace(lines=[])
+    same_blocks = [Block(kind="note", author="x", time_raw="1分前", y_top=0, y_time=0, complete=True)]
+    s.shot = lambda: (screen, same_blocks)                # 画面はスクロールしても変わらない(スクロールの底)
+    s._header_y = lambda screen, blocks, note: None        # 見出しはもう画面に見えない(下まで来ている想定)
+    scrolls: list[int] = []
+    s.scroll = lambda n: scrolls.append(n)
+
+    with pytest.raises(SessionError):
+        s._load_earlier(note, full_expand=False)
+    downs = [n for n in scrolls if n > 0]
+    assert downs == [60, 60]                              # 変化なしを2回確認したところで、下へは進むのをやめる
+    assert all(n < 0 for n in scrolls[2:])                # それ以降は(見出しを探して)上へ戻ろうとするだけ
 
 
 def test_second_run_skips_earlier_click_even_without_a_comments_checked_at_baseline():
