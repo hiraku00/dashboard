@@ -94,9 +94,10 @@ def run_sync(cfg: SyncConfig, *, log: Callable[[str], None] = lambda s: None,
     try:
         prune_old_logs(directory)
         logfile = open(directory / f"run-{datetime.now():%Y%m%dT%H%M%S}.log", "a", encoding="utf-8")
+        started = time.time()          # 全体の経過秒数を、ログの各行に添えるため(進捗がどこまで進んでいるか分かるように)
 
         def note(msg: str) -> None:
-            line = f"[{time.strftime('%H:%M:%S')}] {msg}"
+            line = f"[{time.strftime('%H:%M:%S')} +{time.time() - started:5.0f}s] {msg}"
             log(line)
             logfile.write(line + "\n")
             logfile.flush()
@@ -146,7 +147,6 @@ def run_sync(cfg: SyncConfig, *, log: Callable[[str], None] = lambda s: None,
 
         opts = Options(scan_days=cfg.scan_days, first_run=first_run, max_notes=cfg.max_notes, pause=pause,
                        checkpoint=lambda: ledger.save(ledger_path), full_expand=cfg.full_expand)
-        started = time.time()
         started_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")     # 読み取りを始めた時刻(送信が遅れても、取得の時刻として残す)
         session = Session(driver, ledger, when, opts, log=note)
         try:

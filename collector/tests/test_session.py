@@ -49,6 +49,23 @@ def by_author(ledger, author):
     return [n for n in ledger.notes if n["author_name"] == author]
 
 
+def test_scan_logs_before_processing_a_note_that_needs_work():
+    """本文を開く・コメント欄を探すなど時間のかかる処理の前に、どのノートを見ているかをログに出す
+    (以前は _process_note が終わるまで何もログが出ず、長引くノートがあると進捗が分からなかった)。
+    変化の無いノート(2回目以降)では、この事前ログは出ない(毎回全ノート分出ると読みにくいため)。"""
+    chat = build(jitter=False)
+    ledger = Ledger()
+    logs: list[str] = []
+    Session(SimDriver(chat), ledger, NOW, Options(first_run=True), log=logs.append).run()
+    started = [l for l in logs if l.endswith("を確認しています…")]
+    assert started                                              # 初回は全件が「開く必要あり」
+    assert any("ちきりん" in l for l in started)
+
+    logs.clear()
+    Session(SimDriver(chat), ledger, NOW, Options(first_run=False), log=logs.append).run()
+    assert not [l for l in logs if l.endswith("を確認しています…")]   # 2回目、変化が無ければ事前ログも無い
+
+
 def test_first_run_collects_all_notes_and_comments():
     chat = build()
     ledger, stats = run(chat)
@@ -305,7 +322,7 @@ def test_stopped_capture_gives_the_same_ledger_as_a_full_capture():
         s = Session(SimDriver(chat), ledger, NOW, Options(first_run=False))
         if not stop:
             orig = s.reader.read_all
-            s.reader.read_all = lambda expect_ends=None: orig(None)
+            s.reader.read_all = lambda expect_ends=None, log=lambda m: None: orig(None)
         s.run()
         return [(n["author_name"], n["posted_at_raw"], [c["body_text"] for c in n["comments"]]) for n in ledger.notes]
     assert contents(stop=True) == contents(stop=False)

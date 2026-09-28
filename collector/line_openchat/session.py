@@ -21,6 +21,7 @@ from .screen import Screen
 from .timeparse import EXACT, parse_display_time, tolerance_minutes
 
 MAX_CLICKS_PER_RUN = 3000
+SEEK_LOG_EVERY = 8          # 見出しを探す処理が長引いたとき、これ回数ごとに進捗をログへ出す
 
 
 class Driver(Protocol):
@@ -142,12 +143,20 @@ class Session:
 
     # ---------- ノート一覧 ----------
     def run(self) -> RunStats:
+        """全体は3段階: ①一覧を走査(変わったノートを探す) → ②(変わったノートがあれば)撮影の準備 →
+        ③開いたコメント欄をまとめて撮影・読み取り。段階の変わり目をログに出す(各行のタイムスタンプに、
+        runner.py が経過秒数を添える)。ノートが1件も変わっていなければ、②③は行わない。"""
         stats = self.stats
         digits.reset_stats()
         try:
+            self.log("① 一覧を走査します(変わったノートを探します)")
             self.reader.prepare()                 # 撮影の調整(一覧の先頭へ戻る)
             self._scan()
-            self._capture_pending()
+            if self._pending:
+                self.log(f"② コメント欄を撮影・読み取りします({len(self._pending)}件)")
+                self._capture_pending()
+            else:
+                self.log("② 変わったノートはありませんでした(撮影は不要です)")
         except Aborted as exc:
             stats.aborted = True
             stats.warnings.append(f"中断: {exc}")
@@ -188,6 +197,12 @@ class Session:
                     stats.warnings.append(warning)
                 visited.add(note["id"])
                 stats.notes_scanned += 1
+                needs_work = (is_new or note.get("needs_recheck", False) or not note["body_complete"]
+                             or (obs.comments is not None and obs.comments != note["comment_count"]))
+                if needs_work:
+                    # 本文を開く・コメント欄を探すのに時間がかかることがある(長いノートでは見出しの探索が
+                    # 何十回もスクロールを繰り返すこともある)。終わるまで何も出ないと止まって見えるので、先に出す
+                    self.log(f"  {note['author_name']} {note['posted_at_raw']} を確認しています…")
                 changed = self._process_note(note, is_new, obs, b, screen)
                 self.opts.checkpoint()
                 unchanged = 0 if (changed or is_new) else unchanged + 1
@@ -347,7 +362,7 @@ class Session:
         # 開いたコメント欄の数だけ「コメントを入力」を数えたら、撮影を止める(それより下は、走査で「変化なし」と判断したノート)。
         # 初回は、一覧の最後まで全件を読む前提なので止めない
         expect = None if self.opts.first_run else self._threads_open
-        groups, warnings = self.reader.read_all(expect_ends=expect)
+        groups, warnings = self.reader.read_all(expect_ends=expect, log=self.log)
         info = getattr(self.reader, "last_info", None)
         if info:
             self._log_capture(info)
@@ -542,6 +557,8 @@ class Session:
             h = self._find_block(blocks, note)
             if h is not None:
                 return h, screen, blocks
+            if i and i % SEEK_LOG_EVERY == 0:
+                self.log(f"    見出しを探しています({i}回目。コメントの多い長いノートでは時間がかかることがあります)")
             y = self._hint_y(screen, note)
             self.debug("  seek#%d hint_y=%s notes=%s" % (i, y and round(y), [(b.author[:4], b.complete, round(identity.note_score(note, o.as_match_dict()), 2))
                                                               for b in blocks if b.kind == "note" and (o := note_obs(b, self.now))]))
