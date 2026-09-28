@@ -4,6 +4,7 @@
 """
 from __future__ import annotations
 
+import os
 import re
 import unicodedata
 from dataclasses import dataclass, field
@@ -190,8 +191,9 @@ def _read_digits_ocr(screen: Screen, a: float, e: float, cy: float) -> int | Non
     return int(best) if votes.count(best) * 2 > len(votes) else None
 
 
-# 移行期間: 見本で読めたときも、OCRで読んで食い違いを記録する(ログで確かめ終えたら False にして、OCRを省く)
-VERIFY_DIGITS_WITH_OCR = True
+# 見本で読めたときも、OCRで読んで食い違いを記録する(デバッグ用。実機で確かめ済み: 2026-09-28、201件すべて見本で読め、
+# 食い違いはパエリア(9/24)の1箇所だけで、見本の「6」が正しい値だった。既定は False(OCRの分だけ読み取りが遅くなるため)
+VERIFY_DIGITS_WITH_OCR = os.environ.get("LINE_OPENCHAT_VERIFY_DIGITS") == "1"
 
 
 def _template_number(screen: Screen, a: float, e: float, cy: float) -> int | None:
