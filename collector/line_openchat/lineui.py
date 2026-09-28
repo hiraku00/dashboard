@@ -183,6 +183,7 @@ class MacScreen:
         self._px_w = Quartz.CGImageGetWidth(self._cg)
         self._scale = self._px_w / win.w
         self._rep = NSBitmapImageRep.imageRepWithContentsOfFile_(path)
+        self._arr = None                 # pixels() で初めて読む
         self.lines: list[Line] = self._ocr()
 
     def _ocr(self) -> list[Line]:
@@ -217,6 +218,20 @@ class MacScreen:
             except Exception:                                    # noqa: BLE001 取れなければ比例で見積もる
                 pass
         return line.x + line.w * (idx + len(needle) / 2) / max(1, len(line.text))
+
+    @property
+    def scale(self) -> float:
+        return self._scale
+
+    def pixels(self, x: float, y: float, w: float, h: float):
+        """範囲(pt)の画素(RGB の numpy 配列). 数字を見本と照合するのに使う(parse.read_digits).
+        見本(digit_templates.py)と同じく、撮影したPNGをそのまま読む(pixel() の色の値とは、色空間の扱いで違うことがある)."""
+        if self._arr is None:
+            import numpy as np
+            from PIL import Image
+            self._arr = np.asarray(Image.open(self.path).convert("RGB"))
+        s = self._scale
+        return self._arr[max(0, int(y * s)):int((y + h) * s), max(0, int(x * s)):int((x + w) * s)]
 
     def pixel(self, x: float, y: float) -> tuple[int, int, int]:
         c = self._rep.colorAtX_y_(int(x * self._scale), int(y * self._scale))

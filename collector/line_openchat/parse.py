@@ -8,7 +8,7 @@ import re
 import unicodedata
 from dataclasses import dataclass, field
 
-from . import layout as K
+from . import digits, layout as K
 from .screen import Line, Screen
 from .timeparse import is_time_text
 
@@ -158,6 +158,66 @@ def digit_runs(screen: Screen, a: float, e: float, cy: float) -> int:
     return runs
 
 
+def _read_digits_ocr(screen: Screen, a: float, e: float, cy: float) -> int | None:
+    """数字の範囲 [a, e] をOCRで読む(見本で読めなかったときの読み方)."""
+    runs = digit_runs(screen, a, e, cy)
+    if not 1 <= runs <= 4:
+        return None
+    # 数字の塊の数(1桁なら1つ)と桁数が合う読みだけを採る(実機で、表示が「6」なのに「999」と読んだ)。
+    # 1桁だけだとOCRが読まないので同じ画像を並べ、それでも読めなければ、拡大率を変えて読み直し、多数決にする
+    votes: list[str] = []
+    repeats: set[int] = set()
+    for repeat, enlarge in ((3, 5), (5, 5), (5, 8), (5, 12), (3, 8)):
+        text = unicodedata.normalize("NFKC", screen.ocr_digits(a - 1, cy - 9, e - a + 3, 18, repeat=repeat, enlarge=enlarge))
+        if runs == 1:
+            # 同じ画像を並べているので、詰まって「111」「11171」のように読まれることがある。数字は、その中の多数派の1文字
+            chars = re.findall(r"\d", text)
+            # 詰まった読みが本物か(表示が「6」なのに「999」と読む誤読と区別)は、並べた数と文字数が合うかで見る
+            if chars and repeat - 1 <= len(chars) <= repeat + 1:
+                top = max(set(chars), key=chars.count)
+                if chars.count(top) * 10 >= len(chars) * 7:
+                    votes.append(top)
+                    repeats.add(repeat)
+        else:
+            votes += [t for t in re.findall(r"\d+", text) if len(t) == runs]
+        # 1桁は、異なる repeat で2回以上一致するまでは打ち切らない(1回目(repeat=3)が読めず、2・3回目がどちらも
+        # repeat=5 で一致しただけで打ち切ると、下の「異なる repeat で2回」の条件を満たせず、確からしい読みを捨てていた)
+        if len(votes) >= 2 and len(set(votes)) == 1 and (runs != 1 or len(repeats) >= 2):
+            break
+    if not votes or (runs == 1 and len(repeats) < 2):
+        return None
+    best = max(set(votes), key=votes.count)
+    return int(best) if votes.count(best) * 2 > len(votes) else None
+
+
+# 移行期間: 見本で読めたときも、OCRで読んで食い違いを記録する(ログで確かめ終えたら False にして、OCRを省く)
+VERIFY_DIGITS_WITH_OCR = True
+
+
+def _template_number(screen: Screen, a: float, e: float, cy: float) -> int | None:
+    """範囲 [a, e] を見本と照合して読む. 画素を切り出せない画面(テストの模擬)や、見本の無い倍率では None."""
+    pixels = getattr(screen, "pixels", None)
+    if pixels is None:
+        return None
+    return digits.read_number(pixels(a - 1, cy - 9, e - a + 2.5, 18), getattr(screen, "scale", None))
+
+
+def read_digits(screen: Screen, a: float, e: float, cy: float) -> int | None:
+    """数字の範囲 [a, e](数の行の中心 cy)を読む. 見本と画素で照合し(digits.py)、読めなければOCRで読む."""
+    value = _template_number(screen, a, e, cy)
+    if value is None:
+        value = _read_digits_ocr(screen, a, e, cy)
+        digits.STATS["ocr" if value is not None else "unknown"] += 1
+        return value
+    digits.STATS["template"] += 1
+    if VERIFY_DIGITS_WITH_OCR:
+        ocr = _read_digits_ocr(screen, a, e, cy)
+        if ocr is not None and ocr != value:
+            digits.STATS["mismatch"] += 1
+            digits.MISMATCHES.append(f"見本 {value} / OCR {ocr}")
+    return value
+
+
 def read_counts(screen: Screen, cy: float):
     """[😊][数字][💬][数字][共有] の並びを画素で切り分け、数字の塊だけを読む.
 
@@ -170,7 +230,10 @@ def read_counts(screen: Screen, cy: float):
     if len(clusters) < 4:
         return None
     body = clusters[:-1]                                   # 右端の共有アイコンを除く
-    icon_like = [i for i, (a, e) in enumerate(body) if K.ICON_W_MIN <= e - a <= K.ICON_W_MAX]
+    # 接した2桁の数字(「44」「48」)は幅が約15ptで、アイコンの幅に入る。見本で数字と読める塊はアイコンから除く
+    # (除かないと、コメント数「44」をコメントアイコンと取り違え、コメント0件と読む)
+    icon_like = [i for i, (a, e) in enumerate(body) if K.ICON_W_MIN <= e - a <= K.ICON_W_MAX
+                 and (i == 0 or _template_number(screen, a, e, cy) is None)]
     if not icon_like or icon_like[0] != 0 or len(icon_like) < 2:
         return None
     first, second = icon_like[0], icon_like[-1]            # リアクション(左端)と、コメント(数字の後ろの最後のアイコン)
@@ -180,42 +243,14 @@ def read_counts(screen: Screen, cy: float):
     def read(g: list[tuple[float, float]]) -> int | None:
         if not g:
             return None
-        a, e = g[0][0], g[-1][1]
-        runs = digit_runs(screen, a, e, cy)
-        if not 1 <= runs <= 4:
-            return None
-        # 数字の塊の数(1桁なら1つ)と桁数が合う読みだけを採る(実機で、表示が「6」なのに「999」と読んだ)。
-        # 1桁だけだとOCRが読まないので同じ画像を並べ、それでも読めなければ、拡大率を変えて読み直し、多数決にする
-        votes: list[str] = []
-        repeats: set[int] = set()
-        for repeat, enlarge in ((3, 5), (5, 5), (5, 8), (5, 12), (3, 8)):
-            text = unicodedata.normalize("NFKC", screen.ocr_digits(a - 1, cy - 9, e - a + 3, 18, repeat=repeat, enlarge=enlarge))
-            if runs == 1:
-                # 同じ画像を並べているので、詰まって「111」「11171」のように読まれることがある。数字は、その中の多数派の1文字
-                chars = re.findall(r"\d", text)
-                # 詰まった読みが本物か(表示が「6」なのに「999」と読む誤読と区別)は、並べた数と文字数が合うかで見る
-                if chars and repeat - 1 <= len(chars) <= repeat + 1:
-                    top = max(set(chars), key=chars.count)
-                    if chars.count(top) * 10 >= len(chars) * 7:
-                        votes.append(top)
-                        repeats.add(repeat)
-            else:
-                votes += [t for t in re.findall(r"\d+", text) if len(t) == runs]
-            # 1桁は、異なる repeat で2回以上一致するまでは打ち切らない(1回目(repeat=3)が読めず、2・3回目がどちらも
-            # repeat=5 で一致しただけで打ち切ると、下の「異なる repeat で2回」の条件を満たせず、確からしい読みを捨てていた)
-            if len(votes) >= 2 and len(set(votes)) == 1 and (runs != 1 or len(repeats) >= 2):
-                break
-        if not votes or (runs == 1 and len(repeats) < 2):
-            return None
-        best = max(set(votes), key=votes.count)
-        return int(best) if votes.count(best) * 2 > len(votes) else None
+        return read_digits(screen, g[0][0], g[-1][1], cy)
 
     reactions = read(body[first + 1:second])
-    digits = body[second + 1:]
+    comment_digits = body[second + 1:]
     # 数字の塊が無ければ0件。塊があるのに読めなかったときは「不明」(None)にする: 0件と取り違えると、コメントが増えても開かなくなる。
     # 実機では、Retinaでない(1倍の)ディスプレイに映すと、1桁の小さな数字をOCRが読めなかった。
-    comments = read(digits) if digits else 0
-    if digits and comments == 0:
+    comments = read(comment_digits) if comment_digits else 0
+    if comment_digits and comments == 0:
         comments = None            # 0件のときは数字の塊が無い。塊があるのに0と読んだのは誤読(1倍の画面で「8」を「0」と読んだ)
     return reactions, comments, body[second]
 

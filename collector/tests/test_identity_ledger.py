@@ -88,6 +88,22 @@ def test_missing_comment_is_marked_deleted_only_when_counts_agree():
     assert sum(1 for c in note["comments"] if c.get("deleted_at")) == 1
 
 
+def test_unreadable_count_records_what_was_read_but_never_deletes():
+    """表示の件数が読めない(None)まま読んだら、台帳にあるコメントの数を件数にする(古い件数のまま、毎回開き直さないように)."""
+    led = Ledger()
+    note, _ = led.upsert_note(nobs(comments=None), NOW)
+    assert note["comment_count"] == 0
+    r = led.apply_collection(note, [cobs(body="一つ目"), cobs(body="二つ目", at="2026-09-23T17:00:00Z", raw="6時間前"),
+                                    cobs(body="三つ目", at="2026-09-23T18:00:00Z", raw="5時間前")], None, NOW)
+    assert r.count_matched and not note["needs_recheck"]
+    assert note["comment_count"] == 3
+    assert not led.needs_open(note, False, nobs(comments=3))           # 次回、表示の件数が読めて同じなら開かない
+    assert led.needs_open(note, False, nobs(comments=4))               # 違えば開く(読めた数が少なかった場合も、ここで直る)
+    r = led.apply_collection(note, [cobs(body="一つ目")], None, NOW)   # 件数が分からないときは、見えなかったものを削除扱いにしない
+    assert r.deleted_comments == 0 and all(not c.get("deleted_at") for c in note["comments"])
+    assert note["comment_count"] == 3                                  # 件数は、台帳にある(削除扱いでない)コメントの数
+
+
 def test_needs_open_rules():
     led = Ledger()
     note, is_new = led.upsert_note(nobs(comments=3), NOW)

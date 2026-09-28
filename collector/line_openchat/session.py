@@ -8,11 +8,12 @@ from __future__ import annotations
 import os
 import re
 import time
+from collections import Counter
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Callable, Protocol
 
-from . import identity, layout as K
+from . import digits, identity, layout as K
 from .ledger import CollectionResult, CommentObs, Ledger, NoteObs
 from .parse import Block, TXT_CUT, TXT_MORE, split_blocks
 from .safety import ClickTarget, guard_click
@@ -141,6 +142,7 @@ class Session:
     # ---------- ノート一覧 ----------
     def run(self) -> RunStats:
         stats = self.stats
+        digits.reset_stats()
         try:
             self.reader.prepare()                 # 撮影の調整(一覧の先頭へ戻る)
             self._scan()
@@ -148,7 +150,16 @@ class Session:
         except Aborted as exc:
             stats.aborted = True
             stats.warnings.append(f"中断: {exc}")
+        self._log_digits()
         return stats
+
+    def _log_digits(self) -> None:
+        """件数の数字を、どの方法で読んだか(見本との照合 / OCR / 読めない)。移行期間は、見本とOCRの食い違いも出す."""
+        st = digits.STATS
+        if not st:
+            return
+        self.log(f"件数の読み取り: 見本 {st['template']}回・OCR {st['ocr']}回・読めない {st['unknown']}回"
+                 + (f" / 見本とOCRの食い違い {st['mismatch']}回: {', '.join(f'{k} ×{n}' for k, n in Counter(digits.MISMATCHES).items())}" if st["mismatch"] else ""))
 
     def _scan(self) -> None:
         o, stats = self.opts, self.stats
