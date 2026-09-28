@@ -3,6 +3,8 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from line_openchat.ledger import Ledger
+from line_openchat.parse import Block
+from line_openchat.screen import Line
 from line_openchat.session import Options, Session
 from sim import SimChat, SimComment, SimDriver, SimNote
 
@@ -307,3 +309,103 @@ def test_stopped_capture_gives_the_same_ledger_as_a_full_capture():
         s.run()
         return [(n["author_name"], n["posted_at_raw"], [c["body_text"] for c in n["comments"]]) for n in ledger.notes]
     assert contents(stop=True) == contents(stop=False)
+
+
+# ---------- 段階3: 「前のコメントを見る」を必要なときだけ押す ----------
+def test_already_read_by_content_or_by_time():
+    """_already_read: (a) 台帳の既存コメントと内容が一致する / (b) 前回の確認時刻より前 のどちらかで既読とみなす."""
+    chat = build(jitter=False)
+    s = Session(SimDriver(chat), Ledger(), NOW, Options())
+    note = {"comments": [{"id": "x", "ordinal": 0, "author_name": "参加者A", "body_text": "既読の内容です。",
+                          "posted_at": "2026-09-23T10:00:00Z", "posted_at_precision": "exact", "posted_at_raw": "",
+                          "deleted_at": None, "is_target": False}],
+            "comments_checked_at": "2026-09-23T21:00:00+09:00"}     # UTC 12:00
+    active = note["comments"]
+
+    def block(author, text, time_raw):
+        return Block(kind="comment", author=author, time_raw=time_raw, y_top=0, y_time=0, complete=True,
+                     lines=[Line(text, 0, 0, 10, 10)])
+
+    assert s._already_read(block("参加者A", "既読の内容です。", "9.23午後 7:00"), active, note)      # (a) 内容が一致
+    assert s._already_read(block("参加者B", "知らない内容ですが前回より前です。", "9.23午後 8:00"), active, note)   # (b) 前回より前(UTC11:00)
+    assert not s._already_read(block("参加者C", "知らない、新しい内容です。", "9.23午後 10:00"), active, note)     # 内容も違い、前回より後(UTC13:00)
+
+
+def test_second_run_skips_earlier_click_when_new_comment_is_already_on_first_page():
+    """新しいコメントが1件だけ増えても、読み込み済みの最初の10件の中に既読のコメントが見つかれば、
+    「前のコメントを見る」を1回も押さずに済む(実機の実測: 開いた直後N=10件・1回押すごとにM=10件)."""
+    chat = SimChat([SimNote("参加者A", "本文", "昨日 午前 9:45", comments=comments(30, "P"), reactions=10)], jitter=False)
+    ledger, stats = run(chat)
+    assert stats.notes_opened == 1
+    note = by_author(ledger, "参加者A")[0]
+    assert note["comment_count"] == 30 and not note["needs_recheck"]
+
+    chat.notes[0].comments.append(SimComment("参加者Z", "新しいコメントです。", "1時間前"))
+    _close_window(chat)
+    s2, stats2 = _next_run(chat, ledger)
+    assert not any("走査で見えず" in w or "件数不一致" in w for w in stats2.warnings), stats2.warnings
+    assert chat.notes[0].earlier_loaded == 0                          # 押さずに済んだ
+    note = by_author(ledger, "参加者A")[0]
+    assert note["comment_count"] == 31 and not note["needs_recheck"]
+    assert len(note["comments"]) == 31
+    assert sorted(c["ordinal"] for c in note["comments"]) == list(range(31))
+    assert sum(1 for c in note["comments"] if c.get("deleted_at")) == 0
+    assert any(c["body_text"].startswith("新しいコメントです") for c in note["comments"])
+
+
+def test_full_expand_option_disables_the_early_stop():
+    """Options.full_expand=True(切り戻し用)なら、既読でも省かず、今までどおり押し切る."""
+    chat = SimChat([SimNote("参加者A", "本文", "昨日 午前 9:45", comments=comments(30, "P"), reactions=10)], jitter=False)
+    ledger, stats = run(chat)
+    note = by_author(ledger, "参加者A")[0]
+    assert note["comment_count"] == 30
+
+    chat.notes[0].comments.append(SimComment("参加者Z", "新しいコメントです。", "1時間前"))
+    _close_window(chat)
+    s2 = Session(SimDriver(chat), ledger, NOW, Options(first_run=False, full_expand=True))
+    stats2 = s2.run()
+    assert not stats2.warnings, stats2.warnings
+    assert chat.notes[0].earlier_loaded >= 3                          # 31件を全部表示するまで押し切る(N=10,M=10)
+    note = by_author(ledger, "参加者A")[0]
+    assert note["comment_count"] == 31 and not note["needs_recheck"]
+    assert len(note["comments"]) == 31
+
+
+def test_second_run_clicks_earlier_only_until_reaching_a_known_comment():
+    """新しいコメントが最初の10件を超えて増えたときは、既読のコメントに届くまでだけ押す(押し切らない)."""
+    chat = SimChat([SimNote("参加者A", "本文", "昨日 午前 9:45", comments=comments(30, "P"), reactions=10)], jitter=False)
+    ledger, stats = run(chat)
+    note = by_author(ledger, "参加者A")[0]
+    assert note["comment_count"] == 30
+
+    for i in range(15):
+        chat.notes[0].comments.append(SimComment(f"参加者Z{i}", f"新しいコメント{i}です。", f"{i + 1}分前"))
+    _close_window(chat)
+    now2 = NOW + timedelta(hours=1)                                   # 実行の間隔ぶん時計を進める(前回の確認時刻との比較のため)
+    s2 = Session(SimDriver(chat), ledger, now2, Options(first_run=False))
+    stats2 = s2.run()
+
+    assert not any("走査で見えず" in w or "件数不一致" in w for w in stats2.warnings), stats2.warnings
+    assert chat.notes[0].earlier_loaded == 1                          # 30番目(既知)に届くまでの1回だけ
+    note = by_author(ledger, "参加者A")[0]
+    assert note["comment_count"] == 45 and not note["needs_recheck"]
+    assert len(note["comments"]) == 45
+    assert sorted(c["ordinal"] for c in note["comments"]) == list(range(45))
+    assert sum(1 for c in note["comments"] if c.get("deleted_at")) == 0
+    assert stats2.comments_new == 15
+
+
+def test_deleted_comments_still_force_a_full_expand():
+    """表示件数が台帳より減っている(削除の可能性)ときは、既読の判定を使わず全部読む."""
+    chat = SimChat([SimNote("参加者A", "本文", "昨日 午前 9:45", comments=comments(15, "P"), reactions=10)], jitter=False)
+    ledger, stats = run(chat)
+    note = by_author(ledger, "参加者A")[0]
+    assert note["comment_count"] == 15
+
+    del chat.notes[0].comments[3]                                     # 1件削除された想定(表示14件)
+    _close_window(chat)
+    s2, stats2 = _next_run(chat, ledger)
+    note = by_author(ledger, "参加者A")[0]
+    assert note["comment_count"] == 14 and not note["needs_recheck"]
+    assert sum(1 for c in note["comments"] if c.get("deleted_at")) == 1
+    assert sum(1 for c in note["comments"] if not c.get("deleted_at")) == 14   # 全部読めている(押し切った)

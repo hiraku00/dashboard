@@ -167,9 +167,13 @@ def parse_tall(image: TallImage, lines: list[Line], scale: float, win_w_pt: floa
         if fixed:
             warnings.append(f"読み違えた時刻の行を {fixed} 件、読み直しました")
     kept = []
+    cut_ys: list[float] = []                           # 「前のコメントを見る」の行のy(セッションの一部読み判定と突き合わせる用)
     for l in lines:
         flat = l.text.replace(" ", "").replace(" ", "")
-        if TXT_END in flat or TXT_CUT in flat or flat == "投稿" or flat.endswith("を入力"):
+        if TXT_CUT in flat:
+            cut_ys.append(l.y)
+            continue
+        if TXT_END in flat or flat == "投稿" or flat.endswith("を入力"):
             continue                                   # コメント欄の入力欄・展開ボタン(本文ではない)
         kept.append(l)
     lines = kept
@@ -228,7 +232,20 @@ def parse_tall(image: TallImage, lines: list[Line], scale: float, win_w_pt: floa
         confs = [l.conf for l in b.lines]
         b.min_conf = min(confs) if confs else 1.0
         blocks.append(b)
+    _mark_truncated(blocks, cut_ys)
     return blocks, warnings
+
+
+def _mark_truncated(blocks, cut_ys) -> None:
+    """「前のコメントを見る」の直後にあった投稿(=読み込まれている中で一番古いコメント)に truncated を立てる.
+    セッションが一部だけ読んで止めたノートを、撮影した画像の側でも確かめられるようにする(session._capture_pending)."""
+    if not cut_ys:
+        return
+    times = [b.y_time for b in blocks]
+    for y in sorted(cut_ys):
+        i = next((j for j, t in enumerate(times) if t > y), None)
+        if i is not None and blocks[i].kind == "comment":
+            blocks[i].truncated = True
 
 
 # ---------------- ノートごとのまとめ ----------------
@@ -236,6 +253,7 @@ class NoteGroup:
     def __init__(self, note: Block):
         self.note = note
         self.comments: list[Block] = []
+        self.truncated = False       # コメント欄の途中に「前のコメントを見る」が残っていた(一部だけ読み込まれた状態で撮影した)
 
 
 def group_notes(blocks: list[Block]) -> list[NoteGroup]:
@@ -246,4 +264,6 @@ def group_notes(blocks: list[Block]) -> list[NoteGroup]:
             groups.append(NoteGroup(b))
         elif groups:
             groups[-1].comments.append(b)
+            if b.truncated:
+                groups[-1].truncated = True
     return groups
