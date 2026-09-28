@@ -22,6 +22,9 @@ from .timeparse import EXACT, parse_display_time, tolerance_minutes
 
 MAX_CLICKS_PER_RUN = 3000
 SEEK_LOG_EVERY = 8          # 見出しを探す処理が長引いたとき、これ回数ごとに進捗をログへ出す
+SEEK_STUCK_LIMIT = 16       # 「手がかりはあるのに見出しが確認できない」がこれだけ連続したら、迷走とみなして早めに諦める
+HINT_TIME_TOLERANCE_MIN = 240   # 手がかりの近くの投稿時刻が、このノートの投稿時刻とこれ(分)を超えてズレていたら、
+                                 # 本文が似ているだけの別の投稿とみなし、手がかりとして使わない
 
 
 class Driver(Protocol):
@@ -538,20 +541,42 @@ class Session:
         # 3. 「前のコメントを見る」を扱い、見出しが見える位置まで戻る
         return self._load_earlier(note, full_expand)
 
-    def _hint_y(self, screen: Screen, note: dict) -> float | None:
-        """画面のどこかに、このノートの1行目が写っていれば、そのy(見出しが近い手がかり)."""
+    def _hint_y(self, screen: Screen, blocks: list[Block], note: dict) -> float | None:
+        """画面のどこかに、このノートの1行目が写っていれば、そのy(見出しが近い手がかり).
+        本文が似ているだけの別の投稿(誤読で作られた重複ノートなど)に惑わされないよう、手がかりの近くに
+        時刻を読めるブロックがあれば、その投稿時刻がこのノートの投稿時刻と大きくズレていないか確かめる
+        (実機で、本文がほぼ同じで投稿時刻だけ大きく違う重複ノートに向けて、延々と迷走したことがあった)。"""
         head = identity.norm_text(note.get("body_text", ""))[:16]
         if len(head) < 12:
             return None
         for line in screen.lines:
             if line.y > K.TOP_MARGIN and identity.contain_sim(head, line.text) >= 0.85 and len(identity.norm_text(line.text)) >= 6:
+                if self._hint_time_mismatch(line.y, blocks, note):
+                    continue
                 return line.y
         return None
 
+    def _hint_time_mismatch(self, y: float, blocks: list[Block], note: dict) -> bool:
+        """y の近く(前後60pt)に、投稿時刻を読めるブロックがあり、そのどれもがこのノートの投稿時刻と
+        HINT_TIME_TOLERANCE_MIN(分)を超えてズレているなら True(手がかりとして使わない)。
+        近くに時刻を読めるブロックが無ければ判断できないので False(手がかりとして使う)."""
+        near = [b for b in blocks if abs(b.y_time - y) <= 60 and b.time_raw]
+        found_readable = False
+        for b in near:
+            t = parse_display_time(b.time_raw, self.now)
+            if t is None:
+                continue
+            found_readable = True
+            if identity.minutes_between(note["posted_at"], t.utc) <= HINT_TIME_TOLERANCE_MIN:
+                return False
+        return found_readable
+
     def _seek_header(self, note: dict):
         """ノートの見出し(作者〜時刻行がすべて見える位置)を画面に出す.
-        1行目の文字が画面に写っていれば、その位置から上下どちらへ動くかを決める。写っていなければ、上下に順に探す。"""
+        1行目の文字が画面に写っていれば、その位置から上下どちらへ動くかを決める。写っていなければ、上下に順に探す。
+        手がかりはあるのに見出しが確認できない状態が続いたら、迷走とみなして早めに諦める(SEEK_STUCK_LIMIT)。"""
         seen_up = seen_down = 0
+        hint_without_match = 0
         for i in range(48):
             screen, blocks = self.shot()
             h = self._find_block(blocks, note)
@@ -559,15 +584,20 @@ class Session:
                 return h, screen, blocks
             if i and i % SEEK_LOG_EVERY == 0:
                 self.log(f"    見出しを探しています({i}回目。コメントの多い長いノートでは時間がかかることがあります)")
-            y = self._hint_y(screen, note)
+            y = self._hint_y(screen, blocks, note)
             self.debug("  seek#%d hint_y=%s notes=%s" % (i, y and round(y), [(b.author[:4], b.complete, round(identity.note_score(note, o.as_match_dict()), 2))
                                                               for b in blocks if b.kind == "note" and (o := note_obs(b, self.now))]))
             if y is not None:
+                hint_without_match += 1
+                if hint_without_match >= SEEK_STUCK_LIMIT:
+                    raise SessionError("見出しが見つかりません(本文が似た別の投稿に惑わされている可能性があります)")
                 # 見出しは、写っている1行目のすぐ上(作者行)から、時刻行までの高さ。下寄りなら下へ、上寄りなら上へ少し動かす
                 self.scroll(8 if y > screen.height * 0.45 else -6)
             elif i < 24:
+                hint_without_match = 0
                 self.scroll(-24)          # 手がかりが無い: まず上へ(1画面より小さい歩幅で)
             else:
+                hint_without_match = 0
                 self.scroll(24)           # 上に無ければ下へ
         raise SessionError("ノートの見出しが見つかりません")
 
@@ -577,7 +607,7 @@ class Session:
         h = self._find_block(blocks, note)
         if h is not None:
             return h.y_top
-        y = self._hint_y(screen, note)
+        y = self._hint_y(screen, blocks, note)
         return None if y is None else y - 42.0
 
     def _load_earlier(self, note: dict, full_expand: bool) -> bool:
