@@ -635,7 +635,9 @@ class Session:
         """
         active = [c for c in note["comments"] if not c.get("deleted_at")]
         seen_tail = False           # 「前のコメントを見る」か「コメントを入力」欄を、一度でも画面で見たか
-        for _ in range(120):
+        prev_sig: list | None = None
+        stuck = 0                   # 下へ進んでも画面が変わらなかった回数(スクロールが効かない=実質的に末尾)
+        for i in range(120):
             screen, blocks = self.shot()
             cut = [l for l in screen.lines if TXT_CUT in l.text.replace(" ", "")]
             if not cut:
@@ -643,7 +645,24 @@ class Session:
                     seen_tail = True
                 if seen_tail and self._header_y(screen, blocks, note) is not None:
                     return False                          # 末尾を確かめたうえで、ボタンも無い(全部読んだ)
-                self.scroll(24 if not seen_tail else -24)  # 末尾をまだ見ていなければ下へ、見終えていれば見出しへ戻る
+                if not seen_tail:
+                    if i and i % SEEK_LOG_EVERY == 0:
+                        self.log(f"    コメント欄の末尾を探しています({i}回目。長いノートでは時間がかかることがあります)")
+                    sig = self._signature(blocks)
+                    if sig == prev_sig:
+                        stuck += 1
+                        if stuck >= 2:
+                            # これ以上下へ進めない(スクロールが底に達した): 「コメントを入力」欄の文字が
+                            # 読めなかっただけとみなし、実質的に末尾に着いたものとして扱う(無限に下へ進み
+                            # 続けるのを防ぐ。実機で発生: てんぷら 2026-09-29、下まで来てもなお下へ進み続けた)
+                            seen_tail = True
+                            continue
+                    else:
+                        stuck = 0
+                    prev_sig = sig
+                    self.scroll(60)                        # 末尾を広く探すので、大きめの歩幅で進む
+                else:
+                    self.scroll(-24)                        # 末尾を見終えた: 見出しへ戻る
                 continue
             seen_tail = True
             if not full_expand:
