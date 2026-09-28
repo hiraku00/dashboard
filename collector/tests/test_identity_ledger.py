@@ -104,6 +104,61 @@ def test_unreadable_count_records_what_was_read_but_never_deletes():
     assert note["comment_count"] == 3                                  # 件数は、台帳にある(削除扱いでない)コメントの数
 
 
+def _seed_five(led, note):
+    """0〜4番目のコメントを、通常どおり(partial=False)で作っておく(段階3のテストの下ごしらえ)."""
+    full = [cobs(body=f"コメント{i}", at=f"2026-09-23T{10 + i:02d}:00:00Z", raw=f"{15 - i}時間前") for i in range(5)]
+    led.apply_collection(note, full, 5, NOW)
+    return full
+
+
+def test_partial_capture_reconciles_hidden_range_and_appends_new():
+    """「前のコメントを見る」を途中までしか押さなかった回: 読んでいない(隠れている)分の数と、
+    実際に読んだ分を足して表示件数と合えば良しとし、隠れている分は削除扱いにしない."""
+    led = Ledger()
+    note, _ = led.upsert_note(nobs(comments=5), NOW)
+    _seed_five(led, note)
+    tail = [cobs(body="コメント3", at="2026-09-23T13:00:00Z", raw="12時間前"),          # 既知(3番目)
+            cobs(body="コメント4", at="2026-09-23T14:00:00Z", raw="11時間前"),          # 既知(4番目)
+            cobs(body="新規1", at="2026-09-23T15:00:00Z", raw="10時間前"),
+            cobs(body="新規2", at="2026-09-23T16:00:00Z", raw="9時間前")]
+    r = led.apply_collection(note, tail, 7, NOW, partial=True)                          # 表示7件 = 隠れている3件 + 読んだ4件
+    assert r.count_matched and not note["needs_recheck"]
+    assert r.new_comments == 2 and r.deleted_comments == 0
+    assert note["comment_count"] == 7
+    assert all(not c.get("deleted_at") for c in note["comments"])                       # 隠れている0〜2番目も削除扱いにしない
+    assert sorted(c["ordinal"] for c in note["comments"]) == [0, 1, 2, 3, 4, 5, 6]       # 新規2件が5,6として続く
+
+
+def test_partial_capture_mismatch_flags_recheck_without_deleting():
+    """一部だけ読んだ回で件数が合わなければ(判定を間違えた疑い)、needs_recheck にして次回は全部読み直す.
+    削除扱いにはしない(見ていない範囲を、消えたと誤判定しないため)."""
+    led = Ledger()
+    note, _ = led.upsert_note(nobs(comments=5), NOW)
+    _seed_five(led, note)
+    tail = [cobs(body="コメント3", at="2026-09-23T13:00:00Z", raw="12時間前"),
+            cobs(body="コメント4", at="2026-09-23T14:00:00Z", raw="11時間前")]
+    r = led.apply_collection(note, tail, 8, NOW, partial=True)                          # 隠れている3件+読んだ2件=5 ≠ 表示8件
+    assert not r.count_matched and note["needs_recheck"]
+    assert r.deleted_comments == 0
+    assert all(not c.get("deleted_at") for c in note["comments"])
+
+
+def test_partial_capture_with_unresolvable_anchor_avoids_ordinal_collision():
+    """一番古い観測(cutのすぐ下)が台帳のどれとも一致しない(新しいコメントが11件以上増えたなど)場合でも、
+    観測した分は記録し、既存の ordinal と衝突させない(次回の全部読みで、正しい ordinal に直る)."""
+    led = Ledger()
+    note, _ = led.upsert_note(nobs(comments=3), NOW)
+    full = [cobs(body=f"コメント{i}", at=f"2026-09-23T{10 + i}:00:00Z", raw=f"{13 - i}時間前") for i in range(3)]
+    led.apply_collection(note, full, 3, NOW)
+    unknown = [cobs(body="未知1", at="2026-09-23T20:00:00Z", raw="1時間前"),
+              cobs(body="未知2", at="2026-09-23T21:00:00Z", raw="今")]
+    r = led.apply_collection(note, unknown, 5, NOW, partial=True)
+    assert not r.count_matched and note["needs_recheck"]
+    ordinals = [c["ordinal"] for c in note["comments"]]
+    assert len(ordinals) == len(set(ordinals))                                          # 衝突しない
+    assert all(not c.get("deleted_at") for c in note["comments"])
+
+
 def test_needs_open_rules():
     led = Ledger()
     note, is_new = led.upsert_note(nobs(comments=3), NOW)

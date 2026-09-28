@@ -42,6 +42,7 @@ class SyncConfig:
     max_notes: int | None = None
     ledger_path: Path | None = None
     room: str = DEFAULT_ROOM
+    full_expand: bool = False           # True なら「前のコメントを見る」を常に押し切る(段階3の早期打ち切りをしない。切り戻し用)
 
 
 @dataclass
@@ -144,7 +145,7 @@ def run_sync(cfg: SyncConfig, *, log: Callable[[str], None] = lambda s: None,
                 driver.pause()
 
         opts = Options(scan_days=cfg.scan_days, first_run=first_run, max_notes=cfg.max_notes, pause=pause,
-                       checkpoint=lambda: ledger.save(ledger_path))
+                       checkpoint=lambda: ledger.save(ledger_path), full_expand=cfg.full_expand)
         started = time.time()
         started_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")     # 読み取りを始めた時刻(送信が遅れても、取得の時刻として残す)
         session = Session(driver, ledger, when, opts, log=note)

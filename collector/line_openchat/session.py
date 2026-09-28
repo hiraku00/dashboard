@@ -10,7 +10,7 @@ import re
 import time
 from collections import Counter
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import Callable, Protocol
 
 from . import digits, identity, layout as K
@@ -18,7 +18,7 @@ from .ledger import CollectionResult, CommentObs, Ledger, NoteObs
 from .parse import Block, TXT_CUT, TXT_MORE, split_blocks
 from .safety import ClickTarget, guard_click
 from .screen import Screen
-from .timeparse import parse_display_time
+from .timeparse import EXACT, parse_display_time, tolerance_minutes
 
 MAX_CLICKS_PER_RUN = 3000
 
@@ -51,6 +51,7 @@ class Options:
     pause: Callable[[], None] = lambda: None     # 実機では、ユーザーの操作を検知して Aborted を投げる
     checkpoint: Callable[[], None] = lambda: None  # ノート1件を処理するたびに呼ぶ(台帳の保存)
     settle: float = 0.0                 # クリック後の待ち(秒)
+    full_expand: bool = False           # True なら「前のコメントを見る」を常に押し切る(段階3の早期打ち切りをしない。切り戻し用)
 
 
 @dataclass
@@ -98,7 +99,7 @@ class Session:
         # 画面1枚ごとの細かいログは、調べるとき(LINE_OPENCHAT_DEBUG=1)だけ出す
         self.debug = log if os.environ.get("LINE_OPENCHAT_DEBUG") else (lambda s: None)
         self.stats = RunStats()
-        self._pending: list[tuple[dict, int | None]] = []       # コメント欄を開いたノート(読み取りは走査のあと)
+        self._pending: list[tuple[dict, int | None, bool]] = []  # コメント欄を開いたノート(note, expected, partial)。読み取りは走査のあと
         self._visited: set[str] = set()                         # 走査で件数を見て、開くかを判断したノートのID
         self._threads_open = 0                                  # この実行で開いた(開いているのを見つけた)コメント欄の数
         self._carry: tuple[Screen, list[Block]] | None = None   # _advance が撮った画面を、次の shot() で再利用する
@@ -271,10 +272,21 @@ class Session:
                 res = self.ledger.apply_collection(note, [], 0, self.now_iso)
                 self._count(res)
             else:
-                self._collect_thread(note, expected)
+                self._collect_thread(note, expected, self._full_expand_required(note, is_new, expected))
                 moved = True
                 self.stats.notes_opened += 1
         return moved
+
+    def _full_expand_required(self, note: dict, is_new: bool, expected: int | None) -> bool:
+        """「前のコメントを見る」を、読み込み済みの所で止めず、最後まで押し切る必要があるか.
+        既読の判定(_already_read)を信用できない・安全に省けない状況では、必ず全部読む."""
+        if self.opts.full_expand or self.opts.first_run or is_new or note.get("needs_recheck", False):
+            return True
+        if expected is None or expected < note["comment_count"]:
+            return True                                    # 件数が読めない・減っている(削除の可能性)は、全部読んで確かめる
+        if not note.get("comments_checked_at") or not any(not c.get("deleted_at") for c in note["comments"]):
+            return True                                    # 比べる基準(前回、実際にコメント欄を読んだ時刻・既存コメント)が無い
+        return False
 
     def _find_block(self, blocks: list[Block], note: dict, kind: str = "note") -> Block | None:
         best, best_s = None, 0.0
@@ -313,10 +325,11 @@ class Session:
         return True
 
     # ---------- コメント欄 ----------
-    def _collect_thread(self, note: dict, expected: int | None) -> None:
-        """コメント欄を開き、「前のコメントを見る」を押し切る. 読み取りは、走査が終わってから全体を1回で行う(_capture_pending)."""
+    def _collect_thread(self, note: dict, expected: int | None, full_expand: bool) -> None:
+        """コメント欄を開く. full_expand なら「前のコメントを見る」を押し切り、そうでなければ既読の所で止める(_load_earlier).
+        読み取りは、走査が終わってから全体を1回で行う(_capture_pending)."""
         try:
-            self._open_thread(note)
+            partial = self._open_thread(note, full_expand)
         except Aborted:
             raise                                       # ユーザーの操作による中断は、ノートの失敗として握りつぶさない
         except SessionError as exc:
@@ -324,7 +337,7 @@ class Session:
             note["needs_recheck"] = True
             note["pending_upload"] = True
             return
-        self._pending.append((note, expected))
+        self._pending.append((note, expected, partial))
 
     def _capture_pending(self) -> None:
         """開いたコメント欄をまとめて読む: 一覧の先頭から末尾まで、スクロールだけで撮ってつなぎ、1回OCRして区切る(threadread.py)."""
@@ -340,7 +353,7 @@ class Session:
             self._log_capture(info)
         for w in warnings:
             self.stats.warnings.append(w)
-        for note, expected in self._pending:
+        for note, expected, partial in self._pending:
             best, best_s = None, 0.0
             for g in groups:
                 o = note_obs(g.note, self.now)
@@ -367,12 +380,18 @@ class Session:
             if shown is not None and shown != expected:
                 self.log(f"開いた後の件数に更新: {expected} → {shown}")
                 expected = shown                        # 読んでいる間に増減したことがある。開いた後の見出しの件数が最新
-            res = self.ledger.apply_collection(note, observed, expected, self.now_iso)
+            # 走査時の記録(partial)を正とする。撮影(best.truncated)と食い違えば、安全側(削除を検知しない側)に倒す
+            if partial and not best.truncated:
+                partial = False                          # 待っている間にさらに読み込まれていた(良い方向): 全部として扱う
+            elif not partial and best.truncated:
+                self.stats.warnings.append(f"{label}: 撮影に「前のコメントを見る」が残っていました(取りこぼしの可能性)")
+                partial = True
+            res = self.ledger.apply_collection(note, observed, expected, self.now_iso, partial=partial)
             self._count(res)
             for w in res.warnings:
                 self.stats.warnings.append(f"{label}: {w}")
             self.opts.checkpoint()
-        handled = {id(n) for n, _ in self._pending}
+        handled = {id(n) for n, _, _ in self._pending}
         self._pending.clear()
         self._apply_unvisited(groups, handled)
 
@@ -407,7 +426,13 @@ class Session:
             shown = g.note.comments
             observed = [c for c in (comment_obs(b, self.now) for b in g.comments) if c is not None]
             label = self._label(note)
-            if shown is not None and shown == len(observed) and (observed or shown == 0):
+            if g.truncated and shown is not None:
+                # 前回までに開いたまま、今回は開かなかったコメント欄が、一部だけ読み込まれた状態で撮影に写った
+                res = self.ledger.apply_collection(note, observed, shown, self.now_iso, partial=True)
+                self._count(res)
+                for w in res.warnings:
+                    self.stats.warnings.append(f"{label}: {w}")
+            elif shown is not None and shown == len(observed) and (observed or shown == 0):
                 res = self.ledger.apply_collection(note, observed, shown, self.now_iso)
                 self._count(res)
                 self.stats.notes_scanned += 1 if is_new else 0
@@ -448,7 +473,9 @@ class Session:
             return None                      # ノートの下が画面の外で、開いているか分からない
         return blocks[i + 1].kind in ("comment", "cut", "end")
 
-    def _open_thread(self, note: dict) -> None:
+    def _open_thread(self, note: dict, full_expand: bool) -> bool:
+        """コメント欄を見出しから開き(閉じていれば)、「前のコメントを見る」を扱う. 戻り値は _load_earlier の結果
+        (一部だけ読んで止めたら True)."""
         # 1. ノートの見出しを画面に出す
         header, screen, blocks = self._seek_header(note)
         # 2. コメント欄が閉じていれば開く. ノートの下が画面の外なら、少し進めて確かめる
@@ -493,8 +520,8 @@ class Session:
             self._click(ClickTarget("toggle_comments", (x0 + x1) / 2, header.counts_y, icon_span=(x0, x1),
                                     counts_y=header.counts_y), screen)
         self._threads_open += 1                  # 開いた(または、開いていた). 撮影は、この数だけコメント欄の終わりを数えたら止める
-        # 3. 「前のコメントを見る」を押し切って、見出しが見える位置まで戻る
-        self._load_earlier(note)
+        # 3. 「前のコメントを見る」を扱い、見出しが見える位置まで戻る
+        return self._load_earlier(note, full_expand)
 
     def _hint_y(self, screen: Screen, note: dict) -> float | None:
         """画面のどこかに、このノートの1行目が写っていれば、そのy(見出しが近い手がかり)."""
@@ -536,18 +563,67 @@ class Session:
         y = self._hint_y(screen, note)
         return None if y is None else y - 42.0
 
-    def _load_earlier(self, note: dict) -> None:
+    def _load_earlier(self, note: dict, full_expand: bool) -> bool:
+        """「前のコメントを見る」を扱う.
+
+        full_expand=True: 今までどおり、無くなるまで押し切る。
+        full_expand=False: ボタンのすぐ下のコメント(読み込まれている中で一番古いもの)が既読と分かったら、
+        それ以上は押さずに見出しへ戻る(LINEは新しいコメントを下に表示し、押すたびに古い方へ足すので、
+        一番古い表示中のものが既読なら、それより上もすべて既読)。
+
+        戻り値: 一部だけ読んで止めたら True(_capture_pending が ledger.apply_collection の partial に渡す)。
+        全部押し切った・元から閉じていた(ボタンが無かった)場合は False。
+        """
+        active = [c for c in note["comments"] if not c.get("deleted_at")]
         for _ in range(120):
             screen, blocks = self.shot()
             cut = [l for l in screen.lines if TXT_CUT in l.text.replace(" ", "")]
-            if cut:
-                l = cut[0]
-                self._click(ClickTarget("load_earlier_comments", l.x + l.w / 2, l.cy, expect_text=TXT_CUT), screen)
+            if not cut:
+                if self._header_y(screen, blocks, note) is not None:
+                    return False                          # ボタンが無くなるまで押し切った(全部読んだ)
+                self.scroll(-24)
                 continue
-            if self._header_y(screen, blocks, note) is not None:
-                return
-            self.scroll(-24)
+            if not full_expand:
+                oldest = self._oldest_loaded_comment(blocks)
+                if oldest is None:
+                    self.scroll(6)                         # ボタンのすぐ下のコメントの時刻行が、まだ画面に入っていない
+                    continue
+                if self._already_read(oldest, active, note):
+                    return True                            # 一番古い表示中のコメントが既読: これ以上は押さなくてよい
+            l = cut[0]
+            self._click(ClickTarget("load_earlier_comments", l.x + l.w / 2, l.cy, expect_text=TXT_CUT), screen)
         raise SessionError("ノートの見出しまで戻れません")
+
+    @staticmethod
+    def _oldest_loaded_comment(blocks: list[Block]) -> Block | None:
+        """「前のコメントを見る」の直後にある(=読み込まれている中で一番古い)コメント. 画面に見えていなければ None."""
+        kinds = [b.kind for b in blocks]
+        if "cut" not in kinds:
+            return None
+        nxt = next((b for b in blocks[kinds.index("cut") + 1:] if b.kind == "comment"), None)
+        return nxt if nxt is not None and nxt.complete else None
+
+    def _already_read(self, block: Block, active: list[dict], note: dict) -> bool:
+        """このコメントを前回までに読んでいるか.
+        (a) 台帳の既存コメント(削除扱いでないもの)と内容が一致する。
+        (b) 投稿時刻が、このノートのコメント欄を前回実際に読んだ時刻(comments_checked_at)より前(精度に応じた余裕つき)。
+        last_checked_at は一覧の走査で見るたびに更新される(このノート自身の判定より前に、今回の実行時刻に
+        更新されてしまう)ので使えない。どちらかを満たせば既読とみなす。読めない・分からないときは False(安全側 = 押す方)."""
+        obs = comment_obs(block, self.now)
+        if obs is None:
+            return False
+        if identity.match_comment(active, obs.as_match_dict(), set(), 0) is not None:
+            return True
+        last = note.get("comments_checked_at")
+        if not last:
+            return False
+        try:
+            checked = datetime.fromisoformat(last).astimezone(timezone.utc)
+            posted = datetime.strptime(obs.posted_at, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+        except ValueError:
+            return False
+        margin = tolerance_minutes(obs.posted_precision, EXACT)
+        return posted <= checked + timedelta(minutes=margin)
 
     def _same_note(self, b: Block, note: dict) -> bool:
         obs = note_obs(b, self.now)

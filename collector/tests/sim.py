@@ -38,7 +38,7 @@ class SimNote:
     long_body: bool = False         # 「もっと見る」で開く必要がある
     open: bool = False              # コメント欄が開いている
     expanded: bool = False          # 「もっと見る」を押した
-    earlier_loaded: bool = False    # 「前のコメントを見る」を押した
+    earlier_loaded: int = 0        # 「前のコメントを見る」を押した回数(実機: 開いた直後10件、1回ごとに+10件)
     reactions: int = 3
 
 
@@ -196,11 +196,12 @@ class SimChat:
             lines.append(Line(n.time, 14.8, y, 90, 15))
             y += 30
             if n.open:
-                if not n.earlier_loaded and len(n.comments) > 10:
+                shown_n = min(len(n.comments), 10 + 10 * n.earlier_loaded)
+                if shown_n < len(n.comments):
                     lines.append(Line("前のコメントを見る", 150, y, 130, 15))
                     zones.append(("earlier", 60, y - 4, 370, y + 19, n))
                     y += 34
-                    shown = n.comments[-10:]
+                    shown = n.comments[-shown_n:]
                 else:
                     shown = n.comments
                 for c in shown:
@@ -277,10 +278,10 @@ class SimChat:
                 if zk == "comment_icon":
                     note.open = not note.open
                     if note.open:
-                        note.earlier_loaded = False
+                        note.earlier_loaded = 0
                     return
                 if zk == "earlier":
-                    note.earlier_loaded = True
+                    note.earlier_loaded += 1      # 実機どおり、1回につき10件(またはそれ未満)増える
                     return
                 if zk == "more":
                     note.expanded = True

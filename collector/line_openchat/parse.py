@@ -40,6 +40,7 @@ class Block:
     min_conf: float = 1.0
     wrap_right: float = K.WRAP_RIGHT   # 折り返しの判定(ウィンドウ幅によって変わる)
     suspicious: bool = False        # 本文の中に時刻の行のようなものが混ざっている(隣のコメントと混ざって読めた疑い)
+    truncated: bool = False         # コメント欄で、このブロックの直前に「前のコメントを見る」があった(tallparse だけが立てる)
 
     @property
     def text(self) -> str:

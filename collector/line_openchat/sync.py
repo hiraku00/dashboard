@@ -33,6 +33,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--max-notes", type=int, default=None)
     ap.add_argument("--ledger", type=Path, default=None)
     ap.add_argument("--room", default=DEFAULT_ROOM)
+    ap.add_argument("--full-expand", action="store_true",
+                    help="「前のコメントを見る」を、既読の所で止めず常に押し切る(切り戻し用。既定は必要な所までしか押さない)")
     args = ap.parse_args(argv)
 
     # LINEを触る前に、環境を確認する(macOS専用の部品は、ここで初めて読み込む)
@@ -48,7 +50,7 @@ def main(argv: list[str] | None = None) -> int:
           f"  対象: {'一覧の最後まで全件' if args.first_run else '新しいノートと、コメントが増えたノート'}"
           f"{f'(最大{args.max_notes}件)' if args.max_notes else ''} / {where}\n", file=sys.stderr, flush=True)
     cfg = SyncConfig(portal_url=args.portal_url, dry_run=args.dry_run, first_run=args.first_run, scan_days=args.scan_days,
-                     max_notes=args.max_notes, ledger_path=args.ledger, room=args.room)
+                     max_notes=args.max_notes, ledger_path=args.ledger, room=args.room, full_expand=args.full_expand)
     try:
         outcome = run_sync(cfg, log=lambda line: print(line, file=sys.stderr, flush=True))
     except lineui.EnvironmentError_ as exc:
