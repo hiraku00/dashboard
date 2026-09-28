@@ -233,7 +233,10 @@ class Ledger:
                     result.deleted_comments += 1
             note["comment_count"] = expected
         elif result.count_matched:
-            pass                                    # 表示の件数を読めなかった: 取りこぼしを確かめられないので、削除扱いにも、件数の更新もしない
+            # 表示の件数を読めなかった: 取りこぼしを確かめられないので、削除扱いにはしない。件数は、台帳にある(削除扱いでない)
+            # コメントの数を記録する。記録しないと台帳の件数が古いまま残り(実例: 5件あるノートが0件のまま)、次回に表示の件数を
+            # 読めても台帳と違うので、変化が無くても開き直していた。実際と違っていても、次回に表示の件数と違えば開いて直る
+            note["comment_count"] = sum(1 for c in existing if not c.get("deleted_at"))
         else:
             result.warnings.append(f"件数不一致 表示{expected} / 取得{active_seen}")
         note["needs_recheck"] = not result.count_matched

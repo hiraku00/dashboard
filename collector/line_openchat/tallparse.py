@@ -45,6 +45,10 @@ class TallView:
         s = self.scale
         return self._arr[max(0, int(y * s)):int((y + h) * s), max(0, int(x * s)):int((x + w) * s)]
 
+    def pixels(self, x: float, y: float, w: float, h: float) -> np.ndarray:
+        """範囲(pt)の画素(RGB). 数字を見本と照合するのに使う(parse.read_digits)."""
+        return self._sub(x, y, w, h)
+
     def ocr_region(self, x: float, y: float, w: float, h: float) -> str:
         return self._names(self._sub(x, y, w, h), x, self.y0 + y, w, h) if self._names else ""
 
