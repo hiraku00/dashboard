@@ -379,6 +379,27 @@ def test_already_read_by_content_or_by_time():
     assert not s._already_read(block("参加者C", "知らない、新しい内容です。", "9.23午後 10:00"), active, note)     # 内容も違い、前回より後(UTC13:00)
 
 
+def test_already_read_falls_back_to_the_previous_sync_run_time_when_never_opened_before():
+    """このノートを個別に開いたことが一度も無くても(comments_checked_at が無くても)、前回の同期そのものが
+    最後まで終わっていれば、その開始時刻(ledger.meta["last_run"]["at"]。Portalの「最後の取得」と同じ値)を
+    基準に既読と判定してよい。ただし前回が中断していた場合は、途中までしか確かめていないので使わない。"""
+    chat = build(jitter=False)
+    led = Ledger()
+    led.meta["last_run"] = {"at": "2026-09-23T21:00:00+09:00", "status": "success"}   # UTC 12:00
+    s = Session(SimDriver(chat), led, NOW, Options())
+    note = {"comments": [], "comments_checked_at": None}
+
+    def block(author, text, time_raw):
+        return Block(kind="comment", author=author, time_raw=time_raw, y_top=0, y_time=0, complete=True,
+                     lines=[Line(text, 0, 0, 10, 10)])
+
+    assert s._already_read(block("参加者B", "知らない内容ですが前回の同期より前です。", "9.23午後 8:00"), [], note)     # 前回(UTC11:00)より前
+    assert not s._already_read(block("参加者C", "知らない、新しい内容です。", "9.23午後 10:00"), [], note)            # 前回(UTC13:00)より後
+
+    led.meta["last_run"] = {"at": "2026-09-23T23:00:00+09:00", "status": "aborted"}    # 中断した回(途中までしか見ていない)
+    assert not s._already_read(block("参加者B", "知らない内容ですが前回の同期より前です。", "9.23午後 8:00"), [], note)
+
+
 def test_second_run_skips_earlier_click_when_new_comment_is_already_on_first_page():
     """新しいコメントが1件だけ増えても、読み込み済みの最初の10件の中に既読のコメントが見つかれば、
     「前のコメントを見る」を1回も押さずに済む(実機の実測: 開いた直後N=10件・1回押すごとにM=10件)."""

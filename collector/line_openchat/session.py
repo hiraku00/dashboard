@@ -669,15 +669,25 @@ class Session:
     def _already_read(self, block: Block, active: list[dict], note: dict) -> bool:
         """このコメントを前回までに読んでいるか.
         (a) 台帳の既存コメント(削除扱いでないもの)と内容が一致する。
-        (b) 投稿時刻が、このノートのコメント欄を前回実際に読んだ時刻(comments_checked_at)より前(精度に応じた余裕つき)。
-        last_checked_at は一覧の走査で見るたびに更新される(このノート自身の判定より前に、今回の実行時刻に
-        更新されてしまう)ので使えない。どちらかを満たせば既読とみなす。読めない・分からないときは False(安全側 = 押す方)."""
+        (b) 投稿時刻が、比べる基準の時刻より前(精度に応じた余裕つき)。基準は、このノートのコメント欄を
+        前回実際に読んだ時刻(comments_checked_at)。それがまだ無ければ(このノートは今回が初めての
+        判定)、前回の同期そのものの開始時刻(ledger.meta["last_run"]["at"]。Portalの「最後の取得」と同じ値)
+        で代用する。前回の同期が最後まで終わっていれば、このノートを個別に開いていなくても、それより前の
+        コメントは存在していたはずだからである。ただし前回が中断(aborted)していた場合は、途中までしか
+        確かめていないので使わない。
+        note["last_checked_at"](一覧の走査で見るたびに更新される、このノート自身の値)は、この判定より
+        前に今回の実行時刻へ上書きされてしまうため使えない(前回の同期の値である ledger.meta とは別物)。
+        どちらか(a/b)を満たせば既読とみなす。読めない・分からないときは False(安全側 = 押す方)."""
         obs = comment_obs(block, self.now)
         if obs is None:
             return False
         if identity.match_comment(active, obs.as_match_dict(), set(), 0) is not None:
             return True
         last = note.get("comments_checked_at")
+        if not last:
+            last_run = self.ledger.meta.get("last_run") or {}
+            if last_run.get("status") != "aborted":
+                last = last_run.get("at")
         if not last:
             return False
         try:
