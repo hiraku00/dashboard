@@ -147,7 +147,7 @@ def test_cli_explains_a_missing_note_window_instead_of_crashing(monkeypatch, cap
     def no_window():
         raise lineui.EnvironmentError_("ノートウィンドウが見つかりません。LINEでオープンチャットを開き、ノートを表示してください", 5)
     monkeypatch.setattr(lineui, "LineDriver", no_window)
-    code = sync.main(["--dry-run", "--ledger", str(tmp_path / "l.json")])
+    code = sync.main(["--dry-run", "--first-run", "--ledger", str(tmp_path / "l.json")])   # 台帳が無いと、ウィンドウを探す前に中断する(#163)
     err = capsys.readouterr().err
     assert code == 5
     assert "実行できません" in err and "ノートを表示してください" in err and "Traceback" not in err
