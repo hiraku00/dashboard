@@ -16,6 +16,7 @@ import numpy as np
 from . import capture, tallocr, tallparse
 
 MAX_FRAMES = 1500
+FRAME_LOG_EVERY = 10          # 撮影中の途中経過を、これ枚数ごとにログへ出す
 END_DUP_PT = 10.0          # 一覧上の位置がこれ以内の入力欄は、同じもの
 
 # コメント欄の末尾の入力欄の右にある「投稿」ボタン(くすんだ緑). 右下の＋ボタン(明るい緑 (7,181,59))・アバター・リアクションとは色と大きさで区別できる。
@@ -83,8 +84,10 @@ class ThreadReader(Protocol):
     def prepare(self) -> None: ...           # 撮影の調整(一覧の先頭へ戻る)
     def frame(self): ...                     # 落ち着いた画面の画像(画素)。撮れない模擬では None
     def motion(self, before, after) -> str: ...   # "ok"(重なりがあり、位置を測れた) / "unchanged" / "rejected"(飛びすぎ)
-    def read_all(self, expect_ends: int | None = None): ...   # 一覧の先頭から撮って読む. (NoteGroupの列, 警告)
+    def read_all(self, expect_ends: int | None = None, log: Callable[[str], None] = lambda s: None): ...
+    # 一覧の先頭から撮って読む. (NoteGroupの列, 警告)
     # expect_ends: 開いたコメント欄の数. 指定すると、その数だけ「コメントを入力」を数えたところで撮影を止める(None は末尾まで)
+    # log: 進捗(準備・撮影中・OCR中・区切り中)を、経過が分かるように途中で出す(session.Session.log)
 
 
 class TallThreadReader:
@@ -111,22 +114,32 @@ class TallThreadReader:
                                     capture.blank_mask(before, x1), cal.band_top, cal.band_bottom, cal.scale)
         return res.kind
 
-    def read_all(self, expect_ends: int | None = None):
+    def read_all(self, expect_ends: int | None = None, log: Callable[[str], None] = lambda s: None):
         """一覧の先頭から、スクロールだけで撮ってつなぎ、1回OCRして、ノートごとに区切る. 戻り値: (NoteGroupの列, 警告).
-        expect_ends を渡すと、開いたコメント欄の終わりをその数だけ数えたところで撮影を止める(渡さなければ末尾まで)."""
+        expect_ends を渡すと、開いたコメント欄の終わりをその数だけ数えたところで撮影を止める(渡さなければ末尾まで)。
+        log には、進捗(準備・撮影中・OCR中・区切り中)を途中で出す(枚数の多い撮影・OCRは時間がかかり、
+        今まではここが終わるまで何もログに出なかったため)。"""
         assert self.cal is not None, "prepare() を先に呼ぶこと"
         cal, src = self.cal, self.src
         work = tempfile.mkdtemp(prefix="linecap-")
         st = None
         try:
+            log("  撮影の準備をしています(一覧の先頭へ戻ります)")
             t0 = time.time()
             first = capture.scroll_to_top(src)
             counter = EndCounter(cal, expect_ends) if expect_ends else None
-            res = capture.scan_down(src, cal, first, max_frames=MAX_FRAMES, workdir=work, stop=counter)
+            log("  撮影を開始します(スクロールしながら撮ります)")
+
+            def on_frame(n: int) -> None:
+                if n % FRAME_LOG_EVERY == 0:
+                    log(f"    撮影中: {n}枚")
+            res = capture.scan_down(src, cal, first, max_frames=MAX_FRAMES, workdir=work, stop=counter, on_frame=on_frame)
             st = res.stitcher
             t1 = time.time()
+            log(f"  撮影が終わりました({res.frames}枚)。OCRで読み取ります")
             lines = tallocr.ocr_tall(st, cal.frame_w, cal.scale)
             t2 = time.time()
+            log("  OCRが終わりました。ノート・コメントに区切ります")
             blocks, warnings = tallparse.parse_tall(
                 st, lines, cal.scale, src.win_w_pt, digits_reader=tallocr.ocr_digits_array,
                 name_reader=tallocr.ocr_name_array, line_reader=tallocr.ocr_lines_array)

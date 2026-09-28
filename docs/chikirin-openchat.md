@@ -52,7 +52,8 @@ Mac（ログイン中・画面ロックなし）
     uploader.py    … Portalへの送信（Service Token。manage-assetと同じ方式。小さく分割して送る）
   collector/data/line_openchat/
     ledger.json    … 取得済み台帳（Git管理外）
-    run-<日時>.log … 実行ログ（7日で削除）
+    run-<日時>.log … 実行ログ（7日で削除）。各行 `[HH:MM:SS +N秒]`（開始からの経過秒数つき）。段階（①一覧の走査 → ②撮影・OCR・区切り）の
+                     変わり目と、時間のかかる処理（長いノートの見出し探し・撮影中・OCR中）の途中経過も出す（`runner.py` / `session.py` / `threadread.py`）
         │ HTTPS + Cloudflare Access Service Token
         ▼
 Cloudflare Worker

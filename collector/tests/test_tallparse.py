@@ -96,3 +96,24 @@ def test_thread_reader_module_imports():
     """実機用の読み取り部品が、構文や参照の誤りなく読み込める(模擬では通らない経路なので、読み込みだけ確かめる)."""
     from line_openchat import threadread
     assert hasattr(threadread.TallThreadReader, "read_all") and hasattr(threadread.TallThreadReader, "motion")
+
+
+def test_thread_reader_logs_each_step_with_progress():
+    """read_all は、準備・撮影中・OCR・区切りの各段階をログに出す(枚数の多い撮影は時間がかかり、
+    終わるまで進捗が何も見えないと、どこまで進んだか分からないため). MacFrameSource(macOS専用)を使わず、
+    capture.py のテストと同じ合成の FrameSource(synth.SynthSource)で、実際に read_all を最後まで動かして確かめる."""
+    from line_openchat import capture, threadread
+    from synth import SynthSource, make_document
+
+    doc = make_document(seed=3, width=428, blocks=40, scale=1.0, bottom_pad=300)
+    src = SynthSource(doc, scale=1.0)
+    reader = threadread.TallThreadReader.__new__(threadread.TallThreadReader)
+    reader.src = src
+    reader.cal = capture.calibrate(src)
+    reader.last_info = {}
+
+    logs: list[str] = []
+    reader.read_all(log=logs.append)
+    joined = "\n".join(logs)
+    assert "準備" in joined and "撮影" in joined and "OCR" in joined and "区切り" in joined
+    assert any("枚" in l for l in logs)                 # 撮影中の途中経過(枚数)が出ている

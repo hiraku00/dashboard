@@ -353,9 +353,9 @@ class SimThreadReader:
     def motion(self, before, after) -> str:
         return "ok"
 
-    def read_all(self, expect_ends=None):
+    def read_all(self, expect_ends=None, log=lambda s: None):
         """expect_ends を渡されたら、実機と同じく、開いたコメント欄の終わりをその数だけ数えたところで撮影を止めた状態にする
-        (それより下のノートは、画像に入らない)."""
+        (それより下のノートは、画像に入らない)。log は実機の進捗ログと同じ引数(模擬では使わない)."""
         from line_openchat import tallparse
         self.calls.append(expect_ends)
         image, lines, dr, nr = render_tall(self.chat)
