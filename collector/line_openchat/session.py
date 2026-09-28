@@ -297,13 +297,18 @@ class Session:
 
     def _full_expand_required(self, note: dict, is_new: bool, expected: int | None) -> bool:
         """「前のコメントを見る」を、読み込み済みの所で止めず、最後まで押し切る必要があるか.
-        既読の判定(_already_read)を信用できない・安全に省けない状況では、必ず全部読む."""
+        既読の判定(_already_read)を信用できない・安全に省けない状況では、必ず全部読む.
+
+        既読の判定は、内容が一致する(a)か、前回実際に読んだ時刻より前(b)かのどちらかで成立する。
+        (a)は comments_checked_at が無くても、既存コメントさえあれば試せる。comments_checked_at の
+        有無だけで全部読むと決めると、段階3の導入後に一度も開いていないだけのノート(内容は台帳に
+        既にある)まで、無駄に全部読み直してしまう(実機で、パエリアがこれで不要に全部押していた)。"""
         if self.opts.full_expand or self.opts.first_run or is_new or note.get("needs_recheck", False):
             return True
         if expected is None or expected < note["comment_count"]:
             return True                                    # 件数が読めない・減っている(削除の可能性)は、全部読んで確かめる
-        if not note.get("comments_checked_at") or not any(not c.get("deleted_at") for c in note["comments"]):
-            return True                                    # 比べる基準(前回、実際にコメント欄を読んだ時刻・既存コメント)が無い
+        if not any(not c.get("deleted_at") for c in note["comments"]):
+            return True                                    # 比べる基準(既存コメント)が無い
         return False
 
     def _find_block(self, blocks: list[Block], note: dict, kind: str = "note") -> Block | None:

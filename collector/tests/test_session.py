@@ -430,6 +430,26 @@ def test_load_earlier_does_not_declare_done_before_seeing_the_tail():
     assert scrolls == [24]                               # 末尾をまだ見ていない間は、上ではなく下へ進む
 
 
+def test_second_run_skips_earlier_click_even_without_a_comments_checked_at_baseline():
+    """comments_checked_at が無くても(段階3を入れる前から台帳にあったノートなど)、既存コメントの
+    内容と一致すれば既読と判定でき、全部読み直す必要はない(実機で、まだ comments_checked_at の付いて
+    いないノートが、それだけを理由に不要な全部読みをしていたことがあった。パエリア 2026-09-29)。"""
+    chat = SimChat([SimNote("参加者A", "本文", "昨日 午前 9:45", comments=comments(26, "P"), reactions=10)], jitter=False)
+    ledger, stats = run(chat)
+    note = by_author(ledger, "参加者A")[0]
+    assert note["comment_count"] == 26
+    note["comments_checked_at"] = None                                # 段階3導入前からの台帳を想定
+
+    chat.notes[0].comments.append(SimComment("参加者Z", "新しいコメントです。", "1時間前"))
+    _close_window(chat)
+    s2, stats2 = _next_run(chat, ledger)
+    assert not any("走査で見えず" in w or "件数不一致" in w for w in stats2.warnings), stats2.warnings
+    assert chat.notes[0].earlier_loaded == 0                          # 押さずに済んだ(内容一致だけで既読と判定)
+    note = by_author(ledger, "参加者A")[0]
+    assert note["comment_count"] == 27 and not note["needs_recheck"]
+    assert len(note["comments"]) == 27
+
+
 def test_full_expand_option_disables_the_early_stop():
     """Options.full_expand=True(切り戻し用)なら、既読でも省かず、今までどおり押し切る."""
     chat = SimChat([SimNote("参加者A", "本文", "昨日 午前 9:45", comments=comments(30, "P"), reactions=10)], jitter=False)
