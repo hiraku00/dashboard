@@ -5,6 +5,7 @@
  *  ちきりん以外のコメント本文は、ここのどの関数の出力にも含めない。 */
 import { MAX_LIKE_TERM_BYTES, truncateUtf8Bytes } from "./sql-text.ts";
 import { metaFromRow, type Meta } from "./openchat-meta.ts";
+import { youTubeThumbnailFromLinks } from "./thumbnail.ts";
 
 export const PAGE_SIZE = 10;
 export const MAX_PAGE = 10000;
@@ -83,6 +84,8 @@ export type Program = {
   /** このスレッド・ちきりんの投稿を、collector が最初に見つけた日時のうち最新のもの(UTC, ISO)。「新着」の判定に使う。 */
   newestSeenAt: string;
   commentCount: number; lastCheckedAt: string;
+  /** 一覧のサムネイル(Watch List と同じ: YouTube はリンクから決め、それ以外はリンク先の og:image)。無ければ空。 */
+  thumbnailUrl: string;
 };
 
 /** ノート行とちきりんのコメント行から、画面・APIの形にする。ノート行はどのスレッドでもよい。ほかの人のコメントは受け取らない。 */
@@ -118,7 +121,30 @@ function buildProgram(note: Record<string, unknown>, targetComments: Array<Recor
     targetComments: filteredComments,
     latestAt: "", latestPrecision: "", issues: programIssues(note), newestSeenAt: "", meta: metaFromRow(note.meta_row as Record<string, unknown> | undefined),
     commentCount: Number(note.comment_count ?? 0), lastCheckedAt: String(note.last_checked_at ?? ""),
+    thumbnailUrl: "",
   };
+}
+
+/** サムネイルを探すリンク: 一覧のリンク列の1件目と同じ(編集したリンクがあればその1件目、無ければノートのリンクカード)。 */
+export function thumbnailSourceUrl(program: Pick<Program, "meta" | "linkUrl">): string {
+  return program.meta.links[0]?.url || program.linkUrl;
+}
+
+export type CachedThumbnail = { source_url: unknown; thumbnail_url: unknown };
+
+/** 一覧の各ノートのサムネイル。YouTube はリンクから決まる(保存しない)。それ以外は、放送情報の保存時に取得して
+ *  保存したもの(openchat_note_thumbnails)を使う。ただし探したリンクが今のリンクと違えば、古い画像なので使わない。 */
+export function resolveThumbnails(programs: Array<Pick<Program, "noteId" | "meta" | "linkUrl">>, cached: Map<string, CachedThumbnail>): Map<string, string> {
+  const thumbnails = new Map<string, string>();
+  for (const p of programs) {
+    const url = thumbnailSourceUrl(p);
+    if (!url) continue;
+    const youTube = youTubeThumbnailFromLinks([{ url }]);
+    if (youTube) { thumbnails.set(p.noteId, youTube); continue; }
+    const row = cached.get(p.noteId);
+    if (row && String(row.source_url) === url && row.thumbnail_url) thumbnails.set(p.noteId, String(row.thumbnail_url));
+  }
+  return thumbnails;
 }
 
 /** 取得の状態: 画面で気づけるように、要確認の理由を文にする(collector が警告に出したものと同じ内容)。 */

@@ -78,9 +78,10 @@ describe("listItems", () => {
     const prepare = vi.spyOn(env.DB, "prepare");
     await listItems({ limit: 10 });
     expect(batch).toHaveBeenCalledTimes(1);
-    // Three statements prepared, all handed to that one batch.
-    expect(prepare).toHaveBeenCalledTimes(3);
-    expect(batch.mock.calls[0][0]).toHaveLength(3);
+    // Four statements prepared (items, count, links, オプチャ threads for the
+    // ちきりんオプチャ column), all handed to that one batch.
+    expect(prepare).toHaveBeenCalledTimes(4);
+    expect(batch.mock.calls[0][0]).toHaveLength(4);
   });
 });
 

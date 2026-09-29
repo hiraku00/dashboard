@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { PortalHeader } from "./portal-nav";
 import { readErrorMessage, readJson } from "./lib/json";
@@ -198,9 +199,9 @@ export function ChikirinApp({ initialPage = null, initialRun = null, initialQuer
       {!loading && programs.length === 0 && <div className="empty-state"><strong>該当する番組はありません。</strong><p>{initialRun || query || kind !== "all" ? "条件を変えてみてください。" : "同期が終わるとここに表示されます。"}</p></div>}
       {programs.length > 0 && <div className={loading ? "table-scroll is-loading" : "table-scroll"} aria-busy={loading}>
         <table className="content-table chikirin-table">
-          <colgroup><col className="col-kind" /><col className="col-broadcaster" /><col className="col-title" /><col className="col-owner" /><col className="col-posted" /><col className="col-posted" /><col className="col-count" /><col className="col-count" /><col className="col-status" /><col className="col-links" /><col className="col-texttube" /></colgroup>
+          <colgroup><col className="col-kind" /><col className="col-broadcaster" /><col className="col-thumb" /><col className="col-title" /><col className="col-owner" /><col className="col-posted" /><col className="col-posted" /><col className="col-count" /><col className="col-count" /><col className="col-status" /><col className="col-links" /><col className="col-texttube" /></colgroup>
           <thead><tr>
-            <th scope="col" className="kind-head" title="ちきりんの関わり方">ちきりん</th><th scope="col">番組</th><th scope="col">タイトル</th><th scope="col">スレ主</th><th scope="col" title="スレッドが起票された日時(日本時間)"><span className="head-2">スレッド<br />起票日時</span></th>
+            <th scope="col" className="kind-head" title="ちきりんの関わり方">ちきりん</th><th scope="col">番組</th><th scope="col" colSpan={2}>タイトル</th><th scope="col">スレ主</th><th scope="col" title="スレッドが起票された日時(日本時間)"><span className="head-2">スレッド<br />起票日時</span></th>
             <th scope="col" title="ちきりんの最新の投稿の日時"><span className="head-2">最新<br />ちきりん</span></th>
             <th scope="col" className="num" title="ノート全体のコメント数"><span className="head-2">コメント<br />全体</span></th><th scope="col" className="num" title="ちきりんが書いたコメントの数"><span className="head-2">コメント<br />ちきりん</span></th><th scope="col" className="center">状態</th><th scope="col">リンク</th><th scope="col"><span className="head-2">Watch<br />List</span></th>
           </tr></thead>
@@ -215,6 +216,7 @@ export function ChikirinApp({ initialPage = null, initialRun = null, initialQuer
                 <strong className="program-broadcaster" title={displayBroadcaster(program) || undefined}>{displayBroadcaster(program) || "—"}</strong>
                 <span className={program.meta.programName ? "program-name" : "program-name is-unset"} title={program.meta.programName || undefined}>{program.meta.programName || "番組名未設定"}</span>
               </td>
+              <td className="thumb-cell">{program.thumbnailUrl && <Image src={program.thumbnailUrl} alt="" width={72} height={40} unoptimized referrerPolicy="no-referrer" onError={(event) => { event.currentTarget.hidden = true; }} />}</td>
               <td className="program-cell is-title">{(() => {
                 const { title } = titleLines(program);
                 const head = program.noteBody.replace(/\s+/g, " ").trim();

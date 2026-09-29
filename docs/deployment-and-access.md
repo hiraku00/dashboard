@@ -90,6 +90,8 @@ secret値をファイルに固定保存せず、Service Tokenを再発行した�
 
 `migrations/0010_openchat_note_meta.sql`（人が編集する放送局・放送タイトル・リンクの表 `openchat_note_meta`、schema version 6）は**まだ本番へ適用していません**。デプロイ前に、0009と同じ方法（`wrangler d1 execute DB --remote --file=migrations/0010_openchat_note_meta.sql`）で適用します。`CREATE TABLE IF NOT EXISTS` だけなので、`ensureSchema()` が先に表を作っていても安全です。
 
+`migrations/0013_openchat_note_thumbnails.sql`（一覧のサムネイルの表 `openchat_note_thumbnails`、schema version 9）は、既存分の一括取得（`scripts/backfill-openchat-thumbnails.mjs --apply`）が同じ定義の表を先に作ったため、本番には作成済みです（2026-09-29）。`CREATE TABLE IF NOT EXISTS` だけなので、`ensureSchema()` や migration を流しても安全です。
+
 ## R2
 
 `wrangler.jsonc` の `FILES` bindingが `hiraku-portal-files` を指します。本文・原本の書き込み後、D1のrevision/台帳との対応を確認します。R2の利用量は日次reconciliationで確認し、上限に近づいた場合は新規原本の保持期間や不要オブジェクトを見直します。

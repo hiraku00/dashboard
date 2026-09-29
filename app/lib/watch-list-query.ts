@@ -7,6 +7,7 @@
 import { youTubeThumbnailFromLinks } from "./thumbnail.ts";
 import { MAX_LIKE_TERM_BYTES, truncateUtf8Bytes } from "./sql-text.ts";
 import { youTubeVideoId } from "./youtube.ts";
+import { canonicalUrl } from "./text.ts";
 
 // clean() below duplicates app/lib/text.ts's on purpose -- keep it in sync.
 // Cross-file imports do work here (thumbnail.ts above uses an explicit .ts
@@ -53,7 +54,32 @@ export type WatchListItem = {
   createdAt: unknown;
   updatedAt: unknown;
   links: Array<{ id: unknown; label: unknown; url: unknown; linkType: unknown; position: unknown; textTube?: TextTubeLinkStatus }>;
+  /** ちきりんオプチャのスレッドのうち、この項目のリンクと同じリンクを持つもの(attachOpenchat() 参照)。 */
+  openchat?: OpenchatMatch[];
 };
+
+/** Watch List の「ちきりんオプチャ」列のバッジ1つ分。 */
+export type OpenchatMatch = { noteId: string; title: string };
+/** オプチャのスレッド1つと、そのリンク(放送情報で編集したリンク + ノートのリンクカード)。 */
+export type OpenchatNoteLinks = OpenchatMatch & { urls: string[] };
+
+/** 各項目に、同じリンク(正規化したURLで照合)を持つオプチャのスレッドをつける。オプチャ一覧の「Watch List」列
+ *  (app/lib/queries/openchat.ts の watchedLinks())と同じ照合を、逆向きに行う。 */
+export function attachOpenchat(items: WatchListItem[], notes: OpenchatNoteLinks[]): WatchListItem[] {
+  const byCanonical = new Map<string, OpenchatMatch[]>();
+  for (const note of notes) {
+    for (const canonical of new Set(note.urls.map(canonicalUrl).filter(Boolean))) {
+      byCanonical.set(canonical, [...(byCanonical.get(canonical) ?? []), { noteId: note.noteId, title: note.title }]);
+    }
+  }
+  return items.map((item) => {
+    const matches = new Map<string, OpenchatMatch>();
+    for (const link of item.links) {
+      for (const match of byCanonical.get(canonicalUrl(String(link.url ?? ""))) ?? []) matches.set(match.noteId, match);
+    }
+    return { ...item, openchat: [...matches.values()] };
+  });
+}
 
 /** Maps a raw D1 row (snake_case columns) plus its links into the camelCase
  *  shape the API and the page both render. */

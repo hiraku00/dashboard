@@ -3,11 +3,12 @@
  *  app/lib/openchat-query.ts にある(cloudflare:workers を読み込むとunit testできないため)。 */
 import { env } from "cloudflare:workers";
 import { ensureSchema } from "@/db";
-import { normalizeMeta } from "@/app/lib/openchat-meta";
+import { metaFromRow, normalizeMeta } from "@/app/lib/openchat-meta";
 import { canonicalUrl } from "@/app/lib/text";
+import { fetchPageThumbnail } from "@/app/lib/thumbnail-fetch";
 import {
-  buildProgramsFilter, PROGRAMS_ORDER_BY, toProgram, ROOM,
-  type Program, type ProgramsQuery,
+  buildProgramsFilter, PROGRAMS_ORDER_BY, toProgram, ROOM, resolveThumbnails, thumbnailSourceUrl,
+  type CachedThumbnail, type Program, type ProgramsQuery,
 } from "@/app/lib/openchat-query";
 
 /** 一覧のリンクのうち、Watch List(items/item_links)にもあるもの。キーは一覧に出るURLそのまま、値はWatch Listでの保存URL・
@@ -32,8 +33,56 @@ export async function listPrograms(query: ProgramsQuery = {}): Promise<ProgramsP
   const notes = rows.results ?? [];
   const total = Number(countRow?.c ?? 0);
   if (!notes.length) return { programs: [], total, page, pageSize: limit, watched: {} };
-  const programs = await withComments(notes);
+  // サムネイルは飾り: 失敗しても一覧は出す。
+  const commented = await withComments(notes);
+  const programs = await withThumbnails(commented).catch(() => commented);
   return { programs, total, page, pageSize: limit, watched: await watchedLinks(programs) };
+}
+
+/** 一覧のサムネイル: 保存済みのものを読むだけ(取得は放送情報の保存時。saveProgramMeta 参照)。判定は resolveThumbnails()。 */
+async function withThumbnails(programs: Program[]): Promise<Program[]> {
+  const ids = programs.map((p) => p.noteId);
+  const rows = (await env.DB.prepare(
+    `SELECT note_id, source_url, thumbnail_url FROM openchat_note_thumbnails WHERE note_id IN (${ids.map(() => "?").join(",")})`,
+  ).bind(...ids).all<CachedThumbnail & { note_id: string }>()).results ?? [];
+  const thumbnails = resolveThumbnails(programs, new Map(rows.map((r) => [String(r.note_id), r])));
+  return programs.map((p) => ({ ...p, thumbnailUrl: thumbnails.get(p.noteId) ?? "" }));
+}
+
+/** サムネイルを探して保存する。Watch List と同じく、リンクを保存したときに取得する(YouTube はリンクから決まるので取得しない)。
+ *  探したリンクが前回と同じで画像もあれば何もしない。失敗しても保存自体は成功させる(画像は飾り)。 */
+export async function refreshThumbnail(noteId: string, program: Pick<Program, "meta" | "linkUrl">): Promise<void> {
+  try {
+    const url = thumbnailSourceUrl(program);
+    if (!url) return;
+    const previous = await env.DB.prepare("SELECT source_url, thumbnail_url FROM openchat_note_thumbnails WHERE note_id = ?").bind(noteId).first<CachedThumbnail>();
+    if (previous && String(previous.source_url) === url && previous.thumbnail_url) return;
+    const found = await fetchPageThumbnail(url);
+    await env.DB.prepare(
+      `INSERT INTO openchat_note_thumbnails (note_id, source_url, thumbnail_url, checked_at) VALUES (?, ?, ?, ?)
+       ON CONFLICT(note_id) DO UPDATE SET source_url = excluded.source_url, thumbnail_url = excluded.thumbnail_url, checked_at = excluded.checked_at`,
+    ).bind(noteId, url, found, new Date().toISOString()).run();
+  } catch { /* 画像は飾り。取れなくても保存は成功させる。 */ }
+}
+
+/** 1回の同期で新しく取りに行くスレッドの数の上限(1件ごとに外部へのサブリクエストが最大3回かかる)。残りは次の同期で試す。 */
+const SYNC_THUMBNAIL_LOOKUPS = 8;
+
+/** 同期で届いたスレッドのうち、サムネイルをまだ一度も試していないものだけ、1回取りに行く。
+ *  見つからなかったときも「試した」と記録する(refreshThumbnail が空の行を残す)ので、同じリンクで繰り返し取りには行かない。
+ *  OCRの誤りを手で直すと放送情報の保存で取り直す。失敗しても同期は成功させる。 */
+export async function fetchThumbnailsForSynced(noteIds: string[]): Promise<void> {
+  try {
+    if (!noteIds.length) return;
+    const rows = (await env.DB.prepare(
+      `SELECT n.id, n.link_url, m.links_json FROM openchat_notes n
+         LEFT JOIN openchat_note_meta m ON m.note_id = n.id
+         LEFT JOIN openchat_note_thumbnails t ON t.note_id = n.id
+        WHERE n.id IN (${noteIds.map(() => "?").join(",")}) AND n.deleted_at IS NULL AND t.note_id IS NULL`,
+    ).bind(...noteIds).all<Record<string, unknown>>()).results ?? [];
+    const untried = rows.map((r) => ({ id: String(r.id), meta: metaFromRow(r), linkUrl: String(r.link_url ?? "") })).filter((p) => thumbnailSourceUrl(p));
+    await Promise.all(untried.slice(0, SYNC_THUMBNAIL_LOOKUPS).map((p) => refreshThumbnail(p.id, p)));
+  } catch { /* 画像は飾り */ }
 }
 
 /** 一覧に出るリンク(編集したリンク + ノートのリンクカード)が Watch List にも登録されているかを、正規化したURLで照合する。 */
@@ -93,6 +142,7 @@ export async function saveProgramMeta(id: string, input: unknown): Promise<Progr
      ON CONFLICT(note_id) DO UPDATE SET broadcaster = excluded.broadcaster, program_name = excluded.program_name, episode_title = excluded.episode_title,
        links_json = excluded.links_json, updated_at = excluded.updated_at`,
   ).bind(id, meta.broadcaster, meta.programName, meta.episodeTitle, JSON.stringify(meta.links), new Date().toISOString().replace(/\.\d+Z$/, "Z")).run();
+  await refreshThumbnail(id, { meta, linkUrl: program.linkUrl });
   return { ...program, meta };
 }
 

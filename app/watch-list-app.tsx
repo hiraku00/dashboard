@@ -16,7 +16,8 @@ export type Status = "backlog" | "in_progress" | "completed" | "dropped";
 // TextTube" -- either way, the editor offers the same manual button.
 export type TextTubeLinkStatus = { status: "reflected"; videoId: string } | { status: "running" } | { status: "failed"; error: string } | { status: "none" };
 export type Link = { id?: string; label: string; url: string; linkType?: string; textTube?: TextTubeLinkStatus };
-export type Item = { id: string; contentType: ContentType; creatorName: string; seriesTitle: string; title: string; description: string; priority: number | null; status: Status; addedOn: string | null; watchedOn: string | null; comment: string; thumbnailUrl: string; version: number; links: Link[] };
+export type OpenchatMatch = { noteId: string; title: string };
+export type Item = { id: string; contentType: ContentType; creatorName: string; seriesTitle: string; title: string; description: string; priority: number | null; status: Status; addedOn: string | null; watchedOn: string | null; comment: string; thumbnailUrl: string; version: number; links: Link[]; openchat?: OpenchatMatch[] };
 type Draft = Omit<Item, "id" | "version">;
 export type Stats = { total: number; completed: number; movie: number; audio: number; text: number };
 export type PendingTextTubeImport = { id: string; youtubeVideoId: string; itemId: string | null; itemTitle: string | null; status: "failed" | "stuck"; error: string };
@@ -280,8 +281,8 @@ export function WatchListApp({
       <div className="item-list">
         {!loading && items.length === 0 && <div className="empty-state"><strong>該当するコンテンツはありません。</strong><p>条件を変えるか、新しく追加してください。</p><button onClick={openNew}>コンテンツを追加</button></div>}
         {items.length > 0 && <div className={loading ? "table-scroll is-loading" : "table-scroll"} aria-busy={loading}><table className="content-table">
-          <colgroup><col className="col-type" /><col className="col-creator" /><col className="col-thumb" /><col className="col-title" /><col className="col-date" /><col className="col-status" /><col className="col-links" /><col className="col-texttube" /><col className="col-action" /></colgroup>
-          <thead><tr><th scope="col"><span className="sr-only">種別</span></th><th scope="col">人物・媒体</th><th scope="col" colSpan={2}>タイトル</th><th scope="col">追加日</th><th scope="col">状態</th><th scope="col">リンク</th><th scope="col">TextTube</th><th scope="col">削除</th></tr></thead>
+          <colgroup><col className="col-type" /><col className="col-creator" /><col className="col-thumb" /><col className="col-title" /><col className="col-date" /><col className="col-status" /><col className="col-links" /><col className="col-texttube" /><col className="col-texttube" /><col className="col-action" /></colgroup>
+          <thead><tr><th scope="col"><span className="sr-only">種別</span></th><th scope="col">人物・媒体</th><th scope="col" colSpan={2}>タイトル</th><th scope="col">追加日</th><th scope="col">状態</th><th scope="col">リンク</th><th scope="col"><span className="head-2">ちきりん<br />オプチャ</span></th><th scope="col">TextTube</th><th scope="col">削除</th></tr></thead>
           <tbody>{items.map((item) => {
             const youtubeLinks = item.links.filter((link) => link.textTube);
             return <tr className={item.status === "completed" ? "is-completed" : ""} key={item.id}>
@@ -292,6 +293,7 @@ export function WatchListApp({
               <td className="date-cell"><time dateTime={item.addedOn ?? undefined}>{dateLabel(item.addedOn)}</time>{item.status === "completed" && item.watchedOn && <span>完了 {dateLabel(item.watchedOn)}</span>}</td>
               <td className="status-cell"><select value={item.status} onChange={(event) => updateStatus(item, event.target.value as Status)} aria-label={`${item.title} の状態`}>{(Object.keys(statusLabel) as Status[]).map((key) => <option key={key} value={key}>{statusLabel[key]}</option>)}</select>{item.priority && <span className="priority">優先 {item.priority}</span>}</td>
               <td className="links-cell">{item.links.length > 0 ? <div className="item-links" aria-label={`${item.title} のリンク`}>{item.links.map((link, index) => <a key={`${link.id ?? link.url}-${index}`} href={link.url} target="_blank" rel="noreferrer">{link.label || `リンク ${index + 1}`} <span aria-hidden="true">↗</span></a>)}</div> : <span className="empty-cell">—</span>}</td>
+              <td className="texttube-cell is-openchat">{item.openchat?.length ? item.openchat.map((match) => <a key={match.noteId} className="texttube-badge texttube-reflected" href={`/chikirin/${encodeURIComponent(match.noteId)}`} target="_blank" rel="noreferrer" title={`ちきりんオプチャのスレッド「${match.title || "タイトル未設定"}」を開く`}>あり</a>) : <span className="empty-cell">—</span>}</td>
               <td className="texttube-cell">{youtubeLinks.length > 0 ? youtubeLinks.map((link, index) => {
                 const tt = link.textTube!;
                 return tt.status === "reflected"

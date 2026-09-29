@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 
-import { attachTextTubeStatus, buildItemsFilter, ITEMS_ORDER_BY, resolveTextTubeStatus, toItem } from "../app/lib/watch-list-query.ts";
+import { attachOpenchat, attachTextTubeStatus, buildItemsFilter, ITEMS_ORDER_BY, resolveTextTubeStatus, toItem } from "../app/lib/watch-list-query.ts";
 
 // buildItemsFilter() is the pure "which WHERE clause and binds does this
 // request produce" decision extracted out of listItems() so it can be tested
@@ -175,4 +175,21 @@ test("attachTextTubeStatus: attaches textTube only to links that are a YouTube v
   const [item] = attachTextTubeStatus(items, videoRows, importRows, STALE_CUTOFF);
   expect(item.links[0].textTube).toEqual({ status: "reflected", videoId: "video-1" });
   expect(item.links[1].textTube).toBeUndefined();
+});
+
+test("attachOpenchat: 項目のリンクと同じリンク(正規化して照合)を持つオプチャのスレッドをつける", () => {
+  const item = (id, urls) => ({ id, links: urls.map((url, i) => ({ id: `${id}-${i}`, label: "", url, linkType: "reference", position: i })) });
+  const notes = [
+    { noteId: "a", title: "放送A", urls: ["https://www.web.nhk/tv/pl/series-tep-X/ep/1", ""] },
+    { noteId: "b", title: "放送B", urls: ["https://txbiz.tv-tokyo.co.jp/wbs/oa/post_1", "https://www.web.nhk/tv/pl/series-tep-X/ep/1"] },
+    { noteId: "c", title: "放送C", urls: ["https://example.com/other"] },
+  ];
+  const [one, none, empty] = attachOpenchat([
+    item("1", ["https://www.web.nhk/tv/pl/series-tep-X/ep/1?utm_source=x#top", "https://txbiz.tv-tokyo.co.jp/wbs/oa/post_1"]),
+    item("2", ["https://example.com/unrelated"]),
+    item("3", []),
+  ], notes);
+  expect(one.openchat).toEqual([{ noteId: "a", title: "放送A" }, { noteId: "b", title: "放送B" }]);
+  expect(none.openchat).toEqual([]);
+  expect(empty.openchat).toEqual([]);
 });

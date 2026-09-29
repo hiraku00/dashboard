@@ -377,3 +377,36 @@ describe("Python collector contract", () => {
     expect(listed.programs.some((p) => p.noteByTarget && p.targetComments.length >= 1)).toBe(true);
   });
 });
+
+// 一覧のサムネイル: 同期では、まだ一度も試していないスレッドだけ1回取る。保存(放送情報の編集)ではリンクが変われば取り直す。
+describe("thumbnails", () => {
+  const thumbOf = async (id: string) => (await listPrograms({ limit: 50 })).programs.find((p) => p.noteId === id)?.thumbnailUrl;
+  const row = (id: string) => env.DB.prepare("SELECT source_url, thumbnail_url FROM openchat_note_thumbnails WHERE note_id = ?").bind(id).first<{ source_url: string; thumbnail_url: string }>();
+
+  test("sync fetches the image once for a new thread; a failed lookup is recorded as tried and not repeated", async () => {
+    await startRun();
+    const good = note({ linkUrl: "https://blog.example.org/post" });
+    const bad = note({ linkUrl: "https://noimage.example.org/x" });
+    await send([good, bad]);
+    expect(await thumbOf(good.id)).toBe("https://blog.example.org/img/cover.png");
+    expect((await row(bad.id))?.thumbnail_url).toBe(""); // tried, nothing found
+    expect(await thumbOf(bad.id)).toBe("");
+
+    // A second sync of the same threads does not look again: a marker put on the stored row survives.
+    await env.DB.prepare("UPDATE openchat_note_thumbnails SET checked_at = 'sentinel' WHERE note_id IN (?, ?)").bind(good.id, bad.id).run();
+    await send([good, bad]);
+    const after = await env.DB.prepare("SELECT checked_at FROM openchat_note_thumbnails WHERE note_id = ?").bind(bad.id).first<{ checked_at: string }>();
+    expect(after?.checked_at).toBe("sentinel");
+  });
+
+  test("saving a corrected link fetches the image again; an unchanged link with an image does not", async () => {
+    await startRun();
+    const n = note({ linkUrl: "https://noimage.example.org/misread" });
+    await send([n]);
+    expect(await thumbOf(n.id)).toBe("");
+    const saved = await saveProgramMeta(n.id, { broadcaster: "", programName: "", episodeTitle: "", links: [{ url: "https://blog.example.org/fixed", label: "" }] });
+    expect("error" in (saved ?? {})).toBe(false);
+    expect(await thumbOf(n.id)).toBe("https://blog.example.org/img/cover.png");
+    expect((await row(n.id))?.source_url).toBe("https://blog.example.org/fixed");
+  });
+});

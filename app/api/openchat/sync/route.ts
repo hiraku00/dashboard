@@ -2,6 +2,7 @@ import { env } from "cloudflare:workers";
 import { ensureSchema } from "@/db";
 import { clean } from "@/app/lib/text";
 import { route } from "@/app/lib/route";
+import { fetchThumbnailsForSynced } from "@/app/lib/queries/openchat";
 import { normalizeComplete, normalizeNotesBatch, normalizeStartedAt, type NoteInput } from "@/app/lib/openchat-input";
 
 // ちきりんオプチャの同期。collector/line_openchat/uploader.py が start → notes(何回か) → complete の
@@ -89,6 +90,8 @@ export const POST = route(async (request: Request) => {
     try {
       for (let start = 0; start < statements.length; start += BATCH) await env.DB.batch(statements.slice(start, start + BATCH));
       for (const n of notes) results.push({ id: n.id });
+      // 一覧のサムネイル: まだ試していないスレッドだけ1回取る(失敗しても同期は成功)。
+      await fetchThumbnailsForSynced(touched);
     } catch (error) {
       console.error(error);
       for (const n of notes) results.push({ id: n.id, error: "保存に失敗しました。" });

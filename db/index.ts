@@ -28,7 +28,7 @@ let schemaReady = false;
  *  than reconciled, since the drizzle ORM was never actually used to query. */
 /** Bump whenever the DDL below changes, so existing databases re-run it once.
  *  A database whose schema_meta row already matches skips the whole batch. */
-const SCHEMA_VERSION = 8;
+const SCHEMA_VERSION = 9;
 
 /** Reads the recorded schema version. A database that predates schema_meta (or
  *  a brand new one) has no table, and the query fails rather than returning a
@@ -194,6 +194,11 @@ export async function ensureSchema({ seed = true }: { seed?: boolean } = {}) {
       note_id TEXT PRIMARY KEY REFERENCES openchat_notes(id) ON DELETE CASCADE,
       broadcaster TEXT NOT NULL DEFAULT '', program_name TEXT NOT NULL DEFAULT '', episode_title TEXT NOT NULL DEFAULT '',
       links_json TEXT NOT NULL DEFAULT '[]', updated_at TEXT NOT NULL
+    )`),
+    // 一覧のサムネイル(schema version 9)。放送情報の保存時に取得する。source_url は画像を探したリンク。
+    // 同じ内容が migrations/0013_openchat_note_thumbnails.sql にもある。
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS openchat_note_thumbnails (
+      note_id TEXT PRIMARY KEY, source_url TEXT NOT NULL, thumbnail_url TEXT NOT NULL DEFAULT '', checked_at TEXT NOT NULL
     )`),
     env.DB.prepare(`CREATE TABLE IF NOT EXISTS openchat_sync_runs (
       id TEXT PRIMARY KEY, client_run_id TEXT NOT NULL UNIQUE, client_version TEXT NOT NULL DEFAULT '',

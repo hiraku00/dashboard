@@ -141,6 +141,7 @@ Cloudflare Access、D1、R2、collector/launchdの設定手順は[デプロイ�
 - `scripts/import-text-tube.mjs`: TextTubeデータ → D1/R2
 - `scripts/import-manage-asset-history.mjs`: Manage Asset履歴 → D1
 - `scripts/sync-manage-asset.mjs`: ローカル資産スナップショット → Worker
+- `scripts/backfill-openchat-thumbnails.mjs`: ちきりんオプチャの既存スレッドのサムネイルを一度だけ取得（`--apply` で本番D1へ書き込み）
 
 実行条件、冪等性、バックアップ、失敗時の確認方法は[データ移行](docs/migration.md)を参照してください。
 

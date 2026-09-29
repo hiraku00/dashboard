@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, test } from "vitest";
 import {
-  buildProgramsFilter, formatPostedAt, likePattern, parseKind, toProgram, MAX_PAGE, PAGE_SIZE,
+  buildProgramsFilter, formatPostedAt, likePattern, parseKind, resolveThumbnails, thumbnailSourceUrl, toProgram, MAX_PAGE, PAGE_SIZE,
 } from "../app/lib/openchat-query.ts";
 
 // vinextの静的解析は searchParams の読み取りだけでは動的ページと判定しない(実機で確認:
@@ -117,5 +117,35 @@ describe("formatPostedAt", () => {
     expect(formatPostedAt("2026-09-23T12:46:00Z", "exact")).toBe("09.23 21:46");
     expect(formatPostedAt("2026-09-23T16:00:00Z", "approx_hour")).toBe("09.24 01:00");
     expect(formatPostedAt("nope", "exact")).toBe("");
+  });
+});
+
+describe("resolveThumbnails (一覧のサムネイル)", () => {
+  const meta = (urls) => ({ broadcaster: "", programName: "", episodeTitle: "", links: urls.map((url) => ({ url, label: "" })) });
+  const nhk = "https://www.web.nhk/tv/an/gendai/pl/series-tep-R7Y6NGLJ6G/ep/4NQ2YJ3V5J";
+
+  test("探すリンクは、編集したリンクの1件目、無ければノートのリンクカード", () => {
+    expect(thumbnailSourceUrl({ meta: meta([nhk, "https://example.com/b"]), linkUrl: "https://example.com/card" })).toBe(nhk);
+    expect(thumbnailSourceUrl({ meta: meta([]), linkUrl: "https://example.com/card" })).toBe("https://example.com/card");
+  });
+
+  test("YouTubeはリンクから決め、保存済みはそのまま使い、無いものは空", () => {
+    const programs = [
+      { noteId: "yt", meta: meta(["https://www.youtube.com/watch?v=dQw4w9WgXcQ"]), linkUrl: "" },
+      { noteId: "stored", meta: meta([nhk]), linkUrl: "" },
+      { noteId: "new", meta: meta([]), linkUrl: "https://example.com/card" },
+      { noteId: "nolink", meta: meta([]), linkUrl: "" },
+    ];
+    const cached = new Map([["stored", { source_url: nhk, thumbnail_url: "https://img/a.jpg" }]]);
+    const t = resolveThumbnails(programs, cached);
+    expect(t.get("yt")).toBe("https://i.ytimg.com/vi/dQw4w9WgXcQ/mqdefault.jpg");
+    expect(t.get("stored")).toBe("https://img/a.jpg");
+    expect(t.has("new")).toBe(false);
+    expect(t.has("nolink")).toBe(false);
+  });
+
+  test("探したリンクが今のリンクと違う保存(OCRの誤りを手で直した後など)は、古い画像なので使わない", () => {
+    const cached = new Map([["n", { source_url: "https://example.com/misread", thumbnail_url: "https://img/old.jpg" }]]);
+    expect(resolveThumbnails([{ noteId: "n", meta: meta([nhk]), linkUrl: "" }], cached).has("n")).toBe(false);
   });
 });
