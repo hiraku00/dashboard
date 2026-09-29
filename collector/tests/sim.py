@@ -342,11 +342,14 @@ def render_tall(chat: "SimChat"):
 
 
 class SimThreadReader:
-    """threadread.ThreadReader の模擬: 撮影の代わりに、文書全体の縦長画像を作って区切る."""
+    """threadread.ThreadReader の模擬: 撮影の代わりに、文書全体の縦長画像を作り、実機の read_thread と同じ範囲
+    (今の画面の見出しから、その下で最初に見つかったコメント欄の終わりまで)だけを区切る."""
+    band_top_pt = float(K.TOP_MARGIN)
+
     def __init__(self, chat: "SimChat"):
         self.chat = chat
         self.prepared = 0
-        self.calls: list = []               # read_all に渡された expect_ends
+        self.calls: list = []               # read_thread に渡された、見出しの一覧上の位置(文書座標)
         self.last_info: dict = {}
 
     def prepare(self) -> None:
@@ -358,23 +361,19 @@ class SimThreadReader:
     def motion(self, before, after) -> str:
         return "ok"
 
-    def read_all(self, expect_ends=None, log=lambda s: None):
-        """expect_ends を渡されたら、実機と同じく、開いたコメント欄の終わりをその数だけ数えたところで撮影を止めた状態にする
-        (それより下のノートは、画像に入らない)。log は実機の進捗ログと同じ引数(模擬では使わない)."""
+    def read_thread(self, start_y_pt, log=lambda s: None):
         from line_openchat import tallparse
-        self.calls.append(expect_ends)
+        top = self.chat.scroll_y + start_y_pt                 # 見出しの上端(文書座標)
+        self.calls.append(round(top))
+        _, _, _, _, _, zones = self.chat._doc()
+        ends = sorted(y0 for (zk, x0, y0, x1, y1, n) in zones if zk == "input" and y0 >= top)
+        bottom = ends[0] + 30 if ends else None               # 実機と同じく、最初に見つかった入力欄で止める
         image, lines, dr, nr = render_tall(self.chat)
-        blocks, warnings = tallparse.parse_tall(image, lines, 1.0, float(K.WIN_W), digits_reader=dr, name_reader=nr)
-        groups = tallparse.group_notes(blocks)
-        self.last_info = {}
-        if expect_ends and len(groups) == len(self.chat.notes):
-            open_idx = [i for i, n in enumerate(self.chat.notes) if n.open]
-            if len(open_idx) >= expect_ends:
-                cut_at = open_idx[expect_ends - 1]
-                nxt = groups[cut_at + 1: cut_at + 2]
-                for g in nxt:
-                    g.comments = []              # 止めた位置の次のノートは、見出しだけが画像の端に写り、コメント欄は画像の外
-                groups = groups[: cut_at + 1] + nxt
-                self.last_info = {"frames": 1, "stopped": True, "ends": expect_ends, "expect": expect_ends,
-                                  "scan_sec": 0.0, "stop_ocr_sec": 0.0, "ocr_sec": 0.0, "parse_sec": 0.0}
-        return groups, warnings
+        lines = [l for l in lines if l.y + l.h / 2 >= top - 4 and (bottom is None or l.y <= bottom)]
+        runs = [r for r in tallparse.avatar_runs_tall(image, 1.0) if r[0] >= top - 4 and (bottom is None or r[0] <= bottom)]
+        blocks, warnings = tallparse.parse_tall(image, lines, 1.0, float(K.WIN_W), digits_reader=dr, name_reader=nr, runs=runs)
+        self.last_info = {"frames": 1, "ends": 1 if ends else 0, "reached_end": not ends,
+                          "scan_sec": 0.0, "ocr_sec": 0.0, "parse_sec": 0.0}
+        if not ends:
+            warnings.append("コメント欄の終わり(入力欄)が見つからないまま、一覧の末尾まで撮影しました")
+        return tallparse.group_notes(blocks), warnings
