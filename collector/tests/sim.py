@@ -169,13 +169,18 @@ class SimChat:
             rx = 18.0
             rects.append((rx, cy - 8, rx + 17, cy + 8, WHITE))
             rd = str(n.reactions)
-            # 桁ごとに別の塊(実機は3桁で約21.5pt)。4桁は実機にほぼ無いので、位置だけ収める
-            p = 7.5 if len(rd) < 4 else 6.5
-            rw = p * len(rd)
-            for k in range(len(rd)):
-                rects.append((40 + p * k, cy - 6, 40 + p * k + p - 2, cy + 6, WHITE))
-            digits.append((40, 40 + rw, cy, rd))
-            cx0 = 40 + rw + 10
+            if n.reactions == 0:
+                # 実機は、0件のときは数字を出さない(アイコンだけ)
+                rw = 0.0
+                cx0 = 40.0
+            else:
+                # 桁ごとに別の塊(実機は3桁で約21.5pt)。4桁は実機にほぼ無いので、位置だけ収める
+                p = 7.5 if len(rd) < 4 else 6.5
+                rw = p * len(rd)
+                for k in range(len(rd)):
+                    rects.append((40 + p * k, cy - 6, 40 + p * k + p - 2, cy + 6, WHITE))
+                digits.append((40, 40 + rw, cy, rd))
+                cx0 = 40 + rw + 10
             rects.append((cx0, cy - 8, cx0 + 16, cy + 8, WHITE))
             zones.append(("comment_icon", cx0, cy - 8, cx0 + 16, cy + 8, n))
             count = len(n.comments)
@@ -365,7 +370,11 @@ class SimThreadReader:
         if expect_ends and len(groups) == len(self.chat.notes):
             open_idx = [i for i, n in enumerate(self.chat.notes) if n.open]
             if len(open_idx) >= expect_ends:
-                groups = groups[: open_idx[expect_ends - 1] + 1]
+                cut_at = open_idx[expect_ends - 1]
+                nxt = groups[cut_at + 1: cut_at + 2]
+                for g in nxt:
+                    g.comments = []              # 止めた位置の次のノートは、見出しだけが画像の端に写り、コメント欄は画像の外
+                groups = groups[: cut_at + 1] + nxt
                 self.last_info = {"frames": 1, "stopped": True, "ends": expect_ends, "expect": expect_ends,
                                   "scan_sec": 0.0, "stop_ocr_sec": 0.0, "ocr_sec": 0.0, "parse_sec": 0.0}
         return groups, warnings

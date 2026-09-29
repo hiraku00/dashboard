@@ -23,6 +23,7 @@ from .timeparse import EXACT, parse_display_time, tolerance_minutes
 MAX_CLICKS_PER_RUN = 3000
 SEEK_LOG_EVERY = 8          # 見出しを探す処理が長引いたとき、これ回数ごとに進捗をログへ出す
 SEEK_STUCK_LIMIT = 16       # 「手がかりはあるのに見出しが確認できない」がこれだけ連続したら、迷走とみなして早めに諦める
+THREAD_ROOM_BELOW_FOOTER = 120  # ノートの時刻行の下に、この高さ(pt)以上が見えていれば、直下の「前のコメントを見る」の有無を判断できる
 HINT_TIME_TOLERANCE_MIN = 240   # 手がかりの近くの投稿時刻が、このノートの投稿時刻とこれ(分)を超えてズレていたら、
                                  # 本文が似ているだけの別の投稿とみなし、手がかりとして使わない
 
@@ -374,15 +375,26 @@ class Session:
         info = getattr(self.reader, "last_info", None)
         if info:
             self._log_capture(info)
+        if info and info.get("stopped"):
+            # 前回開いたまま残っているコメント欄も「コメントを入力」として数えるので、開いた数より早く数え終わり、
+            # 処理したノートより手前で止まることがある(2026-09-29の実機で、走査で開いたノートが画像に入らなかった)。
+            # 画像に入らなかったノートがあれば、そのときだけ、最後まで撮り直す
+            # 見出しだけが画像の端に写っていて、コメント欄が画像の外(止めた位置より下)のものも含む(実機で、ののがこれだった:
+            # 表示18件・取得0件)。開いたノートのコメント欄が0件に見えるのは、開いていなかったのではなく、撮影が届かなかった
+            missing = [n for n, e, _ in self._pending
+                       if (g := self._match_group(n, groups)) is None or (not g.comments and (e or 0) > 0)]
+            if missing:
+                self.log(f"  撮影を途中で止めたため、{len(missing)}件のノートのコメント欄が画像に入りませんでした。最後まで撮り直します")
+                for w in warnings:
+                    self.stats.warnings.append(w)
+                groups, warnings = self.reader.read_all(expect_ends=None, log=self.log)
+                info = getattr(self.reader, "last_info", None)
+                if info:
+                    self._log_capture(info)
         for w in warnings:
             self.stats.warnings.append(w)
         for note, expected, partial in self._pending:
-            best, best_s = None, 0.0
-            for g in groups:
-                o = note_obs(g.note, self.now)
-                s = identity.note_score(note, o.as_match_dict()) if o else 0.0
-                if s > best_s:
-                    best, best_s = g, s
+            best = self._match_group(note, groups)
             label = self._label(note)
             if best is not None:
                 self._adopt_full_body(note, best.note)
@@ -417,6 +429,16 @@ class Session:
         handled = {id(n) for n, _, _ in self._pending}
         self._pending.clear()
         self._apply_unvisited(groups, handled)
+
+    def _match_group(self, note: dict, groups: list):
+        """撮影した画像から区切ったノートの塊のうち、このノートに当たるもの(無ければ None)."""
+        best, best_s = None, 0.0
+        for g in groups:
+            o = note_obs(g.note, self.now)
+            sc = identity.note_score(note, o.as_match_dict()) if o else 0.0
+            if sc > best_s:
+                best, best_s = g, sc
+        return best
 
     def _log_capture(self, info: dict) -> None:
         """撮影の記録(枚数・止めたか・各段の秒数). 撮影を止める効果を、実機で確かめるためのログ."""
@@ -615,74 +637,108 @@ class Session:
         y = self._hint_y(screen, blocks, note)
         return None if y is None else y - 42.0
 
+    def _is_own_block(self, b: Block, note: dict) -> bool:
+        """このブロックが、処理中のノート自身の見出し(時刻行だけが見えている不完全なものを含む)か."""
+        if b.kind != "note":
+            return False
+        obs = note_obs(b, self.now)
+        if obs is None:
+            return False
+        if b.complete and identity.note_score(note, obs.as_match_dict()) > 0:
+            return True
+        # 見出し(アバター)が画面の上に出て不完全になったものは、時刻の表示か、時刻そのものが同じかで判定する
+        if re.sub(r"\s", "", b.time_raw) == re.sub(r"\s", "", note.get("posted_at_raw", "")):
+            return True
+        tol = tolerance_minutes(obs.posted_precision, note.get("posted_at_precision", EXACT))
+        return identity.minutes_between(note["posted_at"], obs.posted_at) <= tol
+
+    def _thread_region(self, screen: Screen, blocks: list[Block], note: dict) -> tuple[Block | None, Block | None, float, float]:
+        """画面のうち、このノートのコメント欄にあたる縦の範囲を返す: (自分の見出しのブロック, その直下のブロック, 上端y, 下端y).
+        コメント欄は、自分の時刻行の下から、次のノートの見出しの手前まで。別のノートのコメント欄にある
+        「前のコメントを見る」「コメントを入力」を、このノートのものと取り違えないために使う
+        (取り違えると、別ノートの位置で「既読」と判定して終わり、その間にあるノートを走査が飛ばしてしまう。
+        実機で発生: 2026-09-29、さとの処理のあと てんぷら・Conny・のの が走査されなかった)。
+        自分の見出しが画面に無いとき(見出しが上に出ている)は、画面の上端からを自分のコメント欄とみなす。"""
+        own_idx = next((i for i, b in enumerate(blocks) if self._is_own_block(b, note)), None)
+        own = blocks[own_idx] if own_idx is not None else None
+        after = blocks[own_idx + 1] if own_idx is not None and own_idx + 1 < len(blocks) else None
+        top = own.y_time if own is not None else float(K.TOP_MARGIN)
+        bottom = float(screen.height)
+        for b in (blocks[own_idx + 1:] if own_idx is not None else blocks):
+            if b.kind == "note" and not self._is_own_block(b, note):
+                bottom = b.y_top
+                break
+        return own, after, top, bottom
+
     def _load_earlier(self, note: dict, full_expand: bool) -> bool:
         """「前のコメントを見る」を扱う.
 
         full_expand=True: 今までどおり、無くなるまで押し切る。
         full_expand=False: ボタンのすぐ下のコメント(読み込まれている中で一番古いもの)が既読と分かったら、
-        それ以上は押さずに見出しへ戻る(LINEは新しいコメントを下に表示し、押すたびに古い方へ足すので、
+        それ以上は押さずに終える(LINEは新しいコメントを下に表示し、押すたびに古い方へ足すので、
         一番古い表示中のものが既読なら、それより上もすべて既読)。
 
         戻り値: 一部だけ読んで止めたら True(_capture_pending が ledger.apply_collection の partial に渡す)。
         全部押し切った・元から閉じていた(ボタンが無かった)場合は False。
 
-        コメント欄がすでに開いていた場合(_open_thread がクリックせずに済ませた場合)は、開いた直後の
-        ジャンプが起きないため、スクロール位置は見出しのまま(前回、一部だけ読んで止めた続きかもしれない)。
-        末尾(「前のコメントを見る」か、コメント欄の終わりの「コメントを入力」欄)を一度も見ないまま
-        「ボタンが無く、見出しが見える」を「全部読んだ」と判定すると、実際には下に続きがあるのに
-        見ないで済ませてしまう(実機で発生: さと 2026-09-29、撮影では「前のコメントを見る」が残っていた)。
-        末尾を一度も確認していない間は、上ではなく下へ進んで確かめる。
+        「前のコメントを見る」は、コメント欄の一番上(見出しの時刻行のすぐ下)にある。
+        - 自分の見出しの時刻行が見えているとき: その直下のブロックで決まる。ボタンなら押す/止める、
+          コメントなら、ボタンは無い(全部読み込み済み)。
+        - 見出しは見えるが時刻行が画面の下にはみ出すとき(長い本文・大きなリンクカード): 少しずつ下へ進んで、時刻行を出す。
+        - 見出しも見えないとき(開いた直後に、LINEが最新のコメントまでジャンプした): 上へ戻って、ボタンか見出しを探す。
+        どの場合も、「前のコメントを見る」「コメントを入力」は、このノート自身のコメント欄の範囲のものだけを見る
+        (_thread_region)。別のノートのものを取り違えて画面が遠くへ飛ぶと、その間のノートを走査が飛ばしてしまう。
         """
         active = [c for c in note["comments"] if not c.get("deleted_at")]
-        seen_tail = False           # 「前のコメントを見る」か「コメントを入力」欄を、一度でも画面で見たか
-        prev_sig: list | None = None
-        stuck = 0                   # 下へ進んでも画面が変わらなかった回数(スクロールが効かない=実質的に末尾)
+        prev_frame: tuple | None = None
+        same = 0                    # 画面が変わらなかった回数(押しても・スクロールしても動かない = スクロールの端、または押せていない)
+        visits: Counter = Counter()  # 同じ画面に来た回数(上下に往復して終わらないのを止める)
         for i in range(120):
             screen, blocks = self.shot()
-            cut = [l for l in screen.lines if TXT_CUT in l.text.replace(" ", "")]
-            if not cut:
-                if any(b.kind == "end" for b in blocks):
-                    seen_tail = True
-                if seen_tail and self._header_y(screen, blocks, note) is not None:
-                    return False                          # 末尾を確かめたうえで、ボタンも無い(全部読んだ)
-                if not seen_tail:
-                    if i and i % SEEK_LOG_EVERY == 0:
-                        self.log(f"    コメント欄の末尾を探しています({i}回目。長いノートでは時間がかかることがあります)")
-                    sig = self._signature(blocks)
-                    if sig == prev_sig:
-                        stuck += 1
-                        if stuck >= 2:
-                            # これ以上下へ進めない(スクロールが底に達した): 「コメントを入力」欄の文字が
-                            # 読めなかっただけとみなし、実質的に末尾に着いたものとして扱う(無限に下へ進み
-                            # 続けるのを防ぐ。実機で発生: てんぷら 2026-09-29、下まで来てもなお下へ進み続けた)
-                            seen_tail = True
-                            continue
-                    else:
-                        stuck = 0
-                    prev_sig = sig
-                    self.scroll(60)                        # 末尾を広く探すので、大きめの歩幅で進む
-                else:
-                    self.scroll(-24)                        # 末尾を見終えた: 見出しへ戻る
+            frame = tuple((round(l.y / 6), l.text) for l in screen.lines)
+            same = same + 1 if frame == prev_frame else 0
+            prev_frame = frame
+            visits[frame] += 1
+            if same >= 3 or visits[frame] >= 5:
+                raise SessionError("コメント欄の「前のコメントを見る」を確かめられません(画面が動かない、または同じ画面を行き来しています)")
+            own, after, top, bottom = self._thread_region(screen, blocks, note)
+            cut = [l for l in screen.lines if TXT_CUT in l.text.replace(" ", "") and top <= l.y < bottom]
+            if cut:
+                if not full_expand:
+                    oldest = self._oldest_loaded_comment(blocks, top, bottom)
+                    if oldest is None:
+                        self.scroll(6)                         # ボタンのすぐ下のコメントの時刻行が、まだ画面に入っていない
+                        continue
+                    if self._already_read(oldest, active, note):
+                        return True                            # 一番古い表示中のコメントが既読: これ以上は押さなくてよい
+                l = cut[0]
+                self._click(ClickTarget("load_earlier_comments", l.x + l.w / 2, l.cy, expect_text=TXT_CUT), screen)
                 continue
-            seen_tail = True
-            if not full_expand:
-                oldest = self._oldest_loaded_comment(blocks)
-                if oldest is None:
-                    self.scroll(6)                         # ボタンのすぐ下のコメントの時刻行が、まだ画面に入っていない
-                    continue
-                if self._already_read(oldest, active, note):
-                    return True                            # 一番古い表示中のコメントが既読: これ以上は押さなくてよい
-            l = cut[0]
-            self._click(ClickTarget("load_earlier_comments", l.x + l.w / 2, l.cy, expect_text=TXT_CUT), screen)
+            # このノートのコメント欄には、画面に見える範囲で「前のコメントを見る」が無い
+            if own is not None:
+                # 「前のコメントを見る」は、時刻行のすぐ下にある。その下に十分な余白が見えているのに無ければ、ボタンは無い
+                # (直下のブロックがコメント/入力欄/次のノートでも、時刻行が読めずブロックにならなくても、同じ)。
+                # 時刻行が画面の一番下に寄っていて、直下がまだ見えないときだけ、少し下へ進んで確かめる
+                if after is not None or screen.height - own.y_time >= THREAD_ROOM_BELOW_FOOTER:
+                    return False
+                self.scroll(12)
+                continue
+            if i and i % SEEK_LOG_EVERY == 0:
+                self.log(f"    コメント欄の「前のコメントを見る」を探しています({i}回目。コメントの多いノートでは時間がかかることがあります)")
+            if self._header_y(screen, blocks, note) is not None:
+                self.scroll(20)                               # 見出しは見えるが、時刻行が画面の下にはみ出している: 下へ
+            else:
+                self.scroll(-24)                              # 見出しも見えない(コメント欄の途中〜末尾): 上へ戻る
         raise SessionError("ノートの見出しまで戻れません")
 
     @staticmethod
-    def _oldest_loaded_comment(blocks: list[Block]) -> Block | None:
-        """「前のコメントを見る」の直後にある(=読み込まれている中で一番古い)コメント. 画面に見えていなければ None."""
-        kinds = [b.kind for b in blocks]
-        if "cut" not in kinds:
+    def _oldest_loaded_comment(blocks: list[Block], top: float = 0.0, bottom: float = float("inf")) -> Block | None:
+        """「前のコメントを見る」の直後にある(=読み込まれている中で一番古い)コメント. 画面に見えていなければ None.
+        top〜bottom は、このノートのコメント欄の範囲(別のノートの「前のコメントを見る」を取り違えないため)。"""
+        idx = next((i for i, b in enumerate(blocks) if b.kind == "cut" and top <= b.y_top < bottom), None)
+        if idx is None:
             return None
-        nxt = next((b for b in blocks[kinds.index("cut") + 1:] if b.kind == "comment"), None)
+        nxt = next((b for b in blocks[idx + 1:] if b.kind == "comment" and b.y_top < bottom), None)
         return nxt if nxt is not None and nxt.complete else None
 
     def _already_read(self, block: Block, active: list[dict], note: dict) -> bool:
