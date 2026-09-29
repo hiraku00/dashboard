@@ -33,6 +33,7 @@
 
 - `openchat_notes`: LINEオープンチャットのノート（1ノート＝1番組）。投稿者、本文、投稿日時とその精度（`exact` / `approx_min` / `approx_hour`）、コメント数、ちきりんのコメント数（`target_comment_count`）、再確認が必要か（`needs_recheck`）
 - `openchat_note_meta`: 人が画面から編集する、放送局・その日の放送タイトル・リンク（`links_json`）。collector の同期データ（`openchat_notes`）とは別のテーブルなので、同期で上書きされない。`migrations/0010_openchat_note_meta.sql`、schema version 6。
+- `openchat_note_thumbnails`: 一覧のサムネイル。`source_url`は画像を探したリンク、`thumbnail_url`は見つからなければ空（「試した」の記録を兼ねる）。同期時と放送情報の保存時に書く。`migrations/0013_openchat_note_thumbnails.sql`、schema version 9。
 - `openchat_comments`: ノートのコメント。`is_target`がちきりん（公式バッジで判定）。`deleted_at`は、LINE上で見えなくなったとcollectorが判断した時刻（件数が一致したときだけ付く）
 - `openchat_sync_runs`: collectorの同期履歴（状態、走査・展開したノート数、新しいコメント数、警告）
 

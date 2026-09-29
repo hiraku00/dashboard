@@ -18,10 +18,10 @@ export function PortalNav({ active }: { active?: string }) {
   const links = [
     ["/", "ホーム"],
     ["/watch-list", "Watch List"],
+    ["/chikirin", "ちきりんオプチャ"],
     ["/text-tube", "TextTube"],
     ["/manage-asset", "Manage Asset"],
     ["/todo", "To Do"],
-    ["/chikirin", "ちきりんオプチャ"],
     ["/settings/storage", "使用量"],
   ] as const;
   return (
