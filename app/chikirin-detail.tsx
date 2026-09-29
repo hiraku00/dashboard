@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { PortalHeader } from "./portal-nav";
-import { Body } from "./chikirin-body";
+import { EditableBody } from "./chikirin-text-edit";
 import { MetaForm } from "./chikirin-meta-form";
 import { readErrorMessage, readJson } from "./lib/json";
 import { formatPostedAt, type Program } from "./lib/openchat-query.ts";
@@ -62,11 +62,11 @@ export function ChikirinDetail({ id, initialProgram = null, initialError = "", b
         {program.issues.length > 0 && <div className="chikirin-issue-box" role="status"><strong>要確認</strong><ul>{program.issues.map((issue) => <li key={issue}>{issue}</li>)}</ul></div>}
         {program.noteBody && <section className={program.noteByTarget ? "chikirin-post is-thread" : "chikirin-post is-owner"} aria-label={program.noteByTarget ? "ちきりんのスレッド" : "スレッド主の投稿"}>
           <strong className="chikirin-badge">{program.noteByTarget ? "ちきりんのスレッド" : "スレッド主の投稿（番組の情報）"}</strong>
-          <Body text={program.noteBody} full />
+          <EditableBody noteId={program.noteId} text={program.noteBody} target="note" onSaved={setProgram} />
         </section>}
         {program.targetComments.map((comment) => <section className="chikirin-post is-comment" key={comment.id} aria-label="ちきりんのコメント">
           <div className="chikirin-post-head"><strong className="chikirin-badge">{program.noteByTarget ? "本人コメント" : "ちきりんのコメント"}</strong><time dateTime={comment.postedAt}>{formatPostedAt(comment.postedAt, comment.precision)}</time></div>
-          <Body text={comment.bodyText} full />
+          <EditableBody noteId={program.noteId} text={comment.bodyText} target={{ commentId: comment.id }} onSaved={setProgram} />
         </section>)}
         {program.involvement === "none" && <p className="empty-cell">ちきりんのコメントはありません。</p>}
       </article>}

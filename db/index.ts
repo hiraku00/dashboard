@@ -28,7 +28,7 @@ let schemaReady = false;
  *  than reconciled, since the drizzle ORM was never actually used to query. */
 /** Bump whenever the DDL below changes, so existing databases re-run it once.
  *  A database whose schema_meta row already matches skips the whole batch. */
-const SCHEMA_VERSION = 9;
+const SCHEMA_VERSION = 10;
 
 /** Reads the recorded schema version. A database that predates schema_meta (or
  *  a brand new one) has no table, and the query fails rather than returning a
@@ -166,7 +166,7 @@ export async function ensureSchema({ seed = true }: { seed?: boolean } = {}) {
       posted_at TEXT NOT NULL, posted_at_precision TEXT NOT NULL, posted_at_raw TEXT NOT NULL DEFAULT '',
       comment_count INTEGER NOT NULL DEFAULT 0, target_comment_count INTEGER NOT NULL DEFAULT 0,
       needs_recheck INTEGER NOT NULL DEFAULT 0, first_seen_at TEXT NOT NULL, last_checked_at TEXT NOT NULL,
-      deleted_at TEXT,
+      deleted_at TEXT, body_edited INTEGER NOT NULL DEFAULT 0,
       CHECK(posted_at_precision IN ('exact','approx_min','approx_hour'))
     )`),
     env.DB.prepare(
@@ -182,6 +182,7 @@ export async function ensureSchema({ seed = true }: { seed?: boolean } = {}) {
       is_target INTEGER NOT NULL DEFAULT 0, body_text TEXT NOT NULL,
       posted_at TEXT NOT NULL, posted_at_precision TEXT NOT NULL, posted_at_raw TEXT NOT NULL DEFAULT '',
       ocr_min_confidence REAL, first_seen_at TEXT NOT NULL, last_seen_at TEXT NOT NULL, deleted_at TEXT,
+      body_edited INTEGER NOT NULL DEFAULT 0,
       CHECK(posted_at_precision IN ('exact','approx_min','approx_hour'))
     )`),
     env.DB.prepare("CREATE INDEX IF NOT EXISTS openchat_comments_note_idx ON openchat_comments(note_id, ordinal)"),
@@ -298,6 +299,9 @@ export async function ensureSchema({ seed = true }: { seed?: boolean } = {}) {
   ]);
   await env.DB.prepare("ALTER TABLE todo_routines ADD COLUMN default_due_time TEXT").run().catch(() => {});
   await env.DB.prepare("ALTER TABLE openchat_note_meta ADD COLUMN program_name TEXT NOT NULL DEFAULT ''").run().catch(() => {});
+  // Schema version 10: 手で直した本文は同期で上書きしない(migrations/0014_openchat_body_edited.sql)。
+  await env.DB.prepare("ALTER TABLE openchat_notes ADD COLUMN body_edited INTEGER NOT NULL DEFAULT 0").run().catch(() => {});
+  await env.DB.prepare("ALTER TABLE openchat_comments ADD COLUMN body_edited INTEGER NOT NULL DEFAULT 0").run().catch(() => {});
   // Schema version 3. SQLite has no ADD COLUMN IF NOT EXISTS, so a database that
   // already has the column (a fresh one, from the CREATE above) throws and the
   // error is the expected "nothing to do".

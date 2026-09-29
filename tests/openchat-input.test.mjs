@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import {
-  MAX_COMMENTS_PER_NOTE, MAX_NOTES_PER_REQUEST, normalizeComment, normalizeComplete, normalizeNote, normalizeNotesBatch, normalizeStartedAt, normalizeUtc,
+  MAX_COMMENTS_PER_NOTE, MAX_NOTES_PER_REQUEST, normalizeComment, normalizeComplete, normalizeNote, normalizeNotesBatch, normalizeStartedAt, normalizeTextEdit, normalizeUtc,
 } from "../app/lib/openchat-input.ts";
 
 const ID = "11111111-2222-3333-4444-555555555555";
@@ -107,5 +107,19 @@ describe("normalizeStartedAt", () => {
   });
   test("falls back to now for a bad, future or stale value", () => {
     for (const bad of [undefined, null, 5, "yesterday", "2026-09-25T10:30:00Z", "2026-09-10T00:00:00Z", "2026-09-25T09:00:00+09:00"]) expect(normalizeStartedAt(bad, now)).toBe(now.toISOString());
+  });
+});
+
+describe("normalizeTextEdit", () => {
+  test("accepts a note body and/or comments, trimming like synced text", () => {
+    expect(normalizeTextEdit({ noteBody: " 本文  \n\n次 " }).value).toEqual({ noteBody: "本文\n\n次", comments: [] });
+    expect(normalizeTextEdit({ comments: [{ id: CID, bodyText: "直した" }] }).value).toEqual({ comments: [{ id: CID, bodyText: "直した" }] });
+  });
+  test("rejects empty text, bad ids and empty edits", () => {
+    expect(normalizeTextEdit({ noteBody: "  " }).error).toBeTruthy();
+    expect(normalizeTextEdit({ comments: [{ id: CID, bodyText: "" }] }).error).toBeTruthy();
+    expect(normalizeTextEdit({ comments: [{ id: "x", bodyText: "a" }] }).error).toBeTruthy();
+    expect(normalizeTextEdit({}).error).toBeTruthy();
+    expect(normalizeTextEdit(null).error).toBeTruthy();
   });
 });

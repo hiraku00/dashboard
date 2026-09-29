@@ -21,12 +21,13 @@ const BATCH = 50;   // 1回のD1 batchに入れる文の数(manage-asset/sync �
 
 function noteStatement(n: NoteInput) {
   // target_comment_count はコメントを書き込んだあとで数え直すので、ここでは触らない。
-  // first_seen_at も、最初に見たときの値を残す。
+  // first_seen_at も、最初に見たときの値を残す。手で直した本文(body_edited=1)は、OCRの本文で上書きしない。
   return env.DB.prepare(`INSERT INTO openchat_notes
     (id,room,author_name,author_is_target,program_title,link_title,link_url,body_text,body_complete,posted_at,posted_at_precision,posted_at_raw,comment_count,needs_recheck,first_seen_at,last_checked_at,deleted_at)
     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     ON CONFLICT(id) DO UPDATE SET room=excluded.room,author_name=excluded.author_name,author_is_target=excluded.author_is_target,
-      program_title=excluded.program_title,link_title=excluded.link_title,link_url=excluded.link_url,body_text=excluded.body_text,
+      program_title=excluded.program_title,link_title=excluded.link_title,link_url=excluded.link_url,
+      body_text=CASE WHEN openchat_notes.body_edited=1 THEN openchat_notes.body_text ELSE excluded.body_text END,
       body_complete=excluded.body_complete,posted_at=excluded.posted_at,posted_at_precision=excluded.posted_at_precision,
       posted_at_raw=excluded.posted_at_raw,comment_count=excluded.comment_count,needs_recheck=excluded.needs_recheck,
       last_checked_at=excluded.last_checked_at,deleted_at=excluded.deleted_at`)
@@ -39,7 +40,8 @@ function commentStatements(n: NoteInput) {
     (id,note_id,ordinal,author_name,is_target,body_text,posted_at,posted_at_precision,posted_at_raw,ocr_min_confidence,first_seen_at,last_seen_at,deleted_at)
     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
     ON CONFLICT(id) DO UPDATE SET note_id=excluded.note_id,ordinal=excluded.ordinal,author_name=excluded.author_name,is_target=excluded.is_target,
-      body_text=excluded.body_text,posted_at=excluded.posted_at,posted_at_precision=excluded.posted_at_precision,posted_at_raw=excluded.posted_at_raw,
+      body_text=CASE WHEN openchat_comments.body_edited=1 THEN openchat_comments.body_text ELSE excluded.body_text END,
+      posted_at=excluded.posted_at,posted_at_precision=excluded.posted_at_precision,posted_at_raw=excluded.posted_at_raw,
       ocr_min_confidence=excluded.ocr_min_confidence,last_seen_at=excluded.last_seen_at,deleted_at=excluded.deleted_at`)
     .bind(c.id, n.id, c.ordinal, c.authorName, c.isTarget ? 1 : 0, c.bodyText, c.postedAt, c.postedAtPrecision, c.postedAtRaw, c.ocrMinConfidence,
       c.firstSeenAt, c.lastSeenAt, c.deletedAt));

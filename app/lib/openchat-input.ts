@@ -31,7 +31,7 @@ function clean(value: unknown, max = 4000): string {
 }
 
 /** 本文は前後の空白と行末の空白だけ整える(段落の空行は残す)。 */
-function cleanBody(value: unknown): string {
+export function cleanBody(value: unknown): string {
   return typeof value === "string" ? value.replace(/[ \t　]+$/gm, "").trim().slice(0, MAX_BODY_CHARS) : "";
 }
 
@@ -163,4 +163,29 @@ export function normalizeStartedAt(value: unknown, now: Date): string {
   const t = Date.parse(value);
   if (Number.isNaN(t) || t > now.getTime() + 5 * 60_000 || t < now.getTime() - 7 * 86_400_000) return now.toISOString();
   return new Date(t).toISOString();
+}
+
+export type TextEdit = { noteBody?: string; comments: Array<{ id: string; bodyText: string }> };
+
+/** 詳細画面で手で直した本文(スレッドの本文と、ちきりんのコメント)の検証。空にはできない(消し間違い防止)。 */
+export function normalizeTextEdit(raw: unknown): Normalized<TextEdit> {
+  if (!raw || typeof raw !== "object") return { error: "入力が正しくありません。" };
+  const body = raw as Record<string, unknown>;
+  const edit: TextEdit = { comments: [] };
+  if (body.noteBody !== undefined) {
+    const text = cleanBody(body.noteBody);
+    if (!text) return { error: "スレッドの本文は空にできません。" };
+    edit.noteBody = text;
+  }
+  const rawComments = body.comments === undefined ? [] : body.comments;
+  if (!Array.isArray(rawComments) || rawComments.length > MAX_COMMENTS_PER_NOTE) return { error: "コメントの形式が正しくありません。" };
+  for (const item of rawComments) {
+    const c = (item && typeof item === "object" ? item : {}) as Record<string, unknown>;
+    if (!validId(c.id)) return { error: "コメントのidが不正です。" };
+    const text = cleanBody(c.bodyText);
+    if (!text) return { error: "コメントの本文は空にできません。" };
+    edit.comments.push({ id: c.id, bodyText: text });
+  }
+  if (edit.noteBody === undefined && edit.comments.length === 0) return { error: "直す内容がありません。" };
+  return { value: edit };
 }
