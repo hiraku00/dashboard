@@ -15,7 +15,7 @@ import { useSearchReload } from "./lib/use-search-reload";
 export type ProgramsPage = { programs: Program[]; total: number; page: number; pageSize: number; watched?: Record<string, { url: string; title: string; count: number }> };
 export type RunSummary = {
   status: string; startedAt: string; completedAt: string | null; notesScanned: number; notesOpened: number;
-  commentsNew: number; targetCommentsNew: number; warningCount: number; warnings?: string[]; newPrograms?: number;
+  commentsNew: number; targetCommentsNew: number; warningCount: number; warnings?: string[]; newPrograms?: number; newSince?: string;
 } | null;
 
 const kindLabel: Record<ProgramKind, string> = { all: "すべて", involved: "ちきりんあり", thread: "ちきりんのスレッド", comment: "ちきりんのコメント", none: "ちきりんなし" };
@@ -32,8 +32,8 @@ function runLine(run: RunSummary) {
 /** 最後の取得で、新しいスレッド、またはちきりんの新しい投稿(スレッド・コメント)が見つかった番組か。 */
 function isNew(program: Program, run: RunSummary) {
   if (!run || !program.newestSeenAt) return false;
-  const seen = Date.parse(program.newestSeenAt), started = Date.parse(run.startedAt);
-  return !Number.isNaN(seen) && !Number.isNaN(started) && seen >= started;
+  const seen = Date.parse(program.newestSeenAt), since = Date.parse(run.newSince ?? run.startedAt);
+  return !Number.isNaN(seen) && !Number.isNaN(since) && seen >= since;
 }
 
 /** 一覧のタイトル欄: 詳細で設定したその日の放送タイトル。 */
