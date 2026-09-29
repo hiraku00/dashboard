@@ -4,6 +4,7 @@
 import { env } from "cloudflare:workers";
 import { ensureSchema } from "@/db";
 import { metaFromRow, normalizeMeta } from "@/app/lib/openchat-meta";
+import { normalizeTextEdit } from "@/app/lib/openchat-input";
 import { canonicalUrl } from "@/app/lib/text";
 import { fetchPageThumbnail } from "@/app/lib/thumbnail-fetch";
 import {
@@ -144,6 +145,28 @@ export async function saveProgramMeta(id: string, input: unknown): Promise<Progr
   ).bind(id, meta.broadcaster, meta.programName, meta.episodeTitle, JSON.stringify(meta.links), new Date().toISOString().replace(/\.\d+Z$/, "Z")).run();
   await refreshThumbnail(id, { meta, linkUrl: program.linkUrl });
   return { ...program, meta };
+}
+
+/** OCRの読み間違いを手で直した本文(スレッドの本文・ちきりんのコメント)を保存する。
+ *  body_edited = 1 にして、collector の再同期で OCR の本文に戻されないようにする(sync/route.ts)。
+ *  ちきりんのコメント以外(ほかの人のコメント・別のスレッドのコメント)は直せない。 */
+export async function saveProgramText(id: string, input: unknown): Promise<Program | null | { error: string }> {
+  const parsed = normalizeTextEdit(input);
+  if (parsed.error !== undefined) return { error: parsed.error };
+  const program = await getProgram(id);
+  if (!program) return null;
+  const edit = parsed.value;
+  const known = new Set(program.targetComments.map((c) => c.id));
+  if (edit.comments.some((c) => !known.has(c.id))) return { error: "このスレッドにないコメントは直せません。" };
+  const statements = [];
+  if (edit.noteBody !== undefined) {
+    statements.push(env.DB.prepare("UPDATE openchat_notes SET body_text = ?, body_edited = 1 WHERE id = ?").bind(edit.noteBody, id));
+  }
+  for (const c of edit.comments) {
+    statements.push(env.DB.prepare("UPDATE openchat_comments SET body_text = ?, body_edited = 1 WHERE id = ? AND note_id = ? AND is_target = 1").bind(c.bodyText, c.id, id));
+  }
+  await env.DB.batch(statements);
+  return (await getProgram(id))!;
 }
 
 /** 詳細: 1ノート(1番組)。削除済み・存在しないノートは null(ちきりんが関わらないスレッドも開ける)。 */

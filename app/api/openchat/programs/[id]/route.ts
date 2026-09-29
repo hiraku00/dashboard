@@ -1,4 +1,4 @@
-import { getProgram, saveProgramMeta } from "@/app/lib/queries/openchat";
+import { getProgram, saveProgramMeta, saveProgramText } from "@/app/lib/queries/openchat";
 import { route } from "@/app/lib/route";
 
 /** 詳細: 1ノート(1番組)のスレッド主の投稿と、ちきりんのコメント全部。一覧に載らないノートは404。 */
@@ -15,6 +15,17 @@ export const PUT = route(async (request: Request, { params }: { params: Promise<
   let body: unknown;
   try { body = await request.json(); } catch { return Response.json({ error: "入力が正しくありません。" }, { status: 400 }); }
   const result = await saveProgramMeta(id, body);
+  if (result === null) return Response.json({ error: "見つかりません。" }, { status: 404 });
+  if ("error" in result) return Response.json({ error: result.error }, { status: 400 });
+  return Response.json({ program: result });
+});
+
+/** OCRの読み間違いを手で直した本文(スレッドの本文・ちきりんのコメント)の保存。同期で上書きされない。 */
+export const PATCH = route(async (request: Request, { params }: { params: Promise<{ id: string }> }) => {
+  const { id } = await params;
+  let body: unknown;
+  try { body = await request.json(); } catch { return Response.json({ error: "入力が正しくありません。" }, { status: 400 }); }
+  const result = await saveProgramText(id, body);
   if (result === null) return Response.json({ error: "見つかりません。" }, { status: 404 });
   if ("error" in result) return Response.json({ error: result.error }, { status: 400 });
   return Response.json({ program: result });

@@ -352,3 +352,4 @@ h1,h2,h3 { color:var(--ink); } h1 { margin:0; font-size:30px; line-height:1.1; l
 .chikirin-detail h2 { margin:0 0 6px; font-size:20px; line-height:1.4; overflow-wrap:anywhere; }
 @media (max-width:760px) { .chikirin-back { padding:12px 12px 0; }.chikirin-detail { padding:10px 12px 20px; } }
 @media (max-width:760px) { .filters.chikirin-filters { grid-template-columns:1fr; }.chikirin-list { padding:12px 12px 6px; }.chikirin-run { padding:0 12px 10px; } }
+.chikirin-text-edit { display:grid; gap:8px; }.chikirin-text-edit textarea { width:100%; border:1px solid var(--line-strong); border-radius:9px; background:#fff; color:var(--ink); padding:9px 10px; font:inherit; line-height:1.75; resize:vertical; }

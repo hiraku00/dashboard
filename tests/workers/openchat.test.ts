@@ -4,8 +4,8 @@ import { ensureSchema } from "@/db";
 import { POST as syncPost } from "@/app/api/openchat/sync/route";
 import { GET as programsGet } from "@/app/api/openchat/programs/route";
 import { GET as ledgerGet } from "@/app/api/openchat/ledger/route";
-import { GET as programGet, PUT as programPut } from "@/app/api/openchat/programs/[id]/route";
-import { getProgram, latestOpenchatRun, listPrograms, saveProgramMeta } from "@/app/lib/queries/openchat";
+import { GET as programGet, PATCH as programPatch, PUT as programPut } from "@/app/api/openchat/programs/[id]/route";
+import { getProgram, latestOpenchatRun, listPrograms, saveProgramMeta, saveProgramText } from "@/app/lib/queries/openchat";
 
 // ちきりんオプチャ: 同期API(start → notes → complete)と、画面用の一覧・台帳の復元。
 // 実際の(ephemeralな)D1に対して行う。ちきりん以外のコメント本文が一覧に出ないことも確かめる。
@@ -197,6 +197,28 @@ describe("programs list", () => {
     expect(viaApi.status).toBe(200);
     const viaApiDeleted = await programGet(new Request("http://x/api/openchat/programs/x"), { params: Promise.resolve({ id: ids.deleted }) });
     expect(viaApiDeleted.status).toBe(404);
+  });
+
+  test("hand-corrected note and comment text is saved, refuses others' comments, and is not overwritten by a re-sync", async () => {
+    await startRun();
+    const noteId = uid("n");
+    const mine = comment({ id: uid("c"), authorName: "ちきりん", isTarget: true, bodyText: "OCRの読み間違い" });
+    const theirs = comment({ id: uid("c"), bodyText: "他の人の本文" });
+    const ocrNote = () => note({ id: noteId, authorIsTarget: true, authorName: "ちきりん", bodyText: "OCRのスレッド本文", commentCount: 2, comments: [mine, theirs] });
+    await send([ocrNote()]);
+    const saved = await saveProgramText(noteId, { noteBody: "直したスレッド本文", comments: [{ id: mine.id, bodyText: "直したコメント" }] });
+    expect(saved && "noteBody" in saved && saved.noteBody).toBe("直したスレッド本文");
+    expect(saved && "targetComments" in saved && saved.targetComments.map((c) => c.bodyText)).toEqual(["直したコメント"]);
+    await send([ocrNote()]);                                                                  // collector が同じ(OCRの)本文でもう一度送っても
+    const after = await getProgram(noteId);
+    expect(after?.noteBody).toBe("直したスレッド本文");
+    expect(after?.targetComments[0].bodyText).toBe("直したコメント");
+    expect(await saveProgramText(noteId, { comments: [{ id: theirs.id, bodyText: "書き換え" }] })).toHaveProperty("error");   // ほかの人のコメントは直せない
+    expect(await saveProgramText(noteId, { noteBody: "  " })).toHaveProperty("error");
+    expect(await saveProgramText("no-such-id", { noteBody: "x" })).toBeNull();
+    const api = await programPatch(new Request("http://x", { method: "PATCH", body: JSON.stringify({ noteBody: "APIで直した" }) }), { params: Promise.resolve({ id: noteId }) });
+    expect(api.status).toBe(200);
+    expect((await getProgram(noteId))?.noteBody).toBe("APIで直した");
   });
 
   test("edited broadcaster, episode title and links are saved apart from the synced data, searchable, and survive a re-sync", async () => {
