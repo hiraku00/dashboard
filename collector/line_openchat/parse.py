@@ -230,7 +230,9 @@ def read_counts(screen: Screen, cy: float):
     リアクション・コメントのアイコンは幅15〜18.5pt、数字は1桁6.5/2桁13〜14/3桁21.5pt。コメントが0件なら数字の塊が無い。
     """
     clusters = column_clusters(screen, cy - 8, cy + 8)
-    if len(clusters) < 4:
+    # リアクションもコメントも0件のときは、数字が1つも無く、アイコン3つ(😊 💬 共有)だけになる(実機で確認: わを 2026-09-29)。
+    # 以前は4つ未満を「読めない」としていたので、コメント数もコメントアイコンの位置も特定できず、要確認になった
+    if len(clusters) < 3:
         return None
     body = clusters[:-1]                                   # 右端の共有アイコンを除く
     # 接した2桁の数字(「44」「48」)は幅が約15ptで、アイコンの幅に入る。見本で数字と読める塊はアイコンから除く
@@ -248,7 +250,8 @@ def read_counts(screen: Screen, cy: float):
             return None
         return read_digits(screen, g[0][0], g[-1][1], cy)
 
-    reactions = read(body[first + 1:second])
+    reaction_digits = body[first + 1:second]
+    reactions = read(reaction_digits) if reaction_digits else 0       # 数字の塊が無ければ0件
     comment_digits = body[second + 1:]
     # 数字の塊が無ければ0件。塊があるのに読めなかったときは「不明」(None)にする: 0件と取り違えると、コメントが増えても開かなくなる。
     # 実機では、Retinaでない(1倍の)ディスプレイに映すと、1桁の小さな数字をOCRが読めなかった。
@@ -367,7 +370,12 @@ def split_blocks(screen: Screen) -> list[Block]:
             return any(K.NAME_X_MIN < l.x < K.NAME_X_MAX and r[0] - 4 <= l.cy <= r[1] + 4 for l in seg)
 
         # 名前が作者位置(x=45〜70)に並ぶアバターを優先(検索欄・「大事なノート」帯などは名前が無い)
-        run = next((r for r in cands if named(r)), cands[0] if cands else None)
+        named_runs = [r for r in cands if named(r)]
+        run = named_runs[0] if named_runs else (cands[0] if cands else None)
+        # 1つの区切り(時刻行から時刻行まで)の中に、名前つきのアバターが2つ以上ある = 途中の投稿の時刻行を読み落とし、
+        # 隣り合う投稿が1つに合体している(実機で発生: 2026-09-29、hibyeのノート自身の時刻行を読み落とし、
+        # 「作者hibye・時刻とコメント数はNaozoのもの」という幽霊ノートが作られ、本番にも送られた)。完全なブロックとしては扱わない
+        merged = len(named_runs) >= 2
         if run and run[0] <= K.AVATAR_TOP_EDGE:
             run = None   # 画面上端で切れたアバター: 作者名が見えていない可能性
 
@@ -384,7 +392,7 @@ def split_blocks(screen: Screen) -> list[Block]:
             continue
 
         b = Block(kind=kind, author=author or ("?" if run else ""), time_raw=tl.text.strip(),
-                  y_top=y_top, y_time=tl.y, complete=run is not None)
+                  y_top=y_top, y_time=tl.y, complete=run is not None and not merged)
         b.badge = has_badge(screen, run[0], run[1]) if run else False
 
         if kind == "note":
@@ -412,6 +420,6 @@ def split_blocks(screen: Screen) -> list[Block]:
             b.lines = list(rest)
         confs = [l.conf for l in b.lines]
         b.min_conf = min(confs) if confs else 1.0
-        b.suspicious = any(clock_like(l.text) for l in b.lines)
+        b.suspicious = merged or any(clock_like(l.text) for l in b.lines)
         blocks.append(b)
     return blocks

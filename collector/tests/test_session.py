@@ -422,77 +422,152 @@ def test_second_run_skips_earlier_click_when_new_comment_is_already_on_first_pag
     assert any(c["body_text"].startswith("新しいコメントです") for c in note["comments"])
 
 
-def test_load_earlier_does_not_declare_done_before_seeing_the_tail():
-    """コメント欄がすでに開いていて、見出しの位置から始まった場合(_open_thread がクリックせずに済ませたとき)、
-    まだ末尾(「前のコメントを見る」か「コメントを入力」欄)を一度も見ていないうちに、「ボタンが無く見出しが
-    見える」だけで「全部読んだ」と判定してはいけない(実機で、続きがあるのに見ないで済ませてしまい、
-    撮影の段階になって初めて「前のコメントを見る」が残っていたと分かる事故があった: さと 2026-09-29)。"""
+def _load_earlier_note():
+    return {"author_name": "x", "body_text": "x", "posted_at": "2026-09-23T00:45:00Z", "posted_at_precision": "exact",
+            "posted_at_raw": "昨日 午前 9:45", "comments": [], "comments_checked_at": None}
+
+
+def _load_earlier_session(shots):
+    """shots: 順に返す (screen, blocks). 最後に来たら、同じものを返し続ける. _click/scroll は記録だけする."""
     from types import SimpleNamespace
-
-    chat = build(jitter=False)
-    s = Session(SimDriver(chat), Ledger(), NOW, Options())
-    note = {"comments": [], "comments_checked_at": None}
-
-    screen = SimpleNamespace(lines=[])
-    header_only = [Block(kind="note", author="x", time_raw="1分前", y_top=0, y_time=0, complete=True)]
-    with_end = header_only + [Block(kind="end", author="", time_raw="", y_top=0, y_time=0, complete=True)]
-
-    calls = {"n": 0}
+    s = Session(SimDriver(build(jitter=False)), Ledger(), NOW, Options())
+    it = iter(shots)
+    last = {}
     def fake_shot():
-        calls["n"] += 1
-        return (screen, header_only) if calls["n"] == 1 else (screen, with_end)
+        try:
+            last["v"] = next(it)
+        except StopIteration:
+            pass
+        return last["v"]
     s.shot = fake_shot
-    s._header_y = lambda screen, blocks, note: 10.0     # 見出しは常に見えている、という想定
-    scrolls: list[int] = []
-    s.scroll = lambda n: scrolls.append(n)
-
-    assert s._load_earlier(note, full_expand=False) is False
-    assert calls["n"] == 2                              # 1回目だけで即断せず、もう一度確かめてから終わる
-    assert scrolls == [60]                               # 末尾をまだ見ていない間は、上ではなく大きめの歩幅で下へ進む
+    s.clicks = []
+    s.scrolls = []
+    s._click = lambda *a, **k: s.clicks.append(a)
+    s.scroll = lambda n: s.scrolls.append(n)
+    return s, SimpleNamespace
 
 
-def test_load_earlier_stops_scrolling_down_forever_when_stuck_at_the_bottom():
-    """下へスクロールしても画面が変わらなくなったら(スクロールの底に達した)、末尾に着いたものとみなし、
-    下へ進み続けない(実機で、下まで来てもなお下へスクロールし続け、操作を検知して中断したことがあった:
-    てんぷら 2026-09-29。「コメントを入力」欄の文字が何らかの理由で読めない場合の保険)。"""
+def _blk(kind, y_top, y_time=None, time_raw="", complete=True, author="x"):
+    return Block(kind=kind, author=author, time_raw=time_raw, y_top=y_top, y_time=y_top if y_time is None else y_time, complete=complete)
+
+
+def test_load_earlier_scrolls_down_to_reveal_the_footer_of_a_tall_note_before_deciding():
+    """見出しは見えるが、時刻行(フッター)が画面の下にはみ出すほど長いノートでは、まだ「前のコメントを見る」の有無を
+    判断できない(ボタンは時刻行のすぐ下にある)。見えていない間に「全部読んだ」と即断せず、下へ進んで時刻行を出してから
+    決める(2026-09-29、さとで、続きがあるのに見ないで済ませてしまった)。"""
     from types import SimpleNamespace
-
-    chat = build(jitter=False)
-    s = Session(SimDriver(chat), Ledger(), NOW, Options())
-    note = {"comments": [], "comments_checked_at": None}
-
-    screen = SimpleNamespace(lines=[])
-    same_blocks = [Block(kind="note", author="x", time_raw="1分前", y_top=0, y_time=0, complete=True)]
-    s.shot = lambda: (screen, same_blocks)                # 画面はスクロールしても変わらない(スクロールの底)
-    s._header_y = lambda screen, blocks, note: None        # 見出しはもう画面に見えない(下まで来ている想定)
-    scrolls: list[int] = []
-    s.scroll = lambda n: scrolls.append(n)
-
-    with pytest.raises(SessionError):
-        s._load_earlier(note, full_expand=False)
-    downs = [n for n in scrolls if n > 0]
-    assert downs == [60, 60]                              # 変化なしを2回確認したところで、下へは進むのをやめる
-    assert all(n < 0 for n in scrolls[2:])                # それ以降は(見出しを探して)上へ戻ろうとするだけ
+    screen = SimpleNamespace(lines=[], height=1130.0)
+    own = _blk("note", 100, 400, "昨日 午前 9:45")
+    s, _ = _load_earlier_session([(screen, []), (SimpleNamespace(lines=[Line("別", 0, 300, 10, 10)], height=1130.0),
+                                                 [own, _blk("comment", 460, 520, "1時間前")])])
+    s._header_y = lambda screen, blocks, note: 10.0        # 1枚目は、見出しだけが見える(時刻行は画面の下)
+    assert s._load_earlier(_load_earlier_note(), full_expand=False) is False
+    assert s.scrolls == [20]                                 # 判断できないので下へ1回進み、時刻行が見えてから終わる
+    assert not s.clicks
 
 
-def test_second_run_skips_earlier_click_even_without_a_comments_checked_at_baseline():
-    """comments_checked_at が無くても(段階3を入れる前から台帳にあったノートなど)、既存コメントの
-    内容と一致すれば既読と判定でき、全部読み直す必要はない(実機で、まだ comments_checked_at の付いて
-    いないノートが、それだけを理由に不要な全部読みをしていたことがあった。パエリア 2026-09-29)。"""
-    chat = SimChat([SimNote("参加者A", "本文", "昨日 午前 9:45", comments=comments(26, "P"), reactions=10)], jitter=False)
-    ledger, stats = run(chat)
-    note = by_author(ledger, "参加者A")[0]
-    assert note["comment_count"] == 26
-    note["comments_checked_at"] = None                                # 段階3導入前からの台帳を想定
+def test_load_earlier_ignores_a_cut_button_that_belongs_to_another_note():
+    """別のノートのコメント欄にある「前のコメントを見る」を、このノートのものと取り違えない。
+    2026-09-29の実機事故: さとの処理が、下にある別ノートのボタンを見つけて「既読」と判定し、画面の位置が遠くへ飛んで終わり、
+    その間にあるノート3件(てんぷら・Conny・のの)を走査が飛ばした。"""
+    from types import SimpleNamespace
+    cut_line = Line("前のコメントを見る", 150, 900, 130, 15)
+    screen = SimpleNamespace(lines=[cut_line], height=1130.0)
+    blocks = [_blk("note", 100, 200, "昨日 午前 9:45"),           # このノート(見出しの直下はコメント: ボタンは無い)
+              _blk("comment", 250, 320, "1時間前"),
+              _blk("note", 500, 700, "昨日 午後 3:23", author="別の人"),   # 次のノート
+              _blk("cut", 900), _blk("comment", 950, 1010, "2時間前")]   # 次のノートのボタン
+    s, _ = _load_earlier_session([(screen, blocks)])
+    assert s._load_earlier(_load_earlier_note(), full_expand=False) is False
+    assert not s.clicks and not s.scrolls                    # 別ノートのボタンは押さず、画面も動かさない
 
-    chat.notes[0].comments.append(SimComment("参加者Z", "新しいコメントです。", "1時間前"))
-    _close_window(chat)
-    s2, stats2 = _next_run(chat, ledger)
-    assert not any("走査で見えず" in w or "件数不一致" in w for w in stats2.warnings), stats2.warnings
-    assert chat.notes[0].earlier_loaded == 0                          # 押さずに済んだ(内容一致だけで既読と判定)
-    note = by_author(ledger, "参加者A")[0]
-    assert note["comment_count"] == 27 and not note["needs_recheck"]
-    assert len(note["comments"]) == 27
+
+def test_load_earlier_looks_up_from_the_tail_when_the_header_is_off_screen():
+    """開いた直後にLINEが最新のコメントまでジャンプして、見出しが画面の上に出ているときは、上へ戻って探す
+    (下へ進むと、次のノートに入ってしまう)。自分のコメント欄の範囲にあるボタンが見つかれば、押す。"""
+    from types import SimpleNamespace
+    no_cut = SimpleNamespace(lines=[], height=1130.0)
+    cut_line = Line("前のコメントを見る", 150, 300, 130, 15)
+    with_cut = SimpleNamespace(lines=[cut_line], height=1130.0)
+    s, _ = _load_earlier_session([(no_cut, [_blk("comment", 300, 360, "1時間前")]),
+                                  (with_cut, [_blk("cut", 300), _blk("comment", 360, 420, "2時間前")]),
+                                  (no_cut, [_blk("note", 100, 200, "昨日 午前 9:45"), _blk("comment", 260, 320, "3時間前")])])
+    s._header_y = lambda screen, blocks, note: None
+    assert s._load_earlier(_load_earlier_note(), full_expand=True) is False
+    assert s.scrolls == [-24]                                # 見出しが見えないので上へ
+    assert len(s.clicks) == 1                                # 見つけたボタンを1回押し、押し切ったら終わる
+
+
+def test_load_earlier_gives_up_instead_of_wandering_when_the_screen_does_not_move():
+    """画面が動かない(スクロールの端に達した・押せていない)まま、同じ画面が続くなら、際限なく続けず諦める
+    (2026-09-29の実機で、下まで来てもなおスクロールし続け、操作を検知して中断した)。"""
+    from types import SimpleNamespace
+    screen = SimpleNamespace(lines=[], height=1130.0)
+    s, _ = _load_earlier_session([(screen, [_blk("comment", 300, 360, "1時間前")])])
+    s._header_y = lambda screen, blocks, note: None
+    with pytest.raises(SessionError, match="動かない"):
+        s._load_earlier(_load_earlier_note(), full_expand=False)
+    assert len(s.scrolls) <= 4                               # 何十回も繰り返さない
+
+
+def test_scan_does_not_skip_notes_when_threads_from_the_previous_run_are_left_open():
+    """前回開いたスレッドが開いたまま残っている状態(実機は毎回閉じ直さない)で、コメントが増えたノートを走査が
+    1件も飛ばさない。以前の走査は、別ノートの「前のコメントを見る」を取り違えて画面の位置が飛び、間のノートを飛ばした
+    (テストが毎回ウィンドウを閉じ直していたため、これまで気づけなかった)。"""
+    chat = SimChat([SimNote("さと", "本文A", "昨日 午後 7:58", comments=comments(31, "S"), reactions=10),
+                    SimNote("てんぷら", "本文B", "昨日 午後 3:23", comments=comments(5, "T"), reactions=10),
+                    SimNote("Conny", "本文C", "昨日 午後 2:35", comments=comments(8, "C"), reactions=10),
+                    SimNote("のの", "本文D", "昨日 午後 7:34", comments=comments(16, "N"), reactions=10),
+                    SimNote("てんぷら2", "本文E", "一昨日 午後 9:27", comments=comments(29, "T2"), reactions=10),
+                    SimNote("たらおし", "本文F", "一昨日 午後 7:58", comments=comments(8, "R"), reactions=10)], jitter=False)
+    ledger = Ledger()
+    run(chat, ledger)
+    assert all(n.open for n in chat.notes)                   # 1回目のあと、スレッドは開いたまま残る
+    for i, add in [(0, 1), (1, 1), (2, 3), (3, 2)]:
+        for k in range(add):
+            chat.notes[i].comments.append(SimComment(f"新{k}", f"新しいコメント{i}-{k}です。", "3分前"))
+    chat.scroll_y = 0.0                                      # ウィンドウは閉じ直さない
+    s, stats = _next_run(chat, ledger)
+    assert not stats.warnings, stats.warnings
+    assert not any(n["needs_recheck"] for n in ledger.notes)
+    assert {n["author_name"]: n["comment_count"] for n in ledger.notes} == {
+        "さと": 32, "てんぷら": 6, "Conny": 11, "のの": 18, "てんぷら2": 29, "たらおし": 8}
+    assert chat.forbidden_clicks == []
+
+
+def test_capture_is_retaken_to_the_end_when_the_early_stop_cut_off_a_processed_note():
+    """開いたまま残っている、変化の無いノートのコメント欄も「コメントを入力」として数えるので、開いた数より早く数え終わり、
+    処理したノートより手前で撮影が止まることがある。画像に入らないノートがあれば、そのときだけ最後まで撮り直す。"""
+    chat = SimChat([SimNote("参加者A", "本文A", "昨日 午後 7:58", comments=comments(5, "A"), reactions=10),
+                    SimNote("参加者B", "本文B", "昨日 午後 3:23", comments=comments(5, "B"), reactions=10),
+                    SimNote("参加者C", "本文C", "昨日 午後 2:35", comments=comments(5, "C"), reactions=10)], jitter=False)
+    ledger = Ledger()
+    run(chat, ledger)
+    chat.notes[2].comments.append(SimComment("新", "新しいコメントです。", "3分前"))    # 一番下のノートだけ増えた
+    chat.scroll_y = 0.0                                                             # A・B は開いたまま(変化なし)
+    s, stats = _next_run(chat, ledger)
+    assert s.reader.calls == [1, None]                       # 1回目は「1個数えたら止める」→ Aの終わりで止まり、C が入らない → 撮り直し
+    note = next(n for n in ledger.notes if n["author_name"] == "参加者C")
+    assert note["comment_count"] == 6 and len(note["comments"]) == 6 and not note["needs_recheck"]
+    assert not any("見つかりませんでした" in w for w in stats.warnings), stats.warnings
+
+
+def test_capture_is_retaken_when_a_processed_note_shows_only_its_header_at_the_cut_off_edge():
+    """撮影を止めた位置のすぐ下のノートは、見出しだけが画像の端に写り、コメント欄は画像の外になる。開いたノートのコメント欄が
+    0件に見えるのは、開いていなかったのではなく撮影が届かなかったからなので、最後まで撮り直す
+    (2026-09-29の実機: のの 表示18件・取得0件で、needs_recheck=「要確認」になった)。"""
+    chat = SimChat([SimNote("参加者A", "本文A", "昨日 午後 7:58", comments=comments(5, "A"), reactions=10),
+                    SimNote("参加者B", "本文B", "昨日 午後 3:23", comments=comments(5, "B"), reactions=10),
+                    SimNote("参加者C", "本文C", "昨日 午後 2:35", comments=comments(5, "C"), reactions=10)], jitter=False)
+    ledger = Ledger()
+    run(chat, ledger)
+    chat.notes[1].comments.append(SimComment("新", "新しいコメントです。", "3分前"))    # 2番目のノートだけ増えた(Aは開いたまま・変化なし)
+    chat.scroll_y = 0.0
+    s, stats = _next_run(chat, ledger)
+    assert s.reader.calls == [1, None]                       # Aの終わりで止まり、Bは見出しだけ → 撮り直し
+    note = next(n for n in ledger.notes if n["author_name"] == "参加者B")
+    assert note["comment_count"] == 6 and len(note["comments"]) == 6 and not note["needs_recheck"]
+    assert not any("件数不一致" in w for w in stats.warnings), stats.warnings
 
 
 def test_full_expand_option_disables_the_early_stop():

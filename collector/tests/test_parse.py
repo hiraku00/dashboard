@@ -98,3 +98,32 @@ def test_single_digit_count_is_not_lost_when_the_first_ocr_attempt_returns_nothi
     chat.digit_flaky_first = True
     note = next(b for b in blocks_at(chat) if b.kind == "note")
     assert note.comments == 8
+
+
+def test_a_note_whose_time_row_is_missing_is_not_merged_with_the_next_note_into_a_complete_block():
+    """途中の投稿の時刻行をOCRが読み落とすと、隣り合う2つの投稿が1つの区切りに合体する。以前は、先頭のアバターの作者名を採り、
+    「作者は前のノート・時刻とコメント数は次のノートのもの」という幽霊ノートを完全なブロックとして作った
+    (2026-09-29の実機事故: 作者hibye・時刻とコメント数55はNaozo。本番にも送られた)。合体したブロックは完全とは扱わない。"""
+    chat = SimChat([SimNote("hibye", "hibyeの本文です。", "昨日 午前 0:14", reactions=11),
+                    SimNote("Naozo", "Naozoの本文です。", "一昨日 午後 11:27", reactions=55)], jitter=False)
+    screen = chat.screen()
+    assert [(b.author, b.complete) for b in P.split_blocks(screen) if b.kind == "note"] == [("hibye", True), ("Naozo", True)]
+    screen.lines = [l for l in screen.lines if l.text != "昨日 午前 0:14"]        # hibye自身の時刻行を読み落とした
+    notes = [b for b in P.split_blocks(screen) if b.kind == "note"]
+    assert notes and not any(b.complete for b in notes), [(b.author, b.time_raw, b.complete) for b in notes]
+    assert all(b.suspicious for b in notes)
+
+
+def test_counts_row_without_any_number_reads_as_zero_reactions_and_zero_comments():
+    """リアクションもコメントも0件のノートは、カウント行に数字が1つも無く、アイコン3つだけ(実機で確認: わを 2026-09-29)。
+    以前は「読めない」とし、コメント数もコメントアイコンの位置も特定できず、新着ノートが要確認になった。"""
+    chat = SimChat([SimNote("わを", "本文です。", "22分前", reactions=0)], jitter=False)
+    note = next(b for b in P.split_blocks(chat.screen()) if b.kind == "note")
+    assert (note.reactions, note.comments) == (0, 0)
+    assert note.comment_icon is not None and note.counts_y is not None
+
+
+def test_counts_row_with_only_reactions_still_reads_zero_comments():
+    chat = SimChat([SimNote("はるも", "本文です。", "1時間前", reactions=5)], jitter=False)
+    note = next(b for b in P.split_blocks(chat.screen()) if b.kind == "note")
+    assert (note.reactions, note.comments) == (5, 0)
