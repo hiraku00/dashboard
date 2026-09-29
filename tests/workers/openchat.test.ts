@@ -296,6 +296,23 @@ describe("programs list", () => {
     expect(Date.parse(p!.newestSeenAt)).toBeGreaterThan(Date.now());
   });
 
+  test("a thread saved a second before the run's recorded start still counts as new for that run", async () => {
+    const prev = `run-${uid("r")}`;
+    await sync({ action: "start", clientRunId: prev, clientVersion: "test", startedAt: new Date(Date.now() + 10_000).toISOString() });
+    await sync({ action: "complete", clientRunId: prev, status: "success", stats: {}, warnings: [] });
+    const last = `run-${uid("r")}`;
+    const started = new Date(Date.now() + 60_000);
+    await sync({ action: "start", clientRunId: last, clientVersion: "test", startedAt: started.toISOString() });
+    const before = (await latestOpenchatRun())!.newPrograms;
+    // 実際に起きたずれ: 最初のノートの first_seen_at が、run の started_at より1秒早い。
+    const fresh = note({ programTitle: "一覧テスト: 開始直前に見つかった", bodyText: "開始より1秒早く保存", postedAt: "2026-09-20T06:31:00Z",
+      firstSeenAt: new Date(started.getTime() - 1_000).toISOString().replace(/\.\d+Z$/, "Z"), comments: [] });
+    await sync({ action: "notes", clientRunId: last, notes: [fresh] });
+    const latest = (await latestOpenchatRun())!;
+    expect(Date.parse(latest.newSince)).toBeLessThan(Date.parse(latest.startedAt));
+    expect(latest.newPrograms).toBe(before + 1);
+  });
+
   test("a program's issues say why it needs checking (recheck, incomplete body); a clean one has none", async () => {
     const p = (await listPrograms({ q: "他人のノートに複数" })).programs[0];
     expect(p.issues).toEqual(expect.arrayContaining([expect.stringContaining("本文が途中")]));   // note()の既定は body_complete=false

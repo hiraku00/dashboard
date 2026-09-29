@@ -187,29 +187,36 @@ export type LatestRun = {
   commentsNew: number; targetCommentsNew: number; warningCount: number; warnings: string[];
   /** 最後の取得で、ちきりんの投稿(スレッド・コメント)が初めて見つかった番組の数。一覧の「新着」の行。 */
   newPrograms: number;
+  /** 「新着」の基準: 1つ前の取得が終わった時刻(UTC, ISO)。これ以降に見つかったものが、最後の取得の成果。 */
+  newSince: string;
 };
 
 export async function latestOpenchatRun(): Promise<LatestRun | null> {
   await ensureSchema({ seed: false });
-  const row = (await env.DB.prepare(
-    "SELECT status, started_at, completed_at, notes_scanned, notes_opened, comments_new, target_comments_new, warnings_json FROM openchat_sync_runs ORDER BY started_at DESC LIMIT 1",
-  ).all<Record<string, unknown>>()).results?.[0];
+  const runs = (await env.DB.prepare(
+    "SELECT status, started_at, completed_at, notes_scanned, notes_opened, comments_new, target_comments_new, warnings_json FROM openchat_sync_runs ORDER BY started_at DESC LIMIT 2",
+  ).all<Record<string, unknown>>()).results ?? [];
+  const row = runs[0];
   if (!row) return null;
+  // 最後の取得の開始時刻より後、ではなく、1つ前の取得のあと。取得の途中で見つけたものが、開始時刻の記録より数秒早く保存されても数えられる。
+  // 1つ前が途中で止まって終了時刻が無いときは、その開始時刻。前の取得が無ければ最後の取得の開始時刻。
+  const prev = runs[1];
+  const newSince = String(prev?.completed_at ?? prev?.started_at ?? row.started_at);
   let warnings: string[] = [];
   try { warnings = (JSON.parse(String(row.warnings_json ?? "[]")) as unknown[]).map((w) => String(w).slice(0, 300)).slice(0, 50); } catch { /* 壊れていても件数0として扱う */ }
   const warningCount = warnings.length;
-  // 最後の取得(started_at)以降に初めて見つかった番組: 新しいスレッド、またはちきりんの新しい投稿(スレッド・コメント)。
+  // 最後の取得で初めて見つかった番組(newSince 以降): 新しいスレッド、またはちきりんの新しい投稿(スレッド・コメント)。
   // first_seen_at は「+07:00」付きのことがあるので datetime() でUTCにそろえる。
   const fresh = (await env.DB.prepare(
     `SELECT COUNT(*) AS c FROM openchat_notes n
       WHERE n.room = ? AND n.deleted_at IS NULL
         AND (datetime(n.first_seen_at) >= datetime(?)
              OR EXISTS (SELECT 1 FROM openchat_comments c WHERE c.note_id = n.id AND c.is_target = 1 AND c.deleted_at IS NULL AND datetime(c.first_seen_at) >= datetime(?)))`,
-  ).bind(ROOM, String(row.started_at), String(row.started_at)).first<{ c: number }>());
+  ).bind(ROOM, newSince, newSince).first<{ c: number }>());
   return {
     status: String(row.status), startedAt: String(row.started_at), completedAt: row.completed_at ? String(row.completed_at) : null,
     notesScanned: Number(row.notes_scanned ?? 0), notesOpened: Number(row.notes_opened ?? 0),
-    commentsNew: Number(row.comments_new ?? 0), targetCommentsNew: Number(row.target_comments_new ?? 0), warningCount, warnings, newPrograms: Number(fresh?.c ?? 0),
+    commentsNew: Number(row.comments_new ?? 0), targetCommentsNew: Number(row.target_comments_new ?? 0), warningCount, warnings, newPrograms: Number(fresh?.c ?? 0), newSince,
   };
 }
 
