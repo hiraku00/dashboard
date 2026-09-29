@@ -238,7 +238,7 @@ def parse_tall(image: TallImage, lines: list[Line], scale: float, win_w_pt: floa
 
 def _mark_truncated(blocks, cut_ys) -> None:
     """「前のコメントを見る」の直後にあった投稿(=読み込まれている中で一番古いコメント)に truncated を立てる.
-    セッションが一部だけ読んで止めたノートを、撮影した画像の側でも確かめられるようにする(session._capture_pending)."""
+    セッションが一部だけ読んで止めたノートを、撮影した画像の側でも確かめられるようにする(session._apply_group)."""
     if not cut_ys:
         return
     times = [b.y_time for b in blocks]

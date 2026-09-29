@@ -284,48 +284,39 @@ def _next_run(chat, ledger, first_run=False):
     return s, s.run()
 
 
-@pytest.mark.parametrize("changed_index", [0, 5])
-def test_capture_stops_after_the_last_opened_thread(changed_index):
-    """撮影は、開いたコメント欄の数だけ「コメントを入力」を数えたところで止める. 上のノートだけが変わったなら、下は撮らない。
-    一番下のノートが変わったなら、最後まで撮る。どちらも、読み取りの結果と警告は、最後まで撮った場合と同じ."""
+def _all_closed(chat) -> bool:
+    return not any(n.open for n in chat.notes)
+
+
+def test_each_changed_thread_is_read_where_it_is_and_closed_before_moving_on():
+    """変わったノートは、開いたその場でそのコメント欄だけを撮影して読み、閉じてから次へ進む(毎回閉じて終わる).
+    撮影は、ノートの見出しから(一覧の先頭からではなく)、開いたノートの数だけ行う。"""
     chat = build(jitter=False)
-    ledger = Ledger()
-    run(chat, ledger)
-    _close_window(chat)
-    chat.notes[changed_index].comments.append(SimComment("参加者Z", "新しいコメントです。", "1時間前"))
-    s, stats = _next_run(chat, ledger)
-    assert s.reader.calls == [1]                                     # 開いたコメント欄は1つ
-    assert s.reader.last_info["stopped"]
-    assert stats.notes_opened == 1 and stats.comments_new == 1, stats.warnings
-    assert not stats.warnings
+    ledger, stats = run(chat)
+    assert _all_closed(chat)                                  # 終わったとき、コメント欄はすべて閉じている
+    counts = {(n["author_name"], n["posted_at_raw"]): len(n["comments"]) for n in ledger.notes}
+    assert sum(counts.values()) == 3 + 4 + 24 + 0 + 1 + 2
     assert not any(n["needs_recheck"] for n in ledger.notes)
-    assert len(ledger.notes[changed_index]["comments"]) == len(chat.notes[changed_index].comments)
     assert chat.forbidden_clicks == []
 
 
-def test_first_run_never_stops_the_capture_early():
+@pytest.mark.parametrize("changed_index", [0, 2, 5])
+def test_consecutive_runs_start_with_all_threads_closed(changed_index):
+    """ウィンドウを閉じ直さずに続けて実行しても、前の実行が閉じて終わっているので、次の実行も閉じた状態から始まる
+    (以前は開いたまま残り、それが原因の不具合が続いた。テストが毎回閉じ直していて気づけなかった)。"""
     chat = build(jitter=False)
     ledger = Ledger()
-    s, stats = _next_run(chat, ledger, first_run=True)
-    assert s.reader.calls == [None] and not s.reader.last_info
-    assert sum(len(n["comments"]) for n in ledger.notes) == 3 + 4 + 24 + 0 + 1 + 2
-
-
-def test_stopped_capture_gives_the_same_ledger_as_a_full_capture():
-    """止めた場合と最後まで撮った場合で、台帳の中身(コメント)が同じ."""
-    def contents(stop):
-        chat = build(jitter=False)
-        ledger = Ledger()
-        run(chat, ledger)
-        _close_window(chat)
-        chat.notes[1].comments.append(SimComment("ちきりん", "補足: 三つ目です。", "1時間前", badge=True))
-        s = Session(SimDriver(chat), ledger, NOW, Options(first_run=False))
-        if not stop:
-            orig = s.reader.read_all
-            s.reader.read_all = lambda expect_ends=None, log=lambda m: None: orig(None)
-        s.run()
-        return [(n["author_name"], n["posted_at_raw"], [c["body_text"] for c in n["comments"]]) for n in ledger.notes]
-    assert contents(stop=True) == contents(stop=False)
+    run(chat, ledger)
+    assert _all_closed(chat)
+    chat.notes[changed_index].comments.append(SimComment("参加者Z", "新しいコメントです。", "1時間前"))
+    chat.scroll_y = 0.0                                       # ウィンドウは閉じ直さない
+    s, stats = _next_run(chat, ledger)
+    assert stats.notes_opened == 1 and stats.comments_new == 1, stats.warnings
+    assert not stats.warnings, stats.warnings
+    assert len(s.reader.calls) == 1                           # 撮影は、開いた1件ぶんだけ
+    assert _all_closed(chat)
+    assert not any(n["needs_recheck"] for n in ledger.notes)
+    assert len(ledger.notes[changed_index]["comments"]) == len(chat.notes[changed_index].comments)
 
 
 # ---------- 見出し探索: 本文が似た別の投稿に惑わされない(2026-09-28の実機事故の再発防止) ----------
@@ -510,10 +501,9 @@ def test_load_earlier_gives_up_instead_of_wandering_when_the_screen_does_not_mov
     assert len(s.scrolls) <= 4                               # 何十回も繰り返さない
 
 
-def test_scan_does_not_skip_notes_when_threads_from_the_previous_run_are_left_open():
-    """前回開いたスレッドが開いたまま残っている状態(実機は毎回閉じ直さない)で、コメントが増えたノートを走査が
-    1件も飛ばさない。以前の走査は、別ノートの「前のコメントを見る」を取り違えて画面の位置が飛び、間のノートを飛ばした
-    (テストが毎回ウィンドウを閉じ直していたため、これまで気づけなかった)。"""
+def test_threads_left_open_by_an_interrupted_run_are_read_or_closed_with_a_warning():
+    """前提は「閉じた状態から始まる」。前回の実行が途中で止まるとコメント欄が開いたまま残ることがあるので、
+    変わったノートは警告を出して読んでから閉じ、変わっていないノートは警告を出して閉じる。走査は1件も飛ばさない。"""
     chat = SimChat([SimNote("さと", "本文A", "昨日 午後 7:58", comments=comments(31, "S"), reactions=10),
                     SimNote("てんぷら", "本文B", "昨日 午後 3:23", comments=comments(5, "T"), reactions=10),
                     SimNote("Conny", "本文C", "昨日 午後 2:35", comments=comments(8, "C"), reactions=10),
@@ -522,52 +512,55 @@ def test_scan_does_not_skip_notes_when_threads_from_the_previous_run_are_left_op
                     SimNote("たらおし", "本文F", "一昨日 午後 7:58", comments=comments(8, "R"), reactions=10)], jitter=False)
     ledger = Ledger()
     run(chat, ledger)
-    assert all(n.open for n in chat.notes)                   # 1回目のあと、スレッドは開いたまま残る
+    assert _all_closed(chat)
     for i, add in [(0, 1), (1, 1), (2, 3), (3, 2)]:
         for k in range(add):
             chat.notes[i].comments.append(SimComment(f"新{k}", f"新しいコメント{i}-{k}です。", "3分前"))
-    chat.scroll_y = 0.0                                      # ウィンドウは閉じ直さない
+    chat.notes[0].open = True                                 # 前回が中断して、変わったノートが開いたまま
+    chat.notes[4].open = True                                 # 前回が中断して、変わっていないノートが開いたまま
+    chat.notes[4].earlier_loaded = 1
+    chat.scroll_y = 0.0
     s, stats = _next_run(chat, ledger)
-    assert not stats.warnings, stats.warnings
+    left_open = [w for w in stats.warnings if "開いたまま残って" in w]
+    assert len(left_open) == 2 and len(stats.warnings) == 2, stats.warnings
+    assert _all_closed(chat)
     assert not any(n["needs_recheck"] for n in ledger.notes)
     assert {n["author_name"]: n["comment_count"] for n in ledger.notes} == {
         "さと": 32, "てんぷら": 6, "Conny": 11, "のの": 18, "てんぷら2": 29, "たらおし": 8}
     assert chat.forbidden_clicks == []
 
 
-def test_capture_is_retaken_to_the_end_when_the_early_stop_cut_off_a_processed_note():
-    """開いたまま残っている、変化の無いノートのコメント欄も「コメントを入力」として数えるので、開いた数より早く数え終わり、
-    処理したノートより手前で撮影が止まることがある。画像に入らないノートがあれば、そのときだけ最後まで撮り直す。"""
-    chat = SimChat([SimNote("参加者A", "本文A", "昨日 午後 7:58", comments=comments(5, "A"), reactions=10),
-                    SimNote("参加者B", "本文B", "昨日 午後 3:23", comments=comments(5, "B"), reactions=10),
-                    SimNote("参加者C", "本文C", "昨日 午後 2:35", comments=comments(5, "C"), reactions=10)], jitter=False)
+def test_a_read_that_misses_the_thread_is_retaken_once_then_marked_for_recheck_and_still_closed():
+    """撮影した画像にこのノートのコメント欄が写っていなければ1回撮り直す。それでもだめなら needs_recheck にして、
+    コメント欄は閉じてから次へ進む(開いたまま次へ進むと、前提が崩れる)。"""
+    chat = build(jitter=False)
     ledger = Ledger()
     run(chat, ledger)
-    chat.notes[2].comments.append(SimComment("新", "新しいコメントです。", "3分前"))    # 一番下のノートだけ増えた
-    chat.scroll_y = 0.0                                                             # A・B は開いたまま(変化なし)
-    s, stats = _next_run(chat, ledger)
-    assert s.reader.calls == [1, None]                       # 1回目は「1個数えたら止める」→ Aの終わりで止まり、C が入らない → 撮り直し
-    note = next(n for n in ledger.notes if n["author_name"] == "参加者C")
-    assert note["comment_count"] == 6 and len(note["comments"]) == 6 and not note["needs_recheck"]
-    assert not any("見つかりませんでした" in w for w in stats.warnings), stats.warnings
-
-
-def test_capture_is_retaken_when_a_processed_note_shows_only_its_header_at_the_cut_off_edge():
-    """撮影を止めた位置のすぐ下のノートは、見出しだけが画像の端に写り、コメント欄は画像の外になる。開いたノートのコメント欄が
-    0件に見えるのは、開いていなかったのではなく撮影が届かなかったからなので、最後まで撮り直す
-    (2026-09-29の実機: のの 表示18件・取得0件で、needs_recheck=「要確認」になった)。"""
-    chat = SimChat([SimNote("参加者A", "本文A", "昨日 午後 7:58", comments=comments(5, "A"), reactions=10),
-                    SimNote("参加者B", "本文B", "昨日 午後 3:23", comments=comments(5, "B"), reactions=10),
-                    SimNote("参加者C", "本文C", "昨日 午後 2:35", comments=comments(5, "C"), reactions=10)], jitter=False)
-    ledger = Ledger()
-    run(chat, ledger)
-    chat.notes[1].comments.append(SimComment("新", "新しいコメントです。", "3分前"))    # 2番目のノートだけ増えた(Aは開いたまま・変化なし)
+    chat.notes[0].comments.append(SimComment("参加者Z", "新しいコメントです。", "1時間前"))
     chat.scroll_y = 0.0
-    s, stats = _next_run(chat, ledger)
-    assert s.reader.calls == [1, None]                       # Aの終わりで止まり、Bは見出しだけ → 撮り直し
-    note = next(n for n in ledger.notes if n["author_name"] == "参加者B")
-    assert note["comment_count"] == 6 and len(note["comments"]) == 6 and not note["needs_recheck"]
-    assert not any("件数不一致" in w for w in stats.warnings), stats.warnings
+
+    s = Session(SimDriver(chat), ledger, NOW, Options(first_run=False))
+    real = s.reader.read_thread
+    tries = {"n": 0}
+    def flaky(start_y_pt, log=lambda m: None):
+        tries["n"] += 1
+        return ([], []) if tries["n"] == 1 else real(start_y_pt, log)
+    s.reader.read_thread = flaky
+    stats = s.run()
+    assert tries["n"] == 2 and not stats.warnings, stats.warnings    # 1回目は写っていない → 撮り直して読めた
+    assert ledger.notes[0]["comment_count"] == 4 and not ledger.notes[0]["needs_recheck"]
+    assert _all_closed(chat)
+
+    chat.notes[0].comments.append(SimComment("参加者Y", "もう一つ新しいコメントです。", "1時間前"))
+    chat.scroll_y = 0.0
+    s = Session(SimDriver(chat), ledger, NOW, Options(first_run=False))
+    def never(start_y_pt, log=None):
+        return [], []
+    s.reader.read_thread = never
+    stats = s.run()
+    assert any("写っていませんでした" in w for w in stats.warnings), stats.warnings
+    assert ledger.notes[0]["needs_recheck"]
+    assert _all_closed(chat)                                  # 読めなくても、閉じてから次へ進む
 
 
 def test_full_expand_option_disables_the_early_stop():

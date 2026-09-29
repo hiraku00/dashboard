@@ -104,9 +104,8 @@ class Session:
         # 画面1枚ごとの細かいログは、調べるとき(LINE_OPENCHAT_DEBUG=1)だけ出す
         self.debug = log if os.environ.get("LINE_OPENCHAT_DEBUG") else (lambda s: None)
         self.stats = RunStats()
-        self._pending: list[tuple[dict, int | None, bool]] = []  # コメント欄を開いたノート(note, expected, partial)。読み取りは走査のあと
         self._visited: set[str] = set()                         # 走査で件数を見て、開くかを判断したノートのID
-        self._threads_open = 0                                  # この実行で開いた(開いているのを見つけた)コメント欄の数
+        self._left_open: dict | None = None                     # 開いた(開いているのを見つけた)まま、まだ閉じていないノート
         self._carry: tuple[Screen, list[Block]] | None = None   # _advance が撮った画面を、次の shot() で再利用する
 
     # ---------- 画面 ----------
@@ -147,20 +146,15 @@ class Session:
 
     # ---------- ノート一覧 ----------
     def run(self) -> RunStats:
-        """全体は3段階: ①一覧を走査(変わったノートを探す) → ②(変わったノートがあれば)撮影の準備 →
-        ③開いたコメント欄をまとめて撮影・読み取り。段階の変わり目をログに出す(各行のタイムスタンプに、
-        runner.py が経過秒数を添える)。ノートが1件も変わっていなければ、②③は行わない。"""
+        """一覧を上から走査し、変わったノートはその場で読んで閉じる(docs/openchat-per-note-capture-design.md).
+        変わったノートごとに: 開く → 「前のコメントを見る」を必要な分だけ押す → そのコメント欄だけを撮影・OCRして台帳へ
+        反映 → コメントアイコンを押して閉じる。毎回閉じて終わるので、次の実行もコメント欄が閉じた状態から始まる。"""
         stats = self.stats
         digits.reset_stats()
         try:
-            self.log("① 一覧を走査します(変わったノートを探します)")
-            self.reader.prepare()                 # 撮影の調整(一覧の先頭へ戻る)
+            self.log("一覧を走査します(変わったノートは、その場で読み取って閉じます)")
+            self.reader.prepare()                 # 撮影の調整(倍率などを測る。一覧の先頭へ戻る)
             self._scan()
-            if self._pending:
-                self.log(f"② コメント欄を撮影・読み取りします({len(self._pending)}件)")
-                self._capture_pending()
-            else:
-                self.log("② 変わったノートはありませんでした(撮影は不要です)")
         except Aborted as exc:
             stats.aborted = True
             stats.warnings.append(f"中断: {exc}")
@@ -207,7 +201,7 @@ class Session:
                     # 本文を開く・コメント欄を探すのに時間がかかることがある(長いノートでは見出しの探索が
                     # 何十回もスクロールを繰り返すこともある)。終わるまで何も出ないと止まって見えるので、先に出す
                     self.log(f"  {note['author_name']} {note['posted_at_raw']} を確認しています…")
-                changed = self._process_note(note, is_new, obs, b, screen)
+                changed = self._process_note(note, is_new, obs, b, screen, blocks)
                 self.opts.checkpoint()
                 unchanged = 0 if (changed or is_new) else unchanged + 1
                 self.log(f"note {note['author_name']} {note['posted_at']} 💬{obs.comments} {'NEW ' if is_new else ''}{'OPEN ' if changed else ''}")
@@ -273,8 +267,10 @@ class Session:
         return step
 
     # ---------- 1件のノート ----------
-    def _process_note(self, note: dict, is_new: bool, obs: NoteObs, block: Block, screen: Screen) -> bool:
-        """開く必要があれば開いて集める. 画面を動かしたら True."""
+    def _process_note(self, note: dict, is_new: bool, obs: NoteObs, block: Block, screen: Screen,
+                      blocks: list[Block] | None = None) -> bool:
+        """開く必要があれば開いて、その場で読んで閉じる. 画面を動かしたら True.
+        変わっていないのにコメント欄が開いていたら(前回の実行が途中で止まった等)、読まずに閉じる。"""
         expected = obs.comments
         need_comments = expected is None or expected != note["comment_count"] or note.get("needs_recheck", False)
         # 全スレッドを画面に出すので、本文(番組の情報)は全スレッドで全文取る(1スレッドにつき「もっと見る」を1回押すだけ)
@@ -282,6 +278,11 @@ class Session:
         if expected is None:
             self.stats.warnings.append(f"コメント数を読めませんでした(1倍のディスプレイでは小さい数字を読めないことがあります。Retinaディスプレイでの実行を推奨): {note['author_name']} {obs.posted_raw}")
         if not need_body and not need_comments:
+            if blocks is not None and block in blocks and self._is_open(blocks, block):
+                self.stats.warnings.append(f"{self._label(note)}: 開いたまま残っていたコメント欄を閉じました"
+                                           "(前回の実行が途中で止まった可能性があります)")
+                self._close_quietly(note)
+                return True
             return False
         moved = False
         if need_body:
@@ -350,85 +351,82 @@ class Session:
 
     # ---------- コメント欄 ----------
     def _collect_thread(self, note: dict, expected: int | None, full_expand: bool) -> None:
-        """コメント欄を開く. full_expand なら「前のコメントを見る」を押し切り、そうでなければ既読の所で止める(_load_earlier).
-        読み取りは、走査が終わってから全体を1回で行う(_capture_pending)."""
+        """コメント欄を開き、「前のコメントを見る」を必要な分だけ押し、その場で撮影・OCRして台帳へ反映し、閉じる.
+        途中で失敗したら、そのノートは needs_recheck にして実行は続ける。開いていたら、失敗しても閉じてから次へ進む。"""
+        self._left_open = None
         try:
             partial = self._open_thread(note, full_expand)
+            self._read_thread(note, expected, partial)
         except Aborted:
             raise                                       # ユーザーの操作による中断は、ノートの失敗として握りつぶさない
         except SessionError as exc:
             self.stats.warnings.append(f"{note['author_name']} {note['posted_at_raw']}: {exc}")
             note["needs_recheck"] = True
             note["pending_upload"] = True
-            return
-        self._pending.append((note, expected, partial))
+        if self._left_open is note:
+            self._close_quietly(note)
 
-    def _capture_pending(self) -> None:
-        """開いたコメント欄をまとめて読む: 一覧の先頭から末尾まで、スクロールだけで撮ってつなぎ、1回OCRして区切る(threadread.py)."""
-        if not self._pending:
-            return
-        self.opts.pause()
-        # 開いたコメント欄の数だけ「コメントを入力」を数えたら、撮影を止める(それより下は、走査で「変化なし」と判断したノート)。
-        # 初回は、一覧の最後まで全件を読む前提なので止めない
-        expect = None if self.opts.first_run else self._threads_open
-        groups, warnings = self.reader.read_all(expect_ends=expect, log=self.log)
-        info = getattr(self.reader, "last_info", None)
-        if info:
-            self._log_capture(info)
-        if info and info.get("stopped"):
-            # 前回開いたまま残っているコメント欄も「コメントを入力」として数えるので、開いた数より早く数え終わり、
-            # 処理したノートより手前で止まることがある(2026-09-29の実機で、走査で開いたノートが画像に入らなかった)。
-            # 画像に入らなかったノートがあれば、そのときだけ、最後まで撮り直す
-            # 見出しだけが画像の端に写っていて、コメント欄が画像の外(止めた位置より下)のものも含む(実機で、ののがこれだった:
-            # 表示18件・取得0件)。開いたノートのコメント欄が0件に見えるのは、開いていなかったのではなく、撮影が届かなかった
-            missing = [n for n, e, _ in self._pending
-                       if (g := self._match_group(n, groups)) is None or (not g.comments and (e or 0) > 0)]
-            if missing:
-                self.log(f"  撮影を途中で止めたため、{len(missing)}件のノートのコメント欄が画像に入りませんでした。最後まで撮り直します")
+    def _close_quietly(self, note: dict) -> None:
+        """閉じる. 閉じられなくても実行は続ける(警告に残す。次の実行で、開いたまま残っていたものとして閉じる)."""
+        try:
+            self._close_thread(note)
+            self.log("    コメント欄を閉じました")
+        except Aborted:
+            raise
+        except SessionError as exc:
+            self.stats.warnings.append(f"{self._label(note)}: コメント欄を閉じられませんでした({exc})")
+
+    def _read_thread(self, note: dict, expected: int | None, partial: bool) -> None:
+        """このノートのコメント欄だけを、見出しから終わりまで撮影・OCRし、台帳へ反映する(1回まで撮り直す)."""
+        for attempt in range(2):
+            header, screen, blocks = self._seek_header(note)
+            band_top = float(getattr(self.reader, "band_top_pt", 0.0))
+            for _ in range(4):                          # 見出しが撮影の帯(固定見出しの下)に入っていること
+                if header.y_top >= band_top + 2:
+                    break
+                self.scroll(-3)
+                header, screen, blocks = self._seek_header(note)
+            self.log("    コメント欄を撮影して読み取ります")
+            groups, warnings = self.reader.read_thread(header.y_top, log=self.log)
+            info = getattr(self.reader, "last_info", None)
+            if info:
+                self._log_capture(info)
+            best = self._match_group(note, groups)
+            if best is not None and (best.comments or not (expected or 0)):
                 for w in warnings:
                     self.stats.warnings.append(w)
-                groups, warnings = self.reader.read_all(expect_ends=None, log=self.log)
-                info = getattr(self.reader, "last_info", None)
-                if info:
-                    self._log_capture(info)
-        for w in warnings:
-            self.stats.warnings.append(w)
-        for note, expected, partial in self._pending:
-            best = self._match_group(note, groups)
-            label = self._label(note)
-            if best is not None:
-                self._adopt_full_body(note, best.note)
-            if best is None:
-                stopped = "(撮影を途中で止めていたため、止めた位置より下にあった可能性があります)" if info and info.get("stopped") else ""
-                self.stats.warnings.append(f"{label}: 撮影した画像の中にノートが見つかりませんでした{stopped}")
-                note["needs_recheck"] = True
-                note["pending_upload"] = True
+                self._apply_group(note, expected, partial, best)
+                return
+            if attempt == 0:
+                self.log("    撮影した画像に、このノートのコメント欄が写っていませんでした。撮り直します")
+        raise SessionError("撮影した画像に、このノートのコメント欄が写っていませんでした")
+
+    def _apply_group(self, note: dict, expected: int | None, partial: bool, best) -> None:
+        """撮影して区切ったこのノートの塊を、台帳へ反映する(件数の照合は ledger.apply_collection)."""
+        label = self._label(note)
+        self._adopt_full_body(note, best.note)
+        observed = []
+        for b in best.comments:
+            c = comment_obs(b, self.now)
+            if c is None:
+                self.stats.warnings.append(f"時刻を読めないコメントがあります: {b.time_raw!r}")
                 continue
-            observed = []
-            for b in best.comments:
-                c = comment_obs(b, self.now)
-                if c is None:
-                    self.stats.warnings.append(f"時刻を読めないコメントがあります: {b.time_raw!r}")
-                    continue
-                observed.append(c)
-            shown = best.note.comments
-            if shown is not None and shown != expected:
-                self.log(f"開いた後の件数に更新: {expected} → {shown}")
-                expected = shown                        # 読んでいる間に増減したことがある。開いた後の見出しの件数が最新
-            # 走査時の記録(partial)を正とする。撮影(best.truncated)と食い違えば、安全側(削除を検知しない側)に倒す
-            if partial and not best.truncated:
-                partial = False                          # 待っている間にさらに読み込まれていた(良い方向): 全部として扱う
-            elif not partial and best.truncated:
-                self.stats.warnings.append(f"{label}: 撮影に「前のコメントを見る」が残っていました(取りこぼしの可能性)")
-                partial = True
-            res = self.ledger.apply_collection(note, observed, expected, self.now_iso, partial=partial)
-            self._count(res)
-            for w in res.warnings:
-                self.stats.warnings.append(f"{label}: {w}")
-            self.opts.checkpoint()
-        handled = {id(n) for n, _, _ in self._pending}
-        self._pending.clear()
-        self._apply_unvisited(groups, handled)
+            observed.append(c)
+        shown = best.note.comments
+        if shown is not None and shown != expected:
+            self.log(f"    開いた後の件数に更新: {expected} → {shown}")
+            expected = shown                            # 読んでいる間に増減したことがある。開いた後の見出しの件数が最新
+        # 走査時の記録(partial)を正とする。撮影(best.truncated)と食い違えば、安全側(削除を検知しない側)に倒す
+        if partial and not best.truncated:
+            partial = False                              # さらに読み込まれていた(良い方向): 全部として扱う
+        elif not partial and best.truncated:
+            self.stats.warnings.append(f"{label}: 撮影に「前のコメントを見る」が残っていました(取りこぼしの可能性)")
+            partial = True
+        res = self.ledger.apply_collection(note, observed, expected, self.now_iso, partial=partial)
+        self._count(res)
+        for w in res.warnings:
+            self.stats.warnings.append(f"{label}: {w}")
+        self.opts.checkpoint()
 
     def _match_group(self, note: dict, groups: list):
         """撮影した画像から区切ったノートの塊のうち、このノートに当たるもの(無ければ None)."""
@@ -441,54 +439,8 @@ class Session:
         return best
 
     def _log_capture(self, info: dict) -> None:
-        """撮影の記録(枚数・止めたか・各段の秒数). 撮影を止める効果を、実機で確かめるためのログ."""
-        end = (f"停止(コメント欄の終わり {info['ends']}/{info['expect']})" if info.get("stopped")
-               else ("最後まで撮影" + (f"(コメント欄の終わり {info['ends']}/{info['expect']} で止まらず)" if info.get("expect") else "")))
-        self.log(f"撮影: {info['frames']}枚 / {end} / 撮影+判定 {info['scan_sec']:.0f}秒(うち停止の判定 {info['stop_ocr_sec']:.1f}秒)"
-                 f"・OCR {info['ocr_sec']:.0f}秒・区切り {info['parse_sec']:.0f}秒")
-
-    def _apply_unvisited(self, groups: list, handled: set[int]) -> None:
-        """走査で完全な形が見えなかったノート(画面の切れ目に掛かるなど)も、撮影した画像には写っている。
-        コメント欄が開いていて、表示の件数と読めた件数が合うものは、ここで台帳に反映する(合わなければ、次回の再確認に回す).
-
-        走査で件数を見て「変化なし」と判断したノートは、コメント欄を開いていないので、撮影には「表示N件 / 取得0件」と写る。
-        これを件数の不一致として再確認に回すと、次の実行で開き、その実行で開かなかったノートがまた再確認に回る(1回おきに
-        ほぼ全部のノートを開き直していた)。走査で判断済みのノートは、本文の補完だけにとどめる。"""
-        for g in groups:
-            obs = note_obs(g.note, self.now)
-            if obs is None:
-                continue
-            existing = identity.match_note(self.ledger.notes, obs.as_match_dict())
-            if existing is not None and id(existing) in handled:
-                continue
-            if existing is not None and existing["id"] in self._visited:
-                self._adopt_full_body(existing, g.note)
-                continue
-            if existing is None and self._reached_old({"posted_at": obs.posted_at}) and not self.opts.first_run:
-                continue
-            note, is_new = self.ledger.upsert_note(obs, self.now_iso)
-            self._adopt_full_body(note, g.note)
-            shown = g.note.comments
-            observed = [c for c in (comment_obs(b, self.now) for b in g.comments) if c is not None]
-            label = self._label(note)
-            if g.truncated and shown is not None:
-                # 前回までに開いたまま、今回は開かなかったコメント欄が、一部だけ読み込まれた状態で撮影に写った
-                res = self.ledger.apply_collection(note, observed, shown, self.now_iso, partial=True)
-                self._count(res)
-                for w in res.warnings:
-                    self.stats.warnings.append(f"{label}: {w}")
-            elif shown is not None and shown == len(observed) and (observed or shown == 0):
-                res = self.ledger.apply_collection(note, observed, shown, self.now_iso)
-                self._count(res)
-                self.stats.notes_scanned += 1 if is_new else 0
-                self.log(f"note {label} 💬{shown} (撮影から)")
-            elif not is_new and not g.comments and shown is not None and shown == note["comment_count"] and not note.get("needs_recheck"):
-                pass                    # コメント欄は閉じているが、件数は台帳と同じ(変化なし)
-            else:
-                note["needs_recheck"] = True
-                note["pending_upload"] = True
-                self.stats.warnings.append(f"{label}: 走査で見えず、撮影でも件数が合わないため、次回に確認します(表示{shown} / 取得{len(observed)})")
-            self.opts.checkpoint()
+        """1件ぶんの撮影の記録(枚数・各段の秒数)."""
+        self.log(f"    撮影 {info['frames']}枚・{info['scan_sec']:.0f}秒 / OCR {info['ocr_sec']:.0f}秒 / 区切り {info['parse_sec']:.0f}秒")
 
     def _adopt_full_body(self, note: dict, block: Block) -> None:
         """撮影した画像で本文が最後まで読めている(「もっと見る」が残っていない)なら、その本文を採る.
@@ -518,12 +470,10 @@ class Session:
             return None                      # ノートの下が画面の外で、開いているか分からない
         return blocks[i + 1].kind in ("comment", "cut", "end")
 
-    def _open_thread(self, note: dict, full_expand: bool) -> bool:
-        """コメント欄を見出しから開き(閉じていれば)、「前のコメントを見る」を扱う. 戻り値は _load_earlier の結果
-        (一部だけ読んで止めたら True)."""
-        # 1. ノートの見出しを画面に出す
+    def _locate_thread(self, note: dict) -> tuple[Block, Screen, bool]:
+        """見出しを画面に出し、コメント欄が開いているかを確かめる. 戻り値: (見出し, 画面, 開いているか).
+        見出しは、コメントアイコンを押せる状態(完全に見える)で返す。"""
         header, screen, blocks = self._seek_header(note)
-        # 2. コメント欄が閉じていれば開く. ノートの下が画面の外なら、少し進めて確かめる
         is_open = self._is_open(blocks, header)
         moved = 0
         stale = False                            # 最後に見つけた見出しが、画面の上に出て不完全(押す位置を測り直す必要がある)
@@ -551,22 +501,45 @@ class Session:
                 is_open = None
         if is_open is None:
             raise SessionError("コメント欄が開いているか判定できません")
-        if is_open is False:
-            if moved and stale:
-                # 押すアイコンの位置は、見出しが完全に見える画面で測り直す(進んだ分を戻す)
-                self.scroll(-moved)
-                screen, blocks = self.shot()
-                fresh = self._find_block(blocks, note)
-                if fresh is not None:
-                    header = fresh                # 見つからなければ、直前の画面の位置を使う(押す前に、画面で確認される)
-            if not header.comment_icon or header.counts_y is None:
-                raise SessionError("コメントアイコンの位置を特定できません")
-            x0, x1 = header.comment_icon
-            self._click(ClickTarget("toggle_comments", (x0 + x1) / 2, header.counts_y, icon_span=(x0, x1),
-                                    counts_y=header.counts_y), screen)
-        self._threads_open += 1                  # 開いた(または、開いていた). 撮影は、この数だけコメント欄の終わりを数えたら止める
-        # 3. 「前のコメントを見る」を扱い、見出しが見える位置まで戻る
+        if moved and stale:
+            # 押すアイコンの位置は、見出しが完全に見える画面で測り直す(進んだ分を戻す)
+            self.scroll(-moved)
+            screen, blocks = self.shot()
+            fresh = self._find_block(blocks, note)
+            if fresh is not None:
+                header = fresh                    # 見つからなければ、直前の画面の位置を使う(押す前に、画面で確認される)
+        return header, screen, is_open
+
+    def _press_comment_icon(self, header: Block, screen: Screen) -> None:
+        """コメントアイコン(開く・閉じるの切り替え)を押す."""
+        if not header.comment_icon or header.counts_y is None:
+            raise SessionError("コメントアイコンの位置を特定できません")
+        x0, x1 = header.comment_icon
+        self._click(ClickTarget("toggle_comments", (x0 + x1) / 2, header.counts_y, icon_span=(x0, x1),
+                                counts_y=header.counts_y), screen)
+
+    def _open_thread(self, note: dict, full_expand: bool) -> bool:
+        """コメント欄を開き(閉じていれば)、「前のコメントを見る」を扱う. 戻り値は _load_earlier の結果
+        (一部だけ読んで止めたら True). 前提は「閉じた状態から始まる」。開いていたら警告に残す。"""
+        header, screen, is_open = self._locate_thread(note)
+        if is_open:
+            self.stats.warnings.append(f"{self._label(note)}: コメント欄が開いたまま残っていました"
+                                       "(前回の実行が途中で止まった可能性があります。読み取って閉じます)")
+        else:
+            self._press_comment_icon(header, screen)
+        self._left_open = note                   # ここから先で失敗しても、閉じてから次へ進む
         return self._load_earlier(note, full_expand)
+
+    def _close_thread(self, note: dict) -> None:
+        """コメント欄を閉じ、閉じたことを画面で確かめる."""
+        for _ in range(3):
+            header, screen, is_open = self._locate_thread(note)
+            if not is_open:
+                if self._left_open is note:
+                    self._left_open = None
+                return
+            self._press_comment_icon(header, screen)
+        raise SessionError("コメントアイコンを押しても閉じません")
 
     def _hint_y(self, screen: Screen, blocks: list[Block], note: dict) -> float | None:
         """画面のどこかに、このノートの1行目が写っていれば、そのy(見出しが近い手がかり).
@@ -678,7 +651,7 @@ class Session:
         それ以上は押さずに終える(LINEは新しいコメントを下に表示し、押すたびに古い方へ足すので、
         一番古い表示中のものが既読なら、それより上もすべて既読)。
 
-        戻り値: 一部だけ読んで止めたら True(_capture_pending が ledger.apply_collection の partial に渡す)。
+        戻り値: 一部だけ読んで止めたら True(_read_thread が ledger.apply_collection の partial に渡す)。
         全部押し切った・元から閉じていた(ボタンが無かった)場合は False。
 
         「前のコメントを見る」は、コメント欄の一番上(見出しの時刻行のすぐ下)にある。
