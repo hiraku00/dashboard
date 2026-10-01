@@ -3,7 +3,7 @@ import { parseLinkPreview } from "@/app/lib/link-preview";
 import { safeUrl } from "@/app/lib/openchat-meta";
 import { fetchPageHead } from "@/app/lib/thumbnail-fetch";
 
-/** Watch List の編集画面: 1つ目のリンクのページから、放送局・番組名・タイトルを読み取って返す(YouTube は youtube-preview が担当)。 */
+/** ちきりんオプチャ詳細の放送情報フォーム(「リンクから取得」ボタン): リンクのページから、放送局・番組名・タイトルを読み取って返す。 */
 export const POST = route(async (request: Request) => {
   const body = await request.json().catch(() => null) as { url?: unknown } | null;
   const url = safeUrl(body?.url);

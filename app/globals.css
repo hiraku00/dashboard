@@ -309,6 +309,7 @@ h1,h2,h3 { color:var(--ink); } h1 { margin:0; font-size:30px; line-height:1.1; l
 .chikirin-tz { color:var(--faint); }
 .chikirin-warnings { display:inline-block; margin-left:10px; }.chikirin-warnings summary { cursor:pointer; color:#b45309; font-weight:700; }.chikirin-warnings ul { margin:6px 0 0; padding-left:18px; color:var(--ink); }
 .chikirin-table .head-2 { display:inline-block; line-height:1.25; }
+.links-editor-actions { display:flex; gap:14px; }
 .links-editor .youtube-import-notice { margin:0 0 5px!important; border-top:0; padding-top:0; font-size:12px; color:#0057aa!important; }
 .chikirin-table .col-status { width:52px; }.chikirin-table .col-texttube { width:60px; }
 /* スマホ幅では、共通の.content-tableカード変換(Watch List向けの列名・ラベル)がそのままでは

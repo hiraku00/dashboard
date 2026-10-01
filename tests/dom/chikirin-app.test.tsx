@@ -448,3 +448,23 @@ test("視聴済 column: a link registered in Watch List shows its status; comple
   expect(cellOf({ [url]: { url, title: "t", count: 1, status: "backlog", watchedOn: null } })).toBe("未視聴");
   expect(cellOf({})).toBe("—");
 });
+
+test("放送情報 form: 「リンクから番組情報を取得」 fills 放送局・番組名・番組タイトル from the first link's page (not on typing, not on save); nothing is saved until 保存", async () => {
+  const unedited = program({ meta: { broadcaster: "", programName: "", episodeTitle: "", links: [] }, linkUrl: "" });
+  const fetchMock = vi.fn((...[url]: [string, RequestInit?]) => Promise.resolve(url.includes("link-preview")
+    ? json({ preview: { creatorName: "NHK", seriesTitle: "国際報道 2026", title: "韓国で悪化する対中感情" } })
+    : json({ program: unedited })));
+  vi.stubGlobal("fetch", fetchMock);
+  render(<ChikirinDetail id="n1" initialProgram={unedited as never} />);
+  const button = screen.getByRole("button", { name: "リンクから番組情報を取得" }) as HTMLButtonElement;
+  expect(button.disabled).toBe(true);   // URL が無いうちは押せない
+  fireEvent.change(screen.getByLabelText("リンク1のURL"), { target: { value: "https://www.web.nhk/tv/pl/series-tep-X/ep/Y" } });
+  const previews = () => fetchMock.mock.calls.filter(([url]) => String(url).includes("link-preview"));
+  expect(previews()).toHaveLength(0);   // 入力しただけでは取得しない
+  fireEvent.click(button);
+  await waitFor(() => expect((screen.getByLabelText("番組名") as HTMLInputElement).value).toBe("国際報道 2026"));
+  expect((screen.getByLabelText("番組タイトル") as HTMLInputElement).value).toBe("韓国で悪化する対中感情");
+  expect((screen.getByLabelText("放送局") as HTMLInputElement).value).toBe("NHK");
+  expect(previews()).toHaveLength(1);
+  expect(fetchMock.mock.calls.some(([, init]) => (init as RequestInit | undefined)?.method === "PUT")).toBe(false);   // 保存(PUT)はまだ呼ばれていない
+});
