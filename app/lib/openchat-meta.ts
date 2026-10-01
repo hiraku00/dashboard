@@ -63,8 +63,7 @@ export function metaFromRow(row: Record<string, unknown> | null | undefined): Me
 type Site = { host: string; pathPrefix?: string; name: string; broadcaster: string };
 export const SITES: Site[] = [
   { host: "web.nhk", name: "NHK ONE", broadcaster: "NHK" },
-  { host: "txbiz.tv-tokyo.co.jp", pathPrefix: "/wbs", name: "WBS", broadcaster: "テレ東" },
-  // /wbs 以外のテレ東BIZのページ(上のWBS専用の判定より後に置き、/wbsはそちらを優先させる)。
+  // テレ東BIZのページはどの番組(/wbs など)でも、リンク名は「テレ東BIZ」。
   { host: "txbiz.tv-tokyo.co.jp", name: "テレ東BIZ", broadcaster: "テレ東" },
 ];
 
