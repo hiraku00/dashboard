@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 
-import { applyLinkPreview, parseLinkPreview } from "../app/lib/link-preview.ts";
+import { parseLinkPreview } from "../app/lib/link-preview.ts";
 
 const nhk = `<head><meta property="og:title" content="南米ペルー・海面水温上昇で漁業に打撃 | キャッチ!世界のトップニュース"/><title>南米ペルー・海面水温上昇で漁業に打撃 | キャッチ!世界のトップニュース | NHK</title></head>`;
 const tx = `<head><title>暗号資産 イーサリアムとは【深読みリサーチ】｜テレ東BIZ</title><script>dataLayer.push({'event': 'pageview', 'title': 'x', 'program':'Newsモーニングサテライト（モーサテ）', 'member': 'n', });</script><meta property="og:title" content="暗号資産 イーサリアムとは【深読みリサーチ】｜テレ東BIZ"/></head>`;
@@ -18,15 +18,6 @@ test("テレ東BIZ: program is the short name in parentheses; the site suffix is
 test("an unknown site only gives the title, without its og:site_name suffix", () => {
   const html = `<head><meta property="og:title" content="記事 | Example"/><meta property="og:site_name" content="Example"/></head>`;
   expect(parseLinkPreview(html, "https://example.com/a")).toEqual({ creatorName: "", seriesTitle: "", title: "記事" });
-});
-
-test("applyLinkPreview fills blanks and fields still holding the last auto-fill, but keeps what the person typed", () => {
-  const first = { creatorName: "NHK", seriesTitle: "A", title: "T1" };
-  const second = { creatorName: "テレ東", seriesTitle: "B", title: "T2" };
-  expect(applyLinkPreview({ creatorName: "", seriesTitle: "", title: "", n: 1 }, first, null)).toEqual({ ...first, n: 1 });
-  expect(applyLinkPreview({ ...first }, second, first)).toEqual(second);
-  expect(applyLinkPreview({ creatorName: "NHK", seriesTitle: "自分の番組名", title: "T1" }, second, first)).toEqual({ creatorName: "テレ東", seriesTitle: "自分の番組名", title: "T2" });
-  expect(applyLinkPreview({ creatorName: "x", seriesTitle: "", title: "" }, { creatorName: "", seriesTitle: "", title: "" }, null)).toEqual({ creatorName: "x", seriesTitle: "", title: "" });
 });
 
 test("テレ東BIZ: a trailing ｜番組名 is dropped too, and a double-escaped & is restored", () => {

@@ -1,11 +1,10 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import { PortalHeader } from "./portal-nav";
 import { readErrorMessage, readJson } from "./lib/json";
 import { applyYouTubePreview, type YouTubePreviewItem } from "./lib/watch-list-youtube-import.ts";
-import { applyLinkPreview, type LinkPreview } from "./lib/link-preview.ts";
 import { MAX_LIKE_TERM_BYTES, truncateUtf8Bytes, utf8ByteLength } from "./lib/sql-text.ts";
 import { useSearchReload } from "./lib/use-search-reload";
 import { useLatestRequest } from "./lib/use-latest-request";
@@ -65,10 +64,6 @@ export function WatchListApp({
   const [youTubeUrl, setYouTubeUrl] = useState("");
   const [youTubeLoading, setYouTubeLoading] = useState(false);
   const [youTubeNotice, setYouTubeNotice] = useState("");
-  // 1つ目のリンクを入れたときの自動入力: 最後に取りに行ったURLと、そのとき入れた値(手で直した欄を上書きしないための目印)。
-  const [linkNotice, setLinkNotice] = useState("");
-  const lastPreviewUrl = useRef("");
-  const lastAutoFill = useRef<LinkPreview | null>(null);
   // Keyed by YouTube video id: which "TextTubeへ反映" runs are in flight
   // right now (auto, right after save, or manual from the editor/banner).
   const [textTubeBusy, setTextTubeBusy] = useState<Record<string, boolean>>({});
@@ -154,8 +149,8 @@ export function WatchListApp({
   const paginationPages = [...new Set([1, page, totalPages])].sort((a, b) => a - b);
   const pagination = totalPages > 1 ? <nav className="pagination" aria-label="ページ移動"><button type="button" aria-label="前のページ" disabled={page === 1} onClick={() => setPage((current) => current - 1)}>‹</button>{paginationPages.map((value, index) => <span className="page-number" key={value}>{index > 0 && value - paginationPages[index - 1] > 1 && <i aria-hidden="true">…</i>}<button type="button" className={value === page ? "current-page" : ""} aria-current={value === page ? "page" : undefined} onClick={() => setPage(value)}>{value}</button></span>)}<button type="button" aria-label="次のページ" disabled={page === totalPages} onClick={() => setPage((current) => current + 1)}>›</button></nav> : null;
 
-  function openNew() { setDraft(emptyDraft()); lastPreviewUrl.current = ""; lastAutoFill.current = null; setLinkNotice(""); setYouTubeUrl(""); setYouTubeNotice(""); setEditing(null); setIsNew(true); setNotice(""); }
-  function openEdit(item: Item) { setDraft({ ...item, links: item.links.map((link) => ({ ...link })) }); lastPreviewUrl.current = item.links[0]?.url.trim() ?? ""; lastAutoFill.current = null; setLinkNotice(""); setYouTubeUrl(""); setYouTubeNotice(""); setEditing(item); setIsNew(false); setNotice(""); }
+  function openNew() { setDraft(emptyDraft()); setYouTubeUrl(""); setYouTubeNotice(""); setEditing(null); setIsNew(true); setNotice(""); }
+  function openEdit(item: Item) { setDraft({ ...item, links: item.links.map((link) => ({ ...link })) }); setYouTubeUrl(""); setYouTubeNotice(""); setEditing(item); setIsNew(false); setNotice(""); }
   function closeEditor() { setEditing(null); setIsNew(false); }
   function patchDraft(patch: Partial<Draft>) { setDraft((current) => ({ ...current, ...patch })); }
 
@@ -170,36 +165,6 @@ export function WatchListApp({
     } catch (error) { setYouTubeNotice(error instanceof Error ? error.message : "YouTubeから情報を取得できませんでした。"); }
     finally { setYouTubeLoading(false); }
   }
-
-  // 1つ目のリンクのURLが変わったら(貼り付け・入力が落ち着いてから)、そのページから放送局・番組名・タイトルを取って下書きに入れる。
-  // 2つ目以降のリンクは見ない。保存済みの項目を開いただけでは取りに行かない(lastPreviewUrl が開いた時点のURL)。
-  const firstUrl = draft.links[0]?.url.trim() ?? "";
-  useEffect(() => {
-    if (!activeEditor || !/^https?:\/\/\S+$/i.test(firstUrl) || firstUrl === lastPreviewUrl.current) return;
-    const timer = window.setTimeout(async () => {
-      lastPreviewUrl.current = firstUrl;
-      setLinkNotice("リンク先から番組情報を取得中…");
-      try {
-        let found: LinkPreview;
-        if (youTubeVideoId(firstUrl)) {
-          const response = await fetch("/api/watch-list/youtube-preview", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ url: firstUrl }) });
-          if (!response.ok) throw new Error(await readErrorMessage(response, "YouTubeから情報を取得できませんでした。"));
-          const { item } = await readJson<{ item: YouTubePreviewItem }>(response);
-          found = { creatorName: "", seriesTitle: item.seriesTitle, title: item.title };
-        } else {
-          const response = await fetch("/api/watch-list/link-preview", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ url: firstUrl }) });
-          if (!response.ok) throw new Error(await readErrorMessage(response, "リンク先から番組情報を読み取れませんでした。"));
-          found = (await readJson<{ preview: LinkPreview }>(response)).preview;
-        }
-        // 取得中に1つ目のリンクが別のURLに変わっていたら、古い結果は捨てる。
-        if (lastPreviewUrl.current !== firstUrl) return;
-        setDraft((current) => applyLinkPreview(current, found, lastAutoFill.current));
-        lastAutoFill.current = found;
-        setLinkNotice("リンク先から放送局・番組名・タイトルを入力しました。内容を確認して保存してください。");
-      } catch (error) { if (lastPreviewUrl.current === firstUrl) setLinkNotice(error instanceof Error ? error.message : "リンク先から情報を取得できませんでした。"); }
-    }, 600);
-    return () => window.clearTimeout(timer);
-  }, [firstUrl, activeEditor]);
 
   /** app/lib/text-tube-import.ts の runTextTubeImport() を呼ぶ、唯一の
    *  窓口。保存直後の自動登録（save()内）、編集画面の「TextTubeへ反映」
@@ -367,7 +332,7 @@ export function WatchListApp({
       <label>内容・メモ<textarea value={draft.description} onChange={(event) => patchDraft({ description: event.target.value })} placeholder="内容、気になった理由など" rows={4} /></label>
       <div className="form-grid compact"><label>優先度<select value={draft.priority ?? ""} onChange={(event) => patchDraft({ priority: event.target.value ? Number(event.target.value) : null })}><option value="">未設定</option>{[1, 2, 3, 4, 5].map((value) => <option key={value} value={value}>{value}</option>)}</select></label><label>追加日<input type="date" value={draft.addedOn ?? ""} onChange={(event) => patchDraft({ addedOn: event.target.value || null })} /></label><label>鑑賞日<input type="date" value={draft.watchedOn ?? ""} onChange={(event) => patchDraft({ watchedOn: event.target.value || null })} /></label></div>
       <label>感想・コメント<textarea value={draft.comment} onChange={(event) => patchDraft({ comment: event.target.value })} rows={4} /></label>
-      <div className="links-editor"><div><span>リンク</span><button type="button" onClick={() => patchDraft({ links: [...draft.links, { label: "", url: "", linkType: "reference" }] })}>＋ リンクを追加</button></div>{linkNotice && <p className="youtube-import-notice" role="status">{linkNotice}</p>}{draft.links.map((link, index) => <div className="link-row" key={`${link.id ?? "new"}-${index}`}><input aria-label="URL" type="url" value={link.url} onChange={(event) => patchDraft({ links: draft.links.map((value, i) => i === index ? { ...value, url: event.target.value } : value) })} placeholder="https://" /><input aria-label="リンク名" value={link.label} onChange={(event) => patchDraft({ links: draft.links.map((value, i) => i === index ? { ...value, label: event.target.value } : value) })} placeholder="表示名" /><button type="button" onClick={() => patchDraft({ links: draft.links.filter((_, i) => i !== index) })} aria-label="リンクを削除">×</button></div>)}</div>
+      <div className="links-editor"><div><span>リンク</span><button type="button" onClick={() => patchDraft({ links: [...draft.links, { label: "", url: "", linkType: "reference" }] })}>＋ リンクを追加</button></div>{draft.links.map((link, index) => <div className="link-row" key={`${link.id ?? "new"}-${index}`}><input aria-label="URL" type="url" value={link.url} onChange={(event) => patchDraft({ links: draft.links.map((value, i) => i === index ? { ...value, url: event.target.value } : value) })} placeholder="https://" /><input aria-label="リンク名" value={link.label} onChange={(event) => patchDraft({ links: draft.links.map((value, i) => i === index ? { ...value, label: event.target.value } : value) })} placeholder="表示名" /><button type="button" onClick={() => patchDraft({ links: draft.links.filter((_, i) => i !== index) })} aria-label="リンクを削除">×</button></div>)}</div>
       <div className="editor-actions"><button type="button" className="cancel-button" onClick={closeEditor}>キャンセル</button><button className="save-button" disabled={saving}>{saving ? "保存中…" : editing ? "変更を保存" : "追加する"}</button></div>
     </form></section></div>}
   </main>;

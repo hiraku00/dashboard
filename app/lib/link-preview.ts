@@ -1,4 +1,4 @@
-/** Watch List の編集画面で、1つ目のリンクのページから 放送局(人物・媒体)・番組名(番組・連載名)・タイトル を読み取る、
+/** ちきりんオプチャ詳細の放送情報フォームで、1つ目のリンクのページから 放送局・番組名・番組タイトル を読み取る、
  *  D1にも通信にも触れない純粋なロジック(vitestの "node" project でテストする)。取得は app/api/watch-list/link-preview。
  *
  *  NHK ONE(web.nhk)は og:title が「エピソード | 番組名」、テレ東BIZ(txbiz.tv-tokyo.co.jp)は <title> が「タイトル｜テレ東BIZ」で、
@@ -56,18 +56,4 @@ export function parseLinkPreview(html: string, url: string): LinkPreview {
   }
   const siteName = metaProperty(html, "og:site_name");
   return { creatorName, seriesTitle: "", title: stripSuffix(ogTitle, [siteName]) };
-}
-
-/** 下書きに反映する。空の欄、または前回の自動入力のままの欄だけを書き換え(手で直した欄は守る)、読み取れた項目だけ入れる。 */
-export function applyLinkPreview<Draft extends LinkPreview>(draft: Draft, preview: LinkPreview, previous: LinkPreview | null): Draft {
-  const pick = (current: string, found: string, before: string | undefined) => {
-    const value = found.trim();
-    return value && (!current.trim() || current === before) ? value : current;
-  };
-  return {
-    ...draft,
-    creatorName: pick(draft.creatorName, preview.creatorName, previous?.creatorName),
-    seriesTitle: pick(draft.seriesTitle, preview.seriesTitle, previous?.seriesTitle),
-    title: pick(draft.title, preview.title, previous?.title),
-  };
 }
