@@ -128,3 +128,94 @@ def test_rejects_non_digits():
     noise = np.full((31, 20, 3), 0x2D, dtype=np.uint8)
     noise[6:25, 6:14] = 255                                     # 数字でない四角
     assert digits.read_number(noise, 2.0) is None
+
+
+# ---------- 読めなかった数字の診断 ----------
+def _shorter(rgb: np.ndarray) -> np.ndarray:
+    """数字の上端の1行を背景色にして、塊の高さを見本(19px)より1px低くした画像(表示位置の端数で、字の端が暗くなった状態の模擬)."""
+    out = rgb.copy()
+    on = digits.bright(out)
+    top = np.where(on.any(axis=1))[0][0]
+    out[top] = np.array([0x2D, 0x2E, 0x30], dtype=np.uint8)
+    return out
+
+
+def test_diagnose_names_a_height_mismatch():
+    img = _shorter(_render("1"))
+    assert digits.read_number(img, 2.0) is None
+    d = digits.diagnose(img, 2.0)
+    assert "高さ" in d["reason"] and d["glyphs"][0]["h"] == 18 and d["glyphs"][0]["height_in_templates"] is False
+
+
+def test_diagnose_names_missing_templates_and_empty_images():
+    assert "見本が無い" in digits.diagnose(_render("1"), 1.0)["reason"]
+    assert "塊を切り出せない" in digits.diagnose(np.zeros((20, 20, 3), dtype=np.uint8) + 0x2D, 2.0)["reason"]
+
+
+class PixelScreen:
+    """数字の画像だけを返す Screen(OCRは何も読めない = 見本でも読めない数字の模擬)."""
+    scale = 2.0
+
+    def __init__(self, arr):
+        self.arr = arr
+        self.lines = []
+
+    def pixels(self, x, y, w, h):
+        return self.arr
+
+    def pixel(self, x, y):
+        return (0x2D, 0x2E, 0x30)
+
+    def ocr_digits(self, *a, **k):
+        return ""
+
+    def ocr_region(self, *a, **k):
+        return ""
+
+
+def test_unreadable_digits_are_recorded_labelled_and_dumped(tmp_path):
+    digits.reset_stats()
+    assert P.read_digits(PixelScreen(_shorter(_render("1"))), 10, 20, 30) is None
+    assert digits.STATS["unknown"] == 1 and len(digits.UNREADABLE) == 1
+    digits.label_last_unreadable("uva 昨日 午後 4:15")
+    lines = digits.dump_unreadable(tmp_path / "unreadable-digits", "20261001T134002")
+    assert len(lines) == 1 and "uva 昨日 午後 4:15" in lines[0] and "高さ" in lines[0]
+    saved = sorted(p.name for p in (tmp_path / "unreadable-digits").iterdir())
+    assert saved == ["20261001T134002-01.json", "20261001T134002-01.npz"]
+    assert np.load(tmp_path / "unreadable-digits" / "20261001T134002-01.npz")["pixels"].shape[0] > 0
+
+
+def test_readable_digits_leave_no_record():
+    digits.reset_stats()
+    assert P.read_digits(PixelScreen(_render("14")), 10, 20, 30) == 14
+    assert digits.UNREADABLE == []
+
+
+# ---------- 数の行の中心がずれたとき(2026-10-01 uva: 約4.5pt下にずれ、「1」の旗が帯から外れて読めなかった) ----------
+@pytest.mark.parametrize("shift", [2.0, 4.5, 6.0, 8.0])
+@pytest.mark.parametrize("path", CASES, ids=[p.stem for p in CASES])
+def test_reads_counts_when_the_row_center_is_too_low(path, shift):
+    reactions, comments, _ = P.read_counts(RowScreen(path), 14.0 + shift)
+    assert (reactions, comments) == _truth(path)
+
+
+def test_a_misplaced_row_is_recentered_and_counted():
+    digits.reset_stats()
+    P.read_counts(RowScreen(FIX / "r64_c29.png"), 14.0 + 4.5)
+    assert digits.STATS["recentered"] == 1
+    digits.reset_stats()
+    P.read_counts(RowScreen(FIX / "r64_c29.png"), 14.0)
+    assert digits.STATS["recentered"] == 0          # 正しい位置なら、読み直さない
+
+
+def test_failed_attempts_are_not_recorded_when_the_recentered_read_succeeds():
+    digits.reset_stats()
+    P.read_counts(RowScreen(FIX / "r64_c29.png"), 14.0 + 4.5)
+    assert digits.UNREADABLE == [] and digits.STATS["unknown"] == 0 and digits.STATS["recentered"] == 1
+
+
+def test_a_row_that_cannot_be_read_anywhere_keeps_the_first_attempts_record():
+    digits.reset_stats()
+    blank = RowScreen(FIX / "r64_c29.png")
+    blank.arr = np.zeros_like(blank.arr) + 0x2D
+    assert P.read_counts(blank, 14.0) is None and digits.UNREADABLE == []     # 数字の塊が無い(読める数字が無い)なら、記録するものも無い

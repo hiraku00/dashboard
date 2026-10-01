@@ -167,6 +167,7 @@ class Session:
         if not st:
             return
         self.log(f"件数の読み取り: 見本 {st['template']}回・OCR {st['ocr']}回・読めない {st['unknown']}回"
+                 + (f" / 行の位置がずれていて読み直した {st['recentered']}回" if st["recentered"] else "")
                  + (f" / 見本とOCRの食い違い {st['mismatch']}回: {', '.join(f'{k} ×{n}' for k, n in Counter(digits.MISMATCHES).items())}" if st["mismatch"] else ""))
 
     def _scan(self) -> None:
@@ -276,6 +277,7 @@ class Session:
         # 全スレッドを画面に出すので、本文(番組の情報)は全スレッドで全文取る(1スレッドにつき「もっと見る」を1回押すだけ)
         need_body = not note["body_complete"]
         if expected is None:
+            digits.label_last_unreadable(f"{note['author_name']} {obs.posted_raw}")
             self.stats.warnings.append(f"コメント数を読めませんでした(1倍のディスプレイでは小さい数字を読めないことがあります。Retinaディスプレイでの実行を推奨): {note['author_name']} {obs.posted_raw}")
         if not need_body and not need_comments:
             if blocks is not None and block in blocks and self._is_open(blocks, block):

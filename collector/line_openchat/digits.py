@@ -27,9 +27,16 @@ STATS: Counter = Counter()
 MISMATCHES: list[str] = []
 
 
+# 見本でもOCRでも読めなかった数字の記録(1回の同期ぶん). 原因の調査用: 画素と、なぜ見本と合わなかったかを残す(dump_unreadable)
+UNREADABLE: list[dict] = []
+MAX_UNREADABLE_KEPT = 20      # 1回の同期で残す上限
+MAX_DUMP_FILES = 200          # 保存先に残す画像の上限(古いものから消す)
+
+
 def reset_stats() -> None:
     STATS.clear()
     MISMATCHES.clear()
+    UNREADABLE.clear()
 
 
 @lru_cache(maxsize=None)
@@ -132,3 +139,78 @@ def read_number(rgb: np.ndarray, scale: float | None) -> int | None:
             return None
         text += cands[0][1]
     return int(text)
+
+
+# ---------- 読めなかった数字の診断 ----------
+def diagnose(rgb: np.ndarray, scale: float | None) -> dict:
+    """read_number() が None を返した理由を調べる(読めた/読めないの判定は変えない). 読めない原因が
+    「見本が無い」「塊が切れない」「高さが見本と違う」「見本との差が大きい」「2番目の候補と近すぎる」のどれかを分ける."""
+    T = templates_for(scale)
+    info: dict = {"scale": scale, "shape": list(rgb.shape)}
+    if T is None:
+        return {**info, "reason": "見本が無い倍率"}
+    if rgb.size == 0:
+        return {**info, "reason": "画素が空"}
+    glyphs = split_glyphs(rgb)
+    if not glyphs:
+        return {**info, "reason": "明るい画素が無く、塊を切り出せない"}
+    template_heights = sorted({int(t.shape[0]) for ts in T.values() for t in ts})
+    out = []
+    for g in glyphs:
+        h, w = g.shape
+        cands = glyph_candidates(g, T)
+        out.append({"h": int(h), "w": int(w), "height_in_templates": int(h) in template_heights,
+                    "candidates": [(round(d, 2), s) for d, s in cands[:3]]})
+    first_bad = next((g for g in out if not g["height_in_templates"] or not g["candidates"]
+                      or g["candidates"][0][0] > MAX_DIFF
+                      or (len(g["candidates"]) > 1 and g["candidates"][1][0] - g["candidates"][0][0] < MIN_MARGIN)), None)
+    if first_bad is None:
+        reason = "原因不明(診断では読めた)"
+    elif not first_bad["height_in_templates"]:
+        reason = f"塊の高さ {first_bad['h']}px が見本の高さ {template_heights} と違う"
+    elif not first_bad["candidates"]:
+        reason = f"幅 {first_bad['w']}px に合う見本の組み合わせが無い"
+    elif first_bad["candidates"][0][0] > MAX_DIFF:
+        reason = f"最も近い見本でも差が大きい({first_bad['candidates'][0][0]} > {MAX_DIFF})"
+    else:
+        reason = f"1番目と2番目の候補が近すぎる({first_bad['candidates'][0]} / {first_bad['candidates'][1]})"
+    return {**info, "reason": reason, "glyphs": out}
+
+
+def record_unreadable(rgb: np.ndarray, scale: float | None, x: float, cy: float) -> None:
+    """見本でもOCRでも読めなかった数字を、診断つきで記録する(同期の最後に dump_unreadable で保存)."""
+    if len(UNREADABLE) >= MAX_UNREADABLE_KEPT:
+        return
+    try:
+        UNREADABLE.append({**diagnose(rgb, scale), "x": round(float(x), 1), "cy": round(float(cy), 1), "label": "", "pixels": np.array(rgb)})
+    except Exception as exc:                         # noqa: BLE001 診断の失敗で、読み取り自体を止めない
+        UNREADABLE.append({"reason": f"診断に失敗: {exc}", "x": round(float(x), 1), "cy": round(float(cy), 1), "label": ""})
+
+
+def label_last_unreadable(label: str) -> None:
+    """直前に記録した、まだ名前の無い読めなかった数字に、どのノートかを書き添える."""
+    for rec in reversed(UNREADABLE):
+        if not rec["label"]:
+            rec["label"] = label
+        break
+
+
+def dump_unreadable(directory, stamp: str) -> list[str]:
+    """記録を、画像(.npz: 画素)と1行の説明にして保存する. 戻り値: ログに出す行."""
+    import json
+    lines: list[str] = []
+    if not UNREADABLE:
+        return lines
+    directory = Path(directory)
+    directory.mkdir(parents=True, exist_ok=True)
+    for i, rec in enumerate(UNREADABLE):
+        meta = {k: v for k, v in rec.items() if k != "pixels"}
+        name = f"{stamp}-{i + 1:02d}"
+        if "pixels" in rec:
+            np.savez_compressed(directory / f"{name}.npz", pixels=rec["pixels"])
+        (directory / f"{name}.json").write_text(json.dumps(meta, ensure_ascii=False, indent=1))
+        lines.append(f"読めなかった数字: {rec['label'] or '(ノート不明)'} / {rec['reason']} → {directory.name}/{name}")
+    files = sorted(directory.glob("*.*"), key=lambda f: f.stat().st_mtime)
+    for f in files[:-MAX_DUMP_FILES]:
+        f.unlink(missing_ok=True)
+    return lines
