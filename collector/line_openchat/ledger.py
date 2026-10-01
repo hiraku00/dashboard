@@ -29,9 +29,26 @@ def first_line(text: str, limit: int = 120) -> str:
     return ""
 
 
+_URL_CHARS = r"[A-Za-z0-9\-._~:/?#@!$&'()*+,;=%]"
+
+
 def extract_url(text: str) -> str:
-    m = re.search(r"https?://[A-Za-z0-9\-._~:/?#@!$&'()*+,;=%]+", text)   # URLはASCIIのみ(全角の句読点で切る)
-    return m.group(0).rstrip(".,);:") if m else ""
+    """本文から最初のURLを取り出す。URLが画面で折り返されて2行以上にまたがっていたら、1つに繋ぐ.
+    (繋ぐのは、URLが行末まで続いていて、次の行がURLに使える文字だけ(空白・日本語なし)のとき)"""
+    lines = text.splitlines()
+    for i, line in enumerate(lines):
+        m = re.search(r"https?://" + _URL_CHARS + "+", line)   # URLはASCIIのみ(全角の句読点で切る)
+        if not m:
+            continue
+        url = m.group(0)
+        if not line[m.end():].strip():
+            for nxt in lines[i + 1:]:
+                cont = nxt.strip()
+                if not re.fullmatch(_URL_CHARS + "+", cont) or re.match(r"https?://", cont):
+                    break
+                url += cont
+        return url.rstrip(".,);:")
+    return ""
 
 
 @dataclass

@@ -191,6 +191,10 @@ def test_helpers():
     assert first_line("\n\n  最初の行  \n二行目") == "最初の行"
     assert extract_url("見て https://example.com/a?b=1。") == "https://example.com/a?b=1"
     assert extract_url("なし") == ""
+    # 画面で折り返されて2行にまたがったURLは1つに繋ぐ(次の行が日本語や空白を含めば繋がない)
+    assert extract_url("見て\nhttps://www.nhk.jp/p/ts/ABC/\nepisode/te/XYZ123/") == "https://www.nhk.jp/p/ts/ABC/episode/te/XYZ123/"
+    assert extract_url("https://a.com/x\n次の行") == "https://a.com/x"
+    assert extract_url("https://a.com/x\nnext line") == "https://a.com/x"
 
 
 def test_from_portal_restores_ledger_that_matches_new_sightings():
