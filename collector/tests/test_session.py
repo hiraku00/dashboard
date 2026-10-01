@@ -336,6 +336,18 @@ def test_hint_y_ignores_content_match_with_very_different_time():
     assert s._hint_y(screen, blocks, near) is not None                # ズレていない: 今までどおり手がかりになる
 
 
+def test_hint_y_does_not_use_a_url_line_as_the_clue():
+    """本文がURLの行から始まるノートは、URLを手がかりにしない(実機で、cosmのノートの見出し探索が、
+    頭の16文字が同じ別のNHKリンクの投稿に惑わされて毎回失敗した)。"""
+    url = "https://one.nhk/www.web.nhk/tv/pl/series-tep-ABC/ep/XYZ"
+    chat = SimChat([SimNote("参加者A", url, "昨日 午前 9:45", reactions=5)], jitter=False)
+    s = Session(SimDriver(chat), Ledger(), NOW, Options())
+    screen, blocks = s.shot()
+    from line_openchat.timeparse import parse_display_time
+    posted = parse_display_time("昨日 午前 9:45", NOW).utc
+    assert s._hint_y(screen, blocks, {"body_text": url, "posted_at": posted}) is None
+
+
 def test_seek_header_gives_up_early_when_stuck_on_a_false_hint():
     """手がかりはあるのに見出しが確認できない状態が続いたら、48回まで待たずに早めに諦める
     (実機で、本文が似た別の投稿に惑わされて48回すべて迷走し、操作を検知して中断したことがあった)。"""

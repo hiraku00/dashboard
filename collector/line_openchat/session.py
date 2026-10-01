@@ -546,7 +546,9 @@ class Session:
         本文が似ているだけの別の投稿(誤読で作られた重複ノートなど)に惑わされないよう、手がかりの近くに
         時刻を読めるブロックがあれば、その投稿時刻がこのノートの投稿時刻と大きくズレていないか確かめる
         (実機で、本文がほぼ同じで投稿時刻だけ大きく違う重複ノートに向けて、延々と迷走したことがあった)。"""
-        head = identity.norm_text(note.get("body_text", ""))[:16]
+        # URLの行は手がかりにしない(NHKのリンクは頭の16文字が同じで、他の投稿にも当てはまる。続きはOCRのたびに変わる)
+        text = "\n".join(ln for ln in note.get("body_text", "").splitlines() if not re.match(r"\s*https?://", ln))
+        head = identity.norm_text(text)[:16]
         if len(head) < 12:
             return None
         for line in screen.lines:
