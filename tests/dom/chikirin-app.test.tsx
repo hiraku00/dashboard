@@ -50,19 +50,18 @@ function spyOnLocationHref() {
 
 test("the list is a table: kind, program, title, thread, poster, times, counts, status and links (read-only; editing is on the detail page)", () => {
   render(<ChikirinApp initialPage={page([program()])} initialRun={null} />);
-  expect(screen.getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["ちきりん", "番組", "タイトル", "スレ主", "スレッド起票日時", "最新ちきりん", "コメ全体", "コメちき", "状態", "リンク", "WatchList", "視聴済"]);
+  expect(screen.getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["番組", "タイトル", "スレ主", "スレッド起票日時", "最新ちきりん", "コメ全体", "コメちき", "状態", "リンク", "WatchList", "視聴"]);
   const row = screen.getAllByRole("row")[1];
   const cells = within(row).getAllByRole("cell").map((c) => c.textContent ?? "");
-  expect(cells[0]).toBe("コメント");
-  expect(cells[1]).toContain("NHK BS");
-  expect(cells[1]).toContain("アナザーストーリーズ");
-  expect(cells[3]).toContain("地球超解析");
-  expect(cells[4]).toBe("参加者B");
-  expect(cells[5]).toBe("09.21 15:47");
-  expect(cells[6]).toBe("09.21 18:00");
-  expect(cells[7]).toBe("8");
-  expect(cells[8]).toBe("2");
-  expect(cells[9]).toBe("OK");
+  expect(cells[0]).toContain("NHK BS");
+  expect(cells[0]).toContain("アナザーストーリーズ");
+  expect(cells[2]).toContain("地球超解析");
+  expect(cells[3]).toBe("参加者B");
+  expect(cells[4]).toBe("09.21 15:47");
+  expect(cells[5]).toBe("09.21 18:00");
+  expect(cells[6]).toBe("8");
+  expect(cells[7]).toBe("2");
+  expect(cells[8]).toBe("OK");
   expect(within(row).getByRole("link", { name: "地球超解析" }).getAttribute("href")).toBe("/chikirin/n1");
   expect(within(row).getByRole("link", { name: /番組ページ/ }).getAttribute("href")).toBe("https://example.test/ep");
   expect(screen.queryByLabelText("ちきりんのコメント")).toBeNull();   // 一覧には全文を出さない
@@ -99,9 +98,9 @@ test("a row with a problem shows 要確認 with the reason, so it can be found i
   const bad = program({ issues: ["コメントの件数が表示と合わず、再確認待ちです（次回の同期でやり直します）。"] });
   render(<ChikirinApp initialPage={page([bad, program({ noteId: "n2" })])} initialRun={null} />);
   const cells = within(screen.getAllByRole("row")[1]).getAllByRole("cell");
-  expect(cells[9].textContent).toBe("要確認");
-  expect(within(cells[9]).getByText("要確認").getAttribute("title")).toContain("再確認待ち");
-  expect(within(screen.getAllByRole("row")[2]).getAllByRole("cell")[9].textContent).toBe("OK");
+  expect(cells[8].textContent).toBe("要確認");
+  expect(within(cells[8]).getByText("要確認").getAttribute("title")).toContain("再確認待ち");
+  expect(within(screen.getAllByRole("row")[2]).getAllByRole("cell")[8].textContent).toBe("OK");
 });
 
 test("the times are labelled as Japan time", () => {
@@ -113,20 +112,20 @@ test("title cell: line 1 is the program name (edited episode title), line 2 is t
   render(<ChikirinApp initialPage={page([program({ meta: { broadcaster: "", episodeTitle: "", links: [] }, programTitle: "スレッドの1行目", noteBody: "スレッドの1行目\n本文の2行目です。" }), program({ noteId: "n2" })])} initialRun={null} />);
   const rows = screen.getAllByRole("row");
   const unedited = within(rows[1]).getAllByRole("cell");
-  expect(unedited[1].textContent).toContain("—番組名未設定");
-  expect(within(unedited[3]).getByRole("link").textContent).toBe("（タイトル未設定）");
+  expect(unedited[0].textContent).toContain("—番組名未設定");
+  expect(within(unedited[2]).getByRole("link").textContent).toBe("（タイトル未設定）");
   const edited = within(rows[2]).getAllByRole("cell");
-  expect(within(edited[3]).getByRole("link").textContent).toBe("地球超解析");
-  expect(edited[1].textContent).toContain("アナザーストーリーズ");
+  expect(within(edited[2]).getByRole("link").textContent).toBe("地球超解析");
+  expect(edited[0].textContent).toContain("アナザーストーリーズ");
 });
 
 test("a thumbnail sits before the title, like the Watch List; none when the program has no thumbnail", () => {
   render(<ChikirinApp initialPage={page([program({ thumbnailUrl: "https://img.example.test/a.jpg" }), program({ noteId: "n2", thumbnailUrl: "" })])} initialRun={null} />);
   const rows = screen.getAllByRole("row");
-  const withThumb = within(rows[1]).getAllByRole("cell")[2];
+  const withThumb = within(rows[1]).getAllByRole("cell")[1];
   expect(withThumb.className).toContain("thumb-cell");
   expect(withThumb.querySelector("img")?.getAttribute("src")).toBe("https://img.example.test/a.jpg");
-  expect(within(rows[2]).getAllByRole("cell")[2].querySelector("img")).toBeNull();
+  expect(within(rows[2]).getAllByRole("cell")[1].querySelector("img")).toBeNull();
 });
 
 test("the list has no edit button: editing happens on the detail page", () => {
@@ -138,7 +137,7 @@ test("the list has no edit button: editing happens on the detail page", () => {
 test("the status cell is centered", () => {
   render(<ChikirinApp initialPage={page([program()])} initialRun={null} />);
   const cells = within(screen.getAllByRole("row")[1]).getAllByRole("cell");
-  expect(cells[9].className).toContain("center");
+  expect(cells[8].className).toContain("center");
 });
 
 test("rows first seen in the last run are marked 新着, and the header says how many programs are new", () => {
@@ -154,7 +153,6 @@ test("the target's own thread is marked in the list and previews her body", () =
   const own = program({ noteByTarget: true, involvement: "thread", noteAuthor: "ちきりん", targetBody: "9月23日の報道特集の真ん中あたり。", noteBody: "9月23日の報道特集の真ん中あたり。" });
   render(<ChikirinApp initialPage={page([own])} initialRun={null} />);
   const row = screen.getAllByRole("row")[1];
-  expect(within(row).getAllByRole("cell")[0].textContent).toBe("スレッド");
   expect(row.textContent).toContain("9月23日の報道特集");
 });
 
@@ -163,7 +161,7 @@ test("the スレ主 column highlights ちきりん with its own color so it stan
   const other = program({ noteId: "n2", noteByTarget: false, noteAuthor: "参加者B" });
   render(<ChikirinApp initialPage={page([own, other])} initialRun={null} />);
   const rows = screen.getAllByRole("row");
-  const ownerCell = (row: HTMLElement) => within(row).getAllByRole("cell")[4];
+  const ownerCell = (row: HTMLElement) => within(row).getAllByRole("cell")[3];
   expect(ownerCell(rows[1]).textContent).toBe("ちきりん");
   expect(ownerCell(rows[1]).className).toContain("is-target");
   expect(ownerCell(rows[2]).textContent).toBe("参加者B");
@@ -177,21 +175,20 @@ test("each cell carries a distinguishing class so the mobile card CSS can label 
   // program-cell(番組) と program-cell(タイトル)、date-cell(起票日時)と date-cell(最新ちきりん)、
   // num-cell(全体)と num-cell(ちきりん) は、それぞれ同じベースクラスを2回使うので、
   // モバイルの表示ラベルを分けるための専用クラスが付いていることを確かめる。
-  expect(cells[1].className).toContain("is-broadcaster");
-  expect(cells[3].className).toContain("is-title");
-  expect(cells[5].className).toContain("is-posted");
-  expect(cells[6].className).toContain("is-latest");
-  expect(cells[7].className).toContain("is-total");
-  expect(cells[8].className).toContain("is-target-count");
-  expect(cells[11].className).toContain("is-watchlist");
+  expect(cells[0].className).toContain("is-broadcaster");
+  expect(cells[2].className).toContain("is-title");
+  expect(cells[4].className).toContain("is-posted");
+  expect(cells[5].className).toContain("is-latest");
+  expect(cells[6].className).toContain("is-total");
+  expect(cells[7].className).toContain("is-target-count");
+  expect(cells[10].className).toContain("is-watchlist");
 });
 
-test("a thread the target has nothing to do with shows なし and — for the comment count, but its body still appears", () => {
+test("a thread the target has nothing to do with shows — for the comment count, but its body still appears", () => {
   const none = program({ noteByTarget: false, involvement: "none", targetComments: [] });
   render(<ChikirinApp initialPage={page([none])} initialRun={null} />);
   const cells = within(screen.getAllByRole("row")[1]).getAllByRole("cell");
-  expect(cells[0].textContent).toBe("なし");
-  expect(cells[8].textContent).toBe("—");
+  expect(cells[7].textContent).toBe("—");
   expect(screen.getAllByRole("row")[1].textContent).toContain("海の環境を扱った回でした");   // スレッド主の投稿(本文)は関わりが無くても出る
 });
 
@@ -422,7 +419,7 @@ test("the broadcaster is filled in from the link when not edited: NHK for NHK ON
     program({ noteId: "c", meta: { ...unedited, broadcaster: "手で入れた局" }, linkUrl: "https://www.web.nhk/tv/pl/x" }),
     program({ noteId: "d", meta: unedited, linkUrl: "" }),
   ])} initialRun={null} />);
-  const cell = (row: number) => within(screen.getAllByRole("row")[row]).getAllByRole("cell")[1].textContent;
+  const cell = (row: number) => within(screen.getAllByRole("row")[row]).getAllByRole("cell")[0].textContent;
   expect(cell(1)).toContain("NHK");
   expect(cell(2)).toContain("テレ東");
   expect(cell(3)).toContain("手で入れた局");
@@ -435,16 +432,16 @@ test("the detail form is prefilled with the inferred broadcaster", () => {
   expect((screen.getByLabelText("放送局") as HTMLInputElement).value).toBe("テレ東");
 });
 
-test("視聴済 column: a link registered in Watch List shows its status; completed is 視聴済, registered-but-not-done is 未視聴, no registration is —", () => {
+test("視聴済 column: a link registered in Watch List shows its status; completed is 視聴, registered-but-not-done is 未視聴, no registration is —", () => {
   const url = "https://www.web.nhk/tv/pl/series-tep-P1124VMJ6R/ep/4N6PM42X7K";
   const base = program({ linkUrl: url, meta: { broadcaster: "", programName: "", episodeTitle: "", links: [] } });
   const cellOf = (watched: unknown) => {
     const { unmount } = render(<ChikirinApp initialPage={{ ...page([base]), watched } as never} initialRun={null} />);
-    const text = within(screen.getAllByRole("row")[1]).getAllByRole("cell")[12].textContent;
+    const text = within(screen.getAllByRole("row")[1]).getAllByRole("cell")[11].textContent;
     unmount();
     return text;
   };
-  expect(cellOf({ [url]: { url, title: "t", count: 1, status: "completed", watchedOn: "2026-09-30" } })).toBe("視聴済");
+  expect(cellOf({ [url]: { url, title: "t", count: 1, status: "completed", watchedOn: "2026-09-30" } })).toBe("視聴");
   expect(cellOf({ [url]: { url, title: "t", count: 1, status: "backlog", watchedOn: null } })).toBe("未視聴");
   expect(cellOf({})).toBe("—");
 });
@@ -467,4 +464,14 @@ test("放送情報 form: 「リンクから番組情報を取得」 fills 放送
   expect((screen.getByLabelText("放送局") as HTMLInputElement).value).toBe("NHK");
   expect(previews()).toHaveLength(1);
   expect(fetchMock.mock.calls.some(([, init]) => (init as RequestInit | undefined)?.method === "PUT")).toBe(false);   // 保存(PUT)はまだ呼ばれていない
+});
+
+test("コメちき is marked red (is-hit) only when the target wrote 1+ comments; 0 and — are not", () => {
+  const rows = [program(), program({ noteId: "n2", targetComments: [], involvement: "thread", noteByTarget: true }), program({ noteId: "n3", involvement: "none", targetComments: [] })];
+  render(<ChikirinApp initialPage={page(rows)} initialRun={null} />);
+  const cell = (row: number) => within(screen.getAllByRole("row")[row]).getAllByRole("cell")[7];
+  expect(cell(1).className).toContain("is-hit");
+  expect(cell(2).textContent).toBe("0");
+  expect(cell(2).className).not.toContain("is-hit");
+  expect(cell(3).className).not.toContain("is-hit");
 });
