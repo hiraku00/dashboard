@@ -170,14 +170,14 @@ describe("programs list", () => {
     const p = (await listPrograms({ q: "他人のノートに複数" })).programs[0];
     const now = "2026-09-26T00:00:00Z";
     await env.DB.batch([
-      env.DB.prepare("INSERT INTO items (id, content_type, title, created_at, updated_at) VALUES ('oc-w1', 'movie', 'oc watched', ?, ?)").bind(now, now),
+      env.DB.prepare("INSERT INTO items (id, content_type, title, status, watched_on, created_at, updated_at) VALUES ('oc-w1', 'movie', 'oc watched', 'completed', '2026-09-30', ?, ?)").bind(now, now),
       env.DB.prepare("INSERT INTO item_links (id, item_id, url, canonical_url) VALUES ('oc-w1-l', 'oc-w1', 'https://watched.example.test/v?utm_source=x#t', 'https://watched.example.test/v')").bind(),
       env.DB.prepare("INSERT INTO items (id, content_type, title, created_at, updated_at, deleted_at) VALUES ('oc-w2', 'movie', 'oc gone', ?, ?, ?)").bind(now, now, now),
       env.DB.prepare("INSERT INTO item_links (id, item_id, url, canonical_url) VALUES ('oc-w2-l', 'oc-w2', 'https://gone.example.test/v', 'https://gone.example.test/v')").bind(),
     ]);
     await saveProgramMeta(p.noteId, { links: [{ url: "https://watched.example.test/v#frag", label: "" }, { url: "https://gone.example.test/v", label: "" }, { url: "https://none.example.test/", label: "" }] });
     const page = await listPrograms({ q: "他人のノートに複数" });
-    expect(page.watched).toEqual({ "https://watched.example.test/v#frag": { url: "https://watched.example.test/v?utm_source=x#t", title: "oc watched", count: 1 } });
+    expect(page.watched).toEqual({ "https://watched.example.test/v#frag": { url: "https://watched.example.test/v?utm_source=x#t", title: "oc watched", count: 1, status: "completed", watchedOn: "2026-09-30" } });   // 視聴済(完了した日も返す)
     await saveProgramMeta(p.noteId, { links: [] });
     await env.DB.batch([env.DB.prepare("DELETE FROM items WHERE id IN ('oc-w1','oc-w2')"), env.DB.prepare("DELETE FROM item_links WHERE item_id IN ('oc-w1','oc-w2')")]);
   });

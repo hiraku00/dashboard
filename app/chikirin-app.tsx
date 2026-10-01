@@ -12,7 +12,9 @@ import { watchListSearchTerm } from "./lib/text.ts";
 import { useLatestRequest } from "./lib/use-latest-request";
 import { useSearchReload } from "./lib/use-search-reload";
 
-export type ProgramsPage = { programs: Program[]; total: number; page: number; pageSize: number; watched?: Record<string, { url: string; title: string; count: number }> };
+/** Watch List での登録状況: url=保存URL、title=項目名、count=項目数、status=同じリンクの項目のうち最も進んだ状態(完了 > 鑑賞中 > 未着手 > 見送り)、watchedOn=完了日。 */
+export type WatchedInfo = { url: string; title: string; count: number; status?: string; watchedOn?: string | null };
+export type ProgramsPage = { programs: Program[]; total: number; page: number; pageSize: number; watched?: Record<string, WatchedInfo> };
 export type RunSummary = {
   status: string; startedAt: string; completedAt: string | null; notesScanned: number; notesOpened: number;
   commentsNew: number; targetCommentsNew: number; warningCount: number; warnings?: string[]; newPrograms?: number; newSince?: string;
@@ -60,6 +62,9 @@ export function displayLinks(program: Program): Array<{ url: string; label: stri
   if (program.meta.links.length > 0) return program.meta.links.map((l) => ({ url: l.url, label: l.label, text: linkText(l.url, l.label) }));
   return program.linkUrl ? [{ url: program.linkUrl, label: "", text: linkText(program.linkUrl, "") }] : [];
 }
+
+const WATCH_RANK: Record<string, number> = { completed: 3, in_progress: 2, backlog: 1 };
+const watchRank = (status?: string) => WATCH_RANK[status ?? ""] ?? 0;
 
 /** 一覧のリンク列: 1件目だけを出し、2件目以降は「+N」で開閉する(開くと残りが縦に並び、それぞれ押せる)。 */
 function ProgramLinks({ links, label }: { links: Array<{ url: string; text: string }>; label: string }) {
@@ -199,11 +204,11 @@ export function ChikirinApp({ initialPage = null, initialRun = null, initialQuer
       {!loading && programs.length === 0 && <div className="empty-state"><strong>該当する番組はありません。</strong><p>{initialRun || query || kind !== "all" ? "条件を変えてみてください。" : "同期が終わるとここに表示されます。"}</p></div>}
       {programs.length > 0 && <div className={loading ? "table-scroll is-loading" : "table-scroll"} aria-busy={loading}>
         <table className="content-table chikirin-table">
-          <colgroup><col className="col-kind" /><col className="col-broadcaster" /><col className="col-thumb" /><col className="col-title" /><col className="col-owner" /><col className="col-posted" /><col className="col-posted" /><col className="col-count" /><col className="col-count" /><col className="col-status" /><col className="col-links" /><col className="col-texttube" /></colgroup>
+          <colgroup><col className="col-kind" /><col className="col-broadcaster" /><col className="col-thumb" /><col className="col-title" /><col className="col-owner" /><col className="col-posted" /><col className="col-posted" /><col className="col-count" /><col className="col-count" /><col className="col-status" /><col className="col-links" /><col className="col-texttube" /><col className="col-texttube" /></colgroup>
           <thead><tr>
             <th scope="col" className="kind-head" title="ちきりんの関わり方">ちきりん</th><th scope="col">番組</th><th scope="col" colSpan={2}>タイトル</th><th scope="col">スレ主</th><th scope="col" title="スレッドが起票された日時(日本時間)"><span className="head-2">スレッド<br />起票日時</span></th>
             <th scope="col" title="ちきりんの最新の投稿の日時"><span className="head-2">最新<br />ちきりん</span></th>
-            <th scope="col" className="num" title="ノート全体のコメント数"><span className="head-2">コメント<br />全体</span></th><th scope="col" className="num" title="ちきりんが書いたコメントの数"><span className="head-2">コメント<br />ちきりん</span></th><th scope="col" className="center">状態</th><th scope="col">リンク</th><th scope="col"><span className="head-2">Watch<br />List</span></th>
+            <th scope="col" className="num" title="ノート全体のコメント数"><span className="head-2">コメ<br />全体</span></th><th scope="col" className="num" title="ちきりんが書いたコメントの数"><span className="head-2">コメ<br />ちき</span></th><th scope="col" className="center">状態</th><th scope="col">リンク</th><th scope="col"><span className="head-2">Watch<br />List</span></th><th scope="col">視聴済</th>
           </tr></thead>
           <tbody>{programs.map((program) => {
             const links = displayLinks(program);
@@ -230,6 +235,12 @@ export function ChikirinApp({ initialPage = null, initialRun = null, initialQuer
               <td className="status-cell center">{program.issues.length > 0 ? <span className="chikirin-issue" title={program.issues.join("\n")}>要確認</span> : <span className="empty-cell" title="取得に問題はありません">OK</span>}</td>
               <td className="links-cell">{links.length > 0 ? <ProgramLinks links={links} label={`${program.programTitle} のリンク`} /> : <span className="empty-cell">—</span>}</td>
               <td className="texttube-cell is-watchlist">{watchedLinks.length > 0 ? watchedLinks.map((l) => <a key={l.url} className="texttube-badge texttube-reflected" href={`/watch-list?q=${encodeURIComponent(watched[l.url].title || watchListSearchTerm(watched[l.url].url))}`} target="_blank" rel="noreferrer" title={`${l.text} は Watch List に登録済み(「${watched[l.url].title}」)。開くとその項目を表示します`}>登録済{watched[l.url].count > 1 ? ` ${watched[l.url].count}件` : ""}</a>) : <span className="empty-cell">—</span>}</td>
+              <td className="texttube-cell is-watched">{(() => {
+                const best = watchedLinks.map((l) => watched[l.url]).sort((x, y) => watchRank(y.status) - watchRank(x.status))[0];
+                if (!best) return <span className="empty-cell">—</span>;
+                const done = best.status === "completed";
+                return <span className={done ? "texttube-badge texttube-reflected" : "texttube-badge texttube-none"} title={done ? `Watch List で視聴済${best.watchedOn ? `(${best.watchedOn})` : ""}` : "Watch List に登録済ですが、まだ視聴済ではありません"}>{done ? "視聴済" : best.status === "in_progress" ? "鑑賞中" : "未視聴"}</span>;
+              })()}</td>
             </tr>;
           })}</tbody>
         </table>

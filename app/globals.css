@@ -286,7 +286,7 @@ h1,h2,h3 { color:var(--ink); } h1 { margin:0; font-size:30px; line-height:1.1; l
 .chikirin-table { min-width:990px; }
 .chikirin-table th, .chikirin-table td { padding-left:6px; padding-right:6px; }
 .chikirin-table .col-kind { width:82px; }.chikirin-table .col-broadcaster { width:136px; }.chikirin-table .col-owner { width:76px; }
-.chikirin-table .col-posted { width:86px; }.chikirin-table .col-count { width:60px; }.chikirin-table .col-links { width:88px; }.chikirin-table .col-action { width:64px; }
+.chikirin-table .col-posted { width:86px; }.chikirin-table .col-count { width:48px; }.chikirin-table .col-links { width:88px; }.chikirin-table .col-action { width:64px; }
 .chikirin-table .kind-head, .chikirin-table .kind-cell { padding-left:8px; }
 .chikirin-table th.num, .chikirin-table td.num-cell { text-align:right; font-variant-numeric:tabular-nums; }.chikirin-table td.num-cell { font-size:13px; }
 .chikirin-table .program-cell { min-width:0; }
@@ -301,7 +301,7 @@ h1,h2,h3 { color:var(--ink); } h1 { margin:0; font-size:30px; line-height:1.1; l
 .chikirin-table .item-links { flex-direction:column; align-items:flex-start; gap:2px; }
 .chikirin-table .item-links a { flex:0 0 auto; min-width:0; max-width:100%; padding:3px 5px; font-size:11px; }
 .chikirin-table .link-more { flex:0 0 auto; border-radius:7px; background:rgba(60,60,67,.08); color:var(--muted); border:0; padding:2px 6px; font-size:10.5px; font-weight:650; cursor:pointer; }.chikirin-table .link-more:hover { background:rgba(60,60,67,.16); }
-.editor .link-row { grid-template-columns:minmax(0,3fr) minmax(0,2fr) 32px; }
+.editor .link-row { grid-template-columns:minmax(0,1fr) 110px 32px; }
 .chikirin-meta-edit .link-row { grid-template-columns:minmax(0,4fr) minmax(0,1.3fr) 32px; }
 .chikirin-meta-grid { grid-template-columns:1fr 2fr 7fr; }
 .chikirin-table th.center, .chikirin-table td.center { text-align:center; }
@@ -309,6 +309,7 @@ h1,h2,h3 { color:var(--ink); } h1 { margin:0; font-size:30px; line-height:1.1; l
 .chikirin-tz { color:var(--faint); }
 .chikirin-warnings { display:inline-block; margin-left:10px; }.chikirin-warnings summary { cursor:pointer; color:#b45309; font-weight:700; }.chikirin-warnings ul { margin:6px 0 0; padding-left:18px; color:var(--ink); }
 .chikirin-table .head-2 { display:inline-block; line-height:1.25; }
+.links-editor .youtube-import-notice { margin:0 0 5px!important; border-top:0; padding-top:0; font-size:12px; color:#0057aa!important; }
 .chikirin-table .col-status { width:52px; }.chikirin-table .col-texttube { width:60px; }
 /* スマホ幅では、共通の.content-tableカード変換(Watch List向けの列名・ラベル)がそのままでは
    合わないため、ちきりんの列に合わせてラベルと並び順を上書きする(§ドキュメント参照)。 */
@@ -328,15 +329,17 @@ h1,h2,h3 { color:var(--ink); } h1 { margin:0; font-size:30px; line-height:1.1; l
   .chikirin-table .date-cell.is-latest { order:6; }
   .chikirin-table .date-cell.is-latest::before { content:"最新ちきりん"; }
   .chikirin-table .num-cell.is-total { order:7; }
-  .chikirin-table .num-cell.is-total::before { content:"コメント全体"; }
+  .chikirin-table .num-cell.is-total::before { content:"コメ全体"; }
   .chikirin-table .num-cell.is-target-count { order:8; }
-  .chikirin-table .num-cell.is-target-count::before { content:"コメントちきりん"; }
+  .chikirin-table .num-cell.is-target-count::before { content:"コメちき"; }
   .chikirin-table .status-cell { order:9; grid-column:1/-1; }
   .chikirin-table .status-cell::before { content:"状態"; }
   .chikirin-table .links-cell { order:10; max-width:none; }
   .chikirin-table .item-links { flex-direction:row; flex-wrap:wrap; }
   .chikirin-table .texttube-cell.is-watchlist { order:11; }
   .chikirin-table .texttube-cell.is-watchlist::before { content:"Watch List"; }
+  .chikirin-table .texttube-cell.is-watched { order:12; }
+  .chikirin-table .texttube-cell.is-watched::before { content:"視聴済"; }
 }
 .chikirin-issue { display:inline-block; border-radius:999px; padding:2px 10px; background:rgba(245,158,11,.16); color:#b45309; font-size:12px; font-weight:700; cursor:help; }
 .chikirin-issue-box { border-left:3px solid #f59e0b; border-radius:0 10px 10px 0; padding:10px 14px; background:rgba(245,158,11,.1); font-size:13.5px; }.chikirin-issue-box ul { margin:4px 0 0; padding-left:18px; }

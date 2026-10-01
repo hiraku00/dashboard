@@ -50,7 +50,7 @@ function spyOnLocationHref() {
 
 test("the list is a table: kind, program, title, thread, poster, times, counts, status and links (read-only; editing is on the detail page)", () => {
   render(<ChikirinApp initialPage={page([program()])} initialRun={null} />);
-  expect(screen.getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["ちきりん", "番組", "タイトル", "スレ主", "スレッド起票日時", "最新ちきりん", "コメント全体", "コメントちきりん", "状態", "リンク", "WatchList"]);
+  expect(screen.getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["ちきりん", "番組", "タイトル", "スレ主", "スレッド起票日時", "最新ちきりん", "コメ全体", "コメちき", "状態", "リンク", "WatchList", "視聴済"]);
   const row = screen.getAllByRole("row")[1];
   const cells = within(row).getAllByRole("cell").map((c) => c.textContent ?? "");
   expect(cells[0]).toBe("コメント");
@@ -433,4 +433,18 @@ test("the detail form is prefilled with the inferred broadcaster", () => {
   vi.stubGlobal("fetch", () => Promise.resolve(json({ program: program() })));
   render(<ChikirinDetail id="n1" initialProgram={program({ meta: { broadcaster: "", episodeTitle: "", links: [{ url: "https://txbiz.tv-tokyo.co.jp/wbs", label: "" }] } }) as never} />);
   expect((screen.getByLabelText("放送局") as HTMLInputElement).value).toBe("テレ東");
+});
+
+test("視聴済 column: a link registered in Watch List shows its status; completed is 視聴済, registered-but-not-done is 未視聴, no registration is —", () => {
+  const url = "https://www.web.nhk/tv/pl/series-tep-P1124VMJ6R/ep/4N6PM42X7K";
+  const base = program({ linkUrl: url, meta: { broadcaster: "", programName: "", episodeTitle: "", links: [] } });
+  const cellOf = (watched: unknown) => {
+    const { unmount } = render(<ChikirinApp initialPage={{ ...page([base]), watched } as never} initialRun={null} />);
+    const text = within(screen.getAllByRole("row")[1]).getAllByRole("cell")[12].textContent;
+    unmount();
+    return text;
+  };
+  expect(cellOf({ [url]: { url, title: "t", count: 1, status: "completed", watchedOn: "2026-09-30" } })).toBe("視聴済");
+  expect(cellOf({ [url]: { url, title: "t", count: 1, status: "backlog", watchedOn: null } })).toBe("未視聴");
+  expect(cellOf({})).toBe("—");
 });
