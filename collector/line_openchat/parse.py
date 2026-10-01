@@ -211,6 +211,10 @@ def read_digits(screen: Screen, a: float, e: float, cy: float) -> int | None:
     if value is None:
         value = _read_digits_ocr(screen, a, e, cy)
         digits.STATS["ocr" if value is not None else "unknown"] += 1
+        if value is None:
+            pixels = getattr(screen, "pixels", None)
+            if pixels is not None:
+                digits.record_unreadable(pixels(a - 1, cy - 9, e - a + 2.5, 18), getattr(screen, "scale", None), a, cy)
         return value
     digits.STATS["template"] += 1
     if VERIFY_DIGITS_WITH_OCR:
@@ -221,7 +225,34 @@ def read_digits(screen: Screen, a: float, e: float, cy: float) -> int | None:
     return value
 
 
+# 数の行の中心 cy は、時刻の文字の位置から決めるので、数pt ずれることがある(実機で、uva の「1」が約4.5pt下にずれ、
+# 数字の上端(「1」の旗)が検出の帯から外れて、4px幅の塊になり、見本とも合わず読めなかった: 2026-10-01)。
+# 見本で読める範囲は、cy が本来の位置より下に+1ptまで、上に-6ptまで(fixturesで確認)なので、読めないときは上へずらして読み直す。
+CY_RETRY_SHIFTS = (4.0, 8.0)
+
+
 def read_counts(screen: Screen, cy: float):
+    """数の行を読む. コメント数の数字が読めなかったとき(中心 cy が下にずれている)は、cy を上へずらして読み直す(_read_counts_at)。
+    読み方の記録(digits.STATS / UNREADABLE)には、採用した読みのぶんだけ残す(失敗した試行は、読み直しで読めたら消す)."""
+    def ok(r) -> bool:
+        return r is not None and r[0] is not None and r[1] is not None
+
+    base, n0 = digits.STATS.copy(), len(digits.UNREADABLE)
+    first = _read_counts_at(screen, cy)
+    if ok(first):
+        return first
+    first_stats, first_records = digits.STATS.copy(), digits.UNREADABLE[n0:]
+    for shift in CY_RETRY_SHIFTS:
+        digits.STATS.clear(); digits.STATS.update(base); del digits.UNREADABLE[n0:]
+        again = _read_counts_at(screen, cy - shift)
+        if ok(again):
+            digits.STATS["recentered"] += 1
+            return again
+    digits.STATS.clear(); digits.STATS.update(first_stats); digits.UNREADABLE[n0:] = first_records     # どれでも読めなければ、元の位置の読みを採る
+    return first
+
+
+def _read_counts_at(screen: Screen, cy: float):
     """[😊][数字][💬][数字][共有] の並びを画素で切り分け、数字の塊だけを読む.
 
     戻り値: (リアクション数, コメント数(数字が読めなければ None), コメントアイコンの(x0,x1)) . アイコンが2つ見つからなければ None.

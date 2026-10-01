@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
 
-from . import VERSION
+from . import VERSION, digits
 from .ledger import DEFAULT_ROOM, Ledger, default_path
 from .session import Options, RunStats, Session
 
@@ -151,6 +151,8 @@ def run_sync(cfg: SyncConfig, *, log: Callable[[str], None] = lambda s: None,
         session = Session(driver, ledger, when, opts, log=note)
         try:
             stats = session.run()
+            for line in digits.dump_unreadable(directory / "unreadable-digits", datetime.now().strftime("%Y%m%dT%H%M%S")):
+                note(line)
         finally:
             if hasattr(driver, "close"):
                 driver.close()
