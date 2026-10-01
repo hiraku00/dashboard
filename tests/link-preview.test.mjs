@@ -26,3 +26,16 @@ test("テレ東BIZ: a trailing ｜番組名 is dropped too, and a double-escaped
   const gaia = `<head><title>買い物をあきらめない！｜ガイアの夜明け</title><script>dataLayer.push({'program':'ガイアの夜明け', });</script></head>`;
   expect(parseLinkPreview(gaia, "https://txbiz.tv-tokyo.co.jp/gaia/oa/post_1").title).toBe("買い物をあきらめない！");
 });
+
+test("NHK ONE 番組表のページ(schedule-tep): og:title の後ろは日付と放送局なので使わず、JSON-LD の番組名を使う", () => {
+  const html = `<head><meta property="og:title" content="イスラエル社会の右傾化と“反ネタニヤフ”の源流 | 2026-09-29 NHK総合・東京"/></head><body><script type="application/ld+json">{"partOfSeries":{"@type":"TVSeries","@id":"https://www.web.nhk/tv/an/kokusaihoudou/pl/series-tep-8M689W8RVX","name":{"@value":"国際報道 2026","@language":"ja"},"description":{"@value":"x"}}}</script></body>`;
+  expect(parseLinkPreview(html, "https://www.web.nhk/tv/pl/schedule-tep-g1-130-20260929/ep/Z5PHLJECZ1")).toEqual({ creatorName: "NHK", seriesTitle: "国際報道 2026", title: "イスラエル社会の右傾化と“反ネタニヤフ”の源流" });
+  // JSON-LD が読めないときは、日付と放送局を番組名にせず空にする
+  const noLd = `<head><meta property="og:title" content="タイトル | 2026-09-29 NHK総合・東京"/></head>`;
+  expect(parseLinkPreview(noLd, "https://www.web.nhk/tv/pl/schedule-tep-g1-130-20260929/ep/Z")).toEqual({ creatorName: "NHK", seriesTitle: "", title: "タイトル" });
+});
+
+test("NHK ONE 番組ページ(series-tep)は、JSON-LD が無くても og:title の「| 番組名」から読む", () => {
+  const html = `<head><meta property="og:title" content="南米ペルー・海面水温上昇で漁業に打撃 | キャッチ!世界のトップニュース"/></head>`;
+  expect(parseLinkPreview(html, "https://www.web.nhk/tv/an/catchsekai/pl/series-tep-KQ2GPZPJWM/ep/14R8MPWCE1").seriesTitle).toBe("キャッチ!世界のトップニュース");
+});

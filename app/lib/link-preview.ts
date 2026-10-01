@@ -34,6 +34,13 @@ function stripSuffix(title: string, suffixes: string[]) {
   return result;
 }
 
+/** NHK ONE のページの JSON-LD(partOfSeries.name)から番組名を読む。なければ ""。 */
+function nhkSeriesName(html: string) {
+  const raw = html.match(/"partOfSeries"\s*:\s*\{[^}]*?"name"\s*:\s*(?:\{\s*"@value"\s*:\s*)?"((?:\\.|[^"\\])*)"/)?.[1];
+  if (!raw) return "";
+  try { return String(JSON.parse(`"${raw}"`)).trim(); } catch { return ""; }
+}
+
 export function parseLinkPreview(html: string, url: string): LinkPreview {
   const ogTitle = metaProperty(html, "og:title") || pageTitle(html);
   const creatorName = inferBroadcaster([url]);
@@ -41,9 +48,11 @@ export function parseLinkPreview(html: string, url: string): LinkPreview {
   try { host = new URL(url).hostname.replace(/^www\./, ""); } catch { /* 不正なURLは呼び出し側で弾く */ }
 
   if (host === "web.nhk") {
-    // og:title は「エピソード | 番組名」。番組名にも「|」は無いので、最後の「|」で分ける。
+    // og:title は、番組ページ(series-tep-…)では「エピソード | 番組名」、番組表のページ(schedule-tep-…)では
+    // 「エピソード | 2026-09-29 NHK総合・東京」(日付と放送局)。番組名はどちらでも JSON-LD の partOfSeries にあるので、そちらを優先する。
     const match = ogTitle.match(/^(.*)\s*[|｜]\s*([^|｜]+)$/);
-    return match ? { creatorName, seriesTitle: match[2].trim(), title: match[1].trim() } : { creatorName, seriesTitle: "", title: ogTitle };
+    const fromTitle = match && !/^\d{4}-\d{2}-\d{2}\b/.test(match[2].trim()) ? match[2].trim() : "";
+    return { creatorName, seriesTitle: nhkSeriesName(html) || fromTitle, title: match ? match[1].trim() : ogTitle };
   }
   if (host === "txbiz.tv-tokyo.co.jp") {
     const program = html.match(/dataLayer\.push\(\{[^}]*'program'\s*:\s*'([^']*)'/)?.[1] ?? "";

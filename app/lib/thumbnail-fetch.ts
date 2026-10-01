@@ -23,17 +23,21 @@ const RETRY_STATUSES = new Set([403, 429, 500, 502, 503, 504]);
  *  one 4s deadline and a save is waiting on it. */
 const RETRY_DELAYS_MS = [300, 700];
 
+/** The link preview is a button the person waits on (nothing else is blocked), and some TV sites answer slowly -- テレ東BIZ takes
+ *  1.5-2.5s to the first byte -- so it gets a longer deadline than the thumbnail lookup that a save waits on. */
+const PREVIEW_TIMEOUT_MS = 8000;
+
 /** Links tried per item, so one save makes at most this many subrequests. */
 const MAX_LINKS = 2;
 
-async function readHead(response: Response) {
+async function readHead(response: Response, stopAtHeadEnd = true) {
   const reader = response.body?.getReader();
   if (!reader) return "";
   const decoder = new TextDecoder();
   let html = "";
   let bytes = 0;
   try {
-    while (bytes < MAX_HTML_BYTES && !/<\/head>/i.test(html)) {
+    while (bytes < MAX_HTML_BYTES && !(stopAtHeadEnd && /<\/head>/i.test(html))) {
       const { done, value } = await reader.read();
       if (done) break;
       bytes += value.byteLength;
@@ -120,13 +124,14 @@ export async function resolveStoredThumbnail(urls: string[]): Promise<string> {
   return found.find(Boolean) ?? "";
 }
 
-/** The <head> of a page (redirects followed, each hop checked as public), or null if it could not be read in time. Used by
- *  the Watch List editor's link preview, which reads the title and program name rather than the image. */
-export async function fetchPageHead(url: string): Promise<{ html: string; url: string } | null> {
+/** The first 128KB of a page (redirects followed, each hop checked as public), or null if it could not be read in time. Used by
+ *  the link preview, which reads the title and program name rather than the image. It reads past </head> on purpose: NHK ONE puts
+ *  the program name (JSON-LD partOfSeries) in the body, ~50KB in. */
+export async function fetchPageHead(url: string, timeoutMs = PREVIEW_TIMEOUT_MS): Promise<{ html: string; url: string } | null> {
   const controller = new AbortController();
   let timer: ReturnType<typeof setTimeout> | undefined;
   const deadline = new Promise<null>((resolve) => {
-    timer = setTimeout(() => { controller.abort(); resolve(null); }, TIMEOUT_MS);
+    timer = setTimeout(() => { controller.abort(); resolve(null); }, timeoutMs);
   });
   const read = async () => {
     try {
@@ -137,7 +142,7 @@ export async function fetchPageHead(url: string): Promise<{ html: string; url: s
         const location = response.headers.get("location");
         if (response.status >= 300 && response.status < 400 && location) { current = new URL(location, current).href; continue; }
         if (!response.ok || !(response.headers.get("content-type") ?? "text/html").toLowerCase().includes("html")) return null;
-        return { html: await readHead(response), url: current };
+        return { html: await readHead(response, false), url: current };
       }
     } catch { /* Best effort. */ }
     return null;
