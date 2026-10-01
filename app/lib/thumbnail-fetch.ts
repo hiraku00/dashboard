@@ -119,3 +119,32 @@ export async function resolveStoredThumbnail(urls: string[]): Promise<string> {
   const found = await Promise.all(urls.slice(0, MAX_LINKS).map(fetchPageThumbnail));
   return found.find(Boolean) ?? "";
 }
+
+/** The <head> of a page (redirects followed, each hop checked as public), or null if it could not be read in time. Used by
+ *  the Watch List editor's link preview, which reads the title and program name rather than the image. */
+export async function fetchPageHead(url: string): Promise<{ html: string; url: string } | null> {
+  const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<null>((resolve) => {
+    timer = setTimeout(() => { controller.abort(); resolve(null); }, TIMEOUT_MS);
+  });
+  const read = async () => {
+    try {
+      let current = url;
+      for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
+        if (!isPublicHttpUrl(current)) return null;
+        const response = await fetchPage(current, controller.signal);
+        const location = response.headers.get("location");
+        if (response.status >= 300 && response.status < 400 && location) { current = new URL(location, current).href; continue; }
+        if (!response.ok || !(response.headers.get("content-type") ?? "text/html").toLowerCase().includes("html")) return null;
+        return { html: await readHead(response), url: current };
+      }
+    } catch { /* Best effort. */ }
+    return null;
+  };
+  try {
+    return await Promise.race([read(), deadline]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
