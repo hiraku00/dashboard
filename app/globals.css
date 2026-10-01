@@ -285,9 +285,9 @@ h1,h2,h3 { color:var(--ink); } h1 { margin:0; font-size:30px; line-height:1.1; l
 .chikirin-more { display:flex; justify-content:center; padding:10px 24px 22px; }.chikirin-more button { border:1px solid var(--line-strong); border-radius:10px; padding:9px 22px; background:var(--raised); }
 .chikirin-table { min-width:990px; }
 .chikirin-table th, .chikirin-table td { padding-left:6px; padding-right:6px; }
-.chikirin-table .col-kind { width:82px; }.chikirin-table .col-broadcaster { width:136px; }.chikirin-table .col-owner { width:76px; }
+.chikirin-table .col-broadcaster { width:136px; }.chikirin-table .col-owner { width:76px; }
 .chikirin-table .col-posted { width:86px; }.chikirin-table .col-count { width:48px; }.chikirin-table .col-links { width:88px; }.chikirin-table .col-action { width:64px; }
-.chikirin-table .kind-head, .chikirin-table .kind-cell { padding-left:8px; }
+.chikirin-table th:first-child, .chikirin-table td:first-child { padding-left:8px; }
 .chikirin-table th.num, .chikirin-table td.num-cell { text-align:right; font-variant-numeric:tabular-nums; }.chikirin-table td.num-cell { font-size:13px; }
 .chikirin-table .program-cell { min-width:0; }
 .chikirin-table .program-broadcaster { display:block; overflow:hidden; color:var(--ink); font-size:13px; font-weight:700; line-height:1.3; text-overflow:ellipsis; white-space:nowrap; }
@@ -295,7 +295,7 @@ h1,h2,h3 { color:var(--ink); } h1 { margin:0; font-size:30px; line-height:1.1; l
 .chikirin-table .program-name.is-unset { color:var(--faint); }
 .chikirin-table .program-cell .description { margin:2px 0 0; overflow:hidden; color:var(--muted); font-size:12px; text-overflow:ellipsis; white-space:nowrap; display:block; }
 .chikirin-table .owner-cell { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:12px; }
-.chikirin-table .owner-cell.is-target { color:var(--audio); font-weight:700; }
+.chikirin-table .owner-cell.is-target, .chikirin-table .num-cell.is-hit { color:#dc2626; font-weight:700; }
 .chikirin-table .date-cell { font-size:12px; white-space:nowrap; }
 .chikirin-table .links-cell { max-width:0; padding-left:4px; padding-right:4px; }
 .chikirin-table .item-links { flex-direction:column; align-items:flex-start; gap:2px; }
@@ -316,8 +316,6 @@ h1,h2,h3 { color:var(--ink); } h1 { margin:0; font-size:30px; line-height:1.1; l
    合わないため、ちきりんの列に合わせてラベルと並び順を上書きする(§ドキュメント参照)。 */
 @media (max-width:760px) {
   .chikirin-table { min-width:0; }
-  .chikirin-table .kind-cell { order:1; }
-  .chikirin-table .kind-cell::before { content:"ちきりん"; }
   .chikirin-table .owner-cell { order:2; }
   .chikirin-table .owner-cell::before { content:"スレ主"; }
   .chikirin-table .program-cell.is-broadcaster { order:3; grid-column:1/-1; }
@@ -340,7 +338,7 @@ h1,h2,h3 { color:var(--ink); } h1 { margin:0; font-size:30px; line-height:1.1; l
   .chikirin-table .texttube-cell.is-watchlist { order:11; }
   .chikirin-table .texttube-cell.is-watchlist::before { content:"Watch List"; }
   .chikirin-table .texttube-cell.is-watched { order:12; }
-  .chikirin-table .texttube-cell.is-watched::before { content:"視聴済"; }
+  .chikirin-table .texttube-cell.is-watched::before { content:"視聴"; }
 }
 .chikirin-issue { display:inline-block; border-radius:999px; padding:2px 10px; background:rgba(245,158,11,.16); color:#b45309; font-size:12px; font-weight:700; cursor:help; }
 .chikirin-issue-box { border-left:3px solid #f59e0b; border-radius:0 10px 10px 0; padding:10px 14px; background:rgba(245,158,11,.1); font-size:13.5px; }.chikirin-issue-box ul { margin:4px 0 0; padding-left:18px; }

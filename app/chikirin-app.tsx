@@ -204,19 +204,16 @@ export function ChikirinApp({ initialPage = null, initialRun = null, initialQuer
       {!loading && programs.length === 0 && <div className="empty-state"><strong>該当する番組はありません。</strong><p>{initialRun || query || kind !== "all" ? "条件を変えてみてください。" : "同期が終わるとここに表示されます。"}</p></div>}
       {programs.length > 0 && <div className={loading ? "table-scroll is-loading" : "table-scroll"} aria-busy={loading}>
         <table className="content-table chikirin-table">
-          <colgroup><col className="col-kind" /><col className="col-broadcaster" /><col className="col-thumb" /><col className="col-title" /><col className="col-owner" /><col className="col-posted" /><col className="col-posted" /><col className="col-count" /><col className="col-count" /><col className="col-status" /><col className="col-links" /><col className="col-texttube" /><col className="col-texttube" /></colgroup>
+          <colgroup><col className="col-broadcaster" /><col className="col-thumb" /><col className="col-title" /><col className="col-owner" /><col className="col-posted" /><col className="col-posted" /><col className="col-count" /><col className="col-count" /><col className="col-status" /><col className="col-links" /><col className="col-texttube" /><col className="col-texttube" /></colgroup>
           <thead><tr>
-            <th scope="col" className="kind-head" title="ちきりんの関わり方">ちきりん</th><th scope="col">番組</th><th scope="col" colSpan={2}>タイトル</th><th scope="col">スレ主</th><th scope="col" title="スレッドが起票された日時(日本時間)"><span className="head-2">スレッド<br />起票日時</span></th>
+            <th scope="col">番組</th><th scope="col" colSpan={2}>タイトル</th><th scope="col">スレ主</th><th scope="col" title="スレッドが起票された日時(日本時間)"><span className="head-2">スレッド<br />起票日時</span></th>
             <th scope="col" title="ちきりんの最新の投稿の日時"><span className="head-2">最新<br />ちきりん</span></th>
-            <th scope="col" className="num" title="ノート全体のコメント数"><span className="head-2">コメ<br />全体</span></th><th scope="col" className="num" title="ちきりんが書いたコメントの数"><span className="head-2">コメ<br />ちき</span></th><th scope="col" className="center">状態</th><th scope="col">リンク</th><th scope="col"><span className="head-2">Watch<br />List</span></th><th scope="col">視聴済</th>
+            <th scope="col" className="num" title="ノート全体のコメント数"><span className="head-2">コメ<br />全体</span></th><th scope="col" className="num" title="ちきりんが書いたコメントの数"><span className="head-2">コメ<br />ちき</span></th><th scope="col" className="center">状態</th><th scope="col">リンク</th><th scope="col"><span className="head-2">Watch<br />List</span></th><th scope="col">視聴</th>
           </tr></thead>
           <tbody>{programs.map((program) => {
             const links = displayLinks(program);
             const watchedLinks = links.filter((l) => watched[l.url]);
             return <tr key={program.noteId}>
-              <td className="kind-cell">{program.involvement === "none"
-                ? <span className="empty-cell" title="ちきりんは関わっていません">なし</span>
-                : <span className={program.involvement === "thread" ? "chikirin-tag is-thread" : "chikirin-tag"}>{program.involvement === "thread" ? "スレッド" : "コメント"}</span>}</td>
               <td className="program-cell is-broadcaster">
                 <strong className="program-broadcaster" title={displayBroadcaster(program) || undefined}>{displayBroadcaster(program) || "—"}</strong>
                 <span className={program.meta.programName ? "program-name" : "program-name is-unset"} title={program.meta.programName || undefined}>{program.meta.programName || "番組名未設定"}</span>
@@ -231,7 +228,7 @@ export function ChikirinApp({ initialPage = null, initialRun = null, initialQuer
               <td className="date-cell is-posted"><time dateTime={program.notePostedAt}>{formatPostedAt(program.notePostedAt, program.notePrecision)}</time></td>
               <td className="date-cell is-latest">{program.latestAt ? <time dateTime={program.latestAt}>{formatPostedAt(program.latestAt, program.latestPrecision)}</time> : <span className="empty-cell">—</span>}</td>
               <td className="num-cell is-total">{program.commentCount}</td>
-              <td className="num-cell is-target-count">{program.involvement === "none" ? <span className="empty-cell">—</span> : program.targetComments.length}</td>
+              <td className={program.targetComments.length > 0 ? "num-cell is-target-count is-hit" : "num-cell is-target-count"}>{program.involvement === "none" ? <span className="empty-cell">—</span> : program.targetComments.length}</td>
               <td className="status-cell center">{program.issues.length > 0 ? <span className="chikirin-issue" title={program.issues.join("\n")}>要確認</span> : <span className="empty-cell" title="取得に問題はありません">OK</span>}</td>
               <td className="links-cell">{links.length > 0 ? <ProgramLinks links={links} label={`${program.programTitle} のリンク`} /> : <span className="empty-cell">—</span>}</td>
               <td className="texttube-cell is-watchlist">{watchedLinks.length > 0 ? watchedLinks.map((l) => <a key={l.url} className="texttube-badge texttube-reflected" href={`/watch-list?q=${encodeURIComponent(watched[l.url].title || watchListSearchTerm(watched[l.url].url))}`} target="_blank" rel="noreferrer" title={`${l.text} は Watch List に登録済み(「${watched[l.url].title}」)。開くとその項目を表示します`}>登録済{watched[l.url].count > 1 ? ` ${watched[l.url].count}件` : ""}</a>) : <span className="empty-cell">—</span>}</td>
@@ -239,7 +236,7 @@ export function ChikirinApp({ initialPage = null, initialRun = null, initialQuer
                 const best = watchedLinks.map((l) => watched[l.url]).sort((x, y) => watchRank(y.status) - watchRank(x.status))[0];
                 if (!best) return <span className="empty-cell">—</span>;
                 const done = best.status === "completed";
-                return <span className={done ? "texttube-badge texttube-reflected" : "texttube-badge texttube-none"} title={done ? `Watch List で視聴済${best.watchedOn ? `(${best.watchedOn})` : ""}` : "Watch List に登録済ですが、まだ視聴済ではありません"}>{done ? "視聴済" : best.status === "in_progress" ? "鑑賞中" : "未視聴"}</span>;
+                return <span className={done ? "texttube-badge texttube-reflected" : "texttube-badge texttube-none"} title={done ? `Watch List で視聴済${best.watchedOn ? `(${best.watchedOn})` : ""}` : "Watch List に登録済ですが、まだ視聴済ではありません"}>{done ? "視聴" : best.status === "in_progress" ? "鑑賞中" : "未視聴"}</span>;
               })()}</td>
             </tr>;
           })}</tbody>
