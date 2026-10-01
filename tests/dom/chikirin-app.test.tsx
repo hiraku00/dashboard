@@ -408,7 +408,7 @@ test("同期コマンド popup shows the sync command with a copy button, and co
 test("links without a label show the site name: www.web.nhk becomes NHK ONE, other sites their domain, a label wins", async () => {
   const { linkText } = await import("@/app/chikirin-app");
   expect(linkText("https://www.web.nhk/tv/pl/series-tep-XXXX", "")).toBe("NHK ONE");
-  expect(linkText("https://txbiz.tv-tokyo.co.jp/wbs", "")).toBe("WBS");
+  expect(linkText("https://txbiz.tv-tokyo.co.jp/wbs/oa/post_1", "")).toBe("テレ東BIZ");
   expect(linkText("https://www.nhk-ondemand.jp/goods/G1/", "")).toBe("nhk-ondemand.jp");
   expect(linkText("https://www.web.nhk/tv/x", "番組ページ")).toBe("番組ページ");
   expect(linkText("not a url", "")).toBe("not a url");
