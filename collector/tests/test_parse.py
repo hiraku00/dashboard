@@ -142,3 +142,11 @@ def test_body_line_split_into_a_right_fragment_is_not_taken_for_card_text():
     kept = P.drop_card_garbage(body + card, 700.0)
     assert "地球" not in [l.text for l in kept]                  # 本物のカードの画像内の文字は、これまでどおり捨てる
     assert "とりあえず、今後が楽しみではある。" in [l.text for l in kept]
+
+
+def test_url_line_after_a_line_reaching_the_right_edge_is_not_glued_to_it():
+    """前の行が右端まで届いていても、URLで始まる行は前の文の続きではない(「…ふたりhttps://…」と1行に繋がっていた)."""
+    lines = [P.Line("10月1日 映像の世紀バタフライエフェクト AI 未来を夢みたふたり", 18, 255, 400, 14),
+             P.Line("https://www.nhk-ondemand.jp/goods/G2025146599SA000/?", 17, 270, 371, 14),
+             P.Line("capid=sns002", 17, 285, 88, 14)]
+    assert P.join_lines(lines, 380.0) == "10月1日 映像の世紀バタフライエフェクト AI 未来を夢みたふたり\nhttps://www.nhk-ondemand.jp/goods/G2025146599SA000/?capid=sns002"

@@ -306,8 +306,8 @@ def join_lines(lines: list[Line], wrap_right: float = K.WRAP_RIGHT) -> str:
             out = t
         elif ln.y - prev.y > K.PARAGRAPH_GAP:
             out += "\n\n" + t
-        elif prev.x + prev.w >= wrap_right:
-            out += t                       # 前の行が右端まで届いている = 折り返し
+        elif prev.x + prev.w >= wrap_right and not re.match(r"https?://", t):
+            out += t                       # 前の行が右端まで届いている = 折り返し(ただしURLの行頭は、前の文の続きではなく別の行)
         else:
             out += "\n" + t
         prev = ln
