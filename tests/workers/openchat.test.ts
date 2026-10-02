@@ -244,11 +244,11 @@ describe("programs list", () => {
 
   test("a run keeps the time the collector started reading, even when the upload comes later", async () => {
     const id = `run-${uid("r")}`;
-    const started = "2026-09-24T23:30:42Z";
+    const started = new Date(Date.now() - 2 * 86_400_000).toISOString().replace(/\.\d+Z$/, "Z");   // 受け付ける範囲(7日前まで)に入る時刻にする
     const { response } = await sync({ action: "start", clientRunId: id, clientVersion: "test", startedAt: started });
     expect(response.status).toBe(200);
     const row = await env.DB.prepare("SELECT started_at FROM openchat_sync_runs WHERE client_run_id = ?").bind(id).first<{ started_at: string }>();
-    expect(row?.started_at).toBe("2026-09-24T23:30:42.000Z");
+    expect(row?.started_at).toBe(started.replace("Z", ".000Z"));
     const bad = `run-${uid("r")}`;
     await sync({ action: "start", clientRunId: bad, clientVersion: "test", startedAt: "2999-01-01T00:00:00Z" });      // 未来は受け付けず、受け取った時刻にする
     const badRow = await env.DB.prepare("SELECT started_at FROM openchat_sync_runs WHERE client_run_id = ?").bind(bad).first<{ started_at: string }>();

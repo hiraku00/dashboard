@@ -142,7 +142,7 @@ test("a weekdays-only routine does not materialize on a day it is not scheduled 
   // should never show up on today's board regardless of when the suite
   // runs -- a genuine regression here would be routines materializing on
   // days they were not scheduled for.
-  const today = new Date().getUTCDay();
+  const today = new Date(`${todoDate()}T12:00:00Z`).getUTCDay();   // アプリと同じ日付(JST)の曜日。UTCだと、UTC 15時以降は日付がずれる
   const otherWeekdays = [0, 1, 2, 3, 4, 5, 6].filter((day) => day !== today);
 
   const created = await routinesPost(
