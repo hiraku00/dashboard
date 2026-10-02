@@ -67,6 +67,8 @@ export const SITES: Site[] = [
   { host: "one.nhk", name: "NHK ONE", broadcaster: "NHK" },
   // テレ東BIZのページはどの番組(/wbs など)でも、リンク名は「テレ東BIZ」。
   { host: "txbiz.tv-tokyo.co.jp", name: "テレ東BIZ", broadcaster: "テレ東" },
+  // TVer は放送局がエピソードごとに違うので、リンクからは決めない(放送局はページの情報から入る)。
+  { host: "tver.jp", pathPrefix: "/episodes", name: "TVer", broadcaster: "" },
 ];
 
 export function siteOf(url: string): Site | null {
@@ -83,7 +85,7 @@ export function siteOf(url: string): Site | null {
 export function inferBroadcaster(urls: string[]): string {
   for (const url of urls) {
     const site = siteOf(url);
-    if (site) return site.broadcaster;
+    if (site?.broadcaster) return site.broadcaster;
   }
   return "";
 }

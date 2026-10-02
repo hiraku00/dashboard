@@ -6,8 +6,8 @@ import { ensureSchema } from "@/db";
 import { metaFromRow, normalizeMeta, siteOf } from "@/app/lib/openchat-meta";
 import { normalizeTextEdit } from "@/app/lib/openchat-input";
 import { canonicalUrl } from "@/app/lib/text";
-import { autoFillFields, canAutoFill, parseLinkPreview } from "@/app/lib/link-preview";
-import { fetchPageHead, fetchPageThumbnail } from "@/app/lib/thumbnail-fetch";
+import { autoFillFields, canAutoFill } from "@/app/lib/link-preview";
+import { fetchLinkPreview, fetchPageThumbnail } from "@/app/lib/thumbnail-fetch";
 import {
   buildProgramsFilter, PROGRAMS_ORDER_BY, toProgram, ROOM, resolveThumbnails, thumbnailSourceUrl,
   type CachedThumbnail, type Program, type ProgramsQuery,
@@ -105,8 +105,8 @@ export async function fillMetaForSynced(noteIds: string[] = []): Promise<void> {
     ).bind(...noteIds).all<Record<string, unknown>>()).results ?? [];
     const targets = rows.map((r) => ({ id: String(r.id), url: String(r.link_url) })).filter((t) => canAutoFill(t.url)).slice(0, SYNC_META_LOOKUPS);
     await Promise.all(targets.map(async (t) => {
-      const page = await fetchPageHead(t.url);
-      const filled = page ? autoFillFields(parseLinkPreview(page.html, page.url), t.url) : { broadcaster: "", programName: "", episodeTitle: "" };
+      const page = await fetchLinkPreview(t.url);
+      const filled = page ? autoFillFields(page.preview, t.url) : { broadcaster: "", programName: "", episodeTitle: "" };
       // リンクは、転送された先のURLにする(Watch List に登録されているのは転送先のURLなので、そろえないと「登録済」を判別できない)。
       const links = page ? [{ url: page.url, label: siteOf(page.url)?.name ?? "" }] : [];
       await env.DB.prepare(
