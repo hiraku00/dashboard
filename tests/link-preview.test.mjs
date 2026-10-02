@@ -52,3 +52,18 @@ test("the broadcaster falls back to the posted link, and every field is cut to i
   expect(autoFillFields({ creatorName: "", seriesTitle: "番組", title: "回" }, "https://one.nhk/www.web.nhk/tv/pl/x")).toEqual({ broadcaster: "NHK", programName: "番組", episodeTitle: "回" });
   expect(autoFillFields({ creatorName: "NHK", seriesTitle: "あ".repeat(300), title: "い".repeat(300) }, "https://x.test").programName).toHaveLength(200);
 });
+
+test("TVer: 公開JSONから、放送局・タイトル・番組名を読む。ニュースチャンネルの切り抜きは、タイトル末尾の【】が番組名", async () => {
+  const { parseTverPreview, tverEpisodeId, canAutoFill, autoFillFields } = await import("../app/lib/link-preview.ts");
+  const episode = { title: "古本ナゾの大量注文　日本の古書がAI学習の“資源”に？行方を追跡【バンキシャ！】", broadcastProviderLabel: "日テレ", seriesID: "srqyafxo6f" };
+  expect(parseTverPreview(episode, { title: "日テレNEWS NNN" })).toEqual({ creatorName: "日テレ", seriesTitle: "バンキシャ！", title: episode.title });
+  // ふつうの番組はシリーズ名が番組名(タイトル末尾の【】は、コーナー名かもしれないので使わない)
+  expect(parseTverPreview({ title: "ゲスト登場【密着】", broadcastProviderLabel: "テレ東" }, { title: "カンブリア宮殿" })).toEqual({ creatorName: "テレ東", seriesTitle: "カンブリア宮殿", title: "ゲスト登場【密着】" });
+  expect(parseTverPreview(null, null)).toEqual({ creatorName: "", seriesTitle: "", title: "" });
+  expect(tverEpisodeId("https://tver.jp/episodes/ept025uufz")).toBe("ept025uufz");
+  expect(tverEpisodeId("https://tver.jp/series/srqyafxo6f")).toBe("");
+  expect(canAutoFill("https://tver.jp/episodes/ept025uufz")).toBe(true);
+  expect(canAutoFill("https://tver.jp/series/srqyafxo6f")).toBe(false);
+  // 放送局はURLからは決まらないので、ページの情報(日テレ)が入る
+  expect(autoFillFields({ creatorName: "日テレ", seriesTitle: "バンキシャ！", title: "t" }, "https://tver.jp/episodes/ept025uufz").broadcaster).toBe("日テレ");
+});

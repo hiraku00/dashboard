@@ -67,6 +67,30 @@ export function parseLinkPreview(html: string, url: string): LinkPreview {
   return { creatorName, seriesTitle: "", title: stripSuffix(ogTitle, [siteName]) };
 }
 
+/** TVer のエピソードのURL(https://tver.jp/episodes/ept025uufz)から、エピソードIDを取り出す。違えば ""。 */
+export function tverEpisodeId(url: string) {
+  try {
+    const u = new URL(url);
+    if (u.hostname.replace(/^www\./, "") !== "tver.jp") return "";
+    return u.pathname.match(/^\/episodes\/([a-z0-9]+)\/?$/i)?.[1] ?? "";
+  } catch { return ""; }
+}
+
+/** TVer のページは中身をブラウザ側で描画するので、HTMLには番組情報が無い。代わりに公開JSON(statics.tver.jp/content/episode|series)を読む。
+ *  放送局はエピソードの broadcastProviderLabel(「日テレ」「テレ朝」…)、タイトルは title。
+ *  番組名は、ふだんはシリーズ名。ただし「日テレNEWS NNN」のようなニュースチャンネルは、番組ごとの切り抜きがまとめて入っていて
+ *  シリーズ名が番組名にならないので、タイトル末尾の【バンキシャ！】を番組名にする。 */
+export function parseTverPreview(episode: unknown, series: unknown): LinkPreview {
+  const text = (value: unknown) => (typeof value === "string" ? value.trim() : "");
+  const e = (episode && typeof episode === "object" ? episode : {}) as Record<string, unknown>;
+  const s = (series && typeof series === "object" ? series : {}) as Record<string, unknown>;
+  const title = text(e.title);
+  const seriesName = text(s.title);
+  const bracket = title.match(/【([^【】]+)】\s*$/)?.[1]?.trim() ?? "";
+  const digest = /NEWS|ニュース/i.test(seriesName);
+  return { creatorName: text(e.broadcastProviderLabel), seriesTitle: digest && bracket ? bracket : seriesName, title };
+}
+
 /** 同期のときに放送情報を自動で入れてよいリンクか。サイトが分かっているもの(NHK ONE・テレ東BIZ)だけ。
  *  知らないサイトは og:title が番組名にならないことが多いので、手で入れてもらう(詳細画面の「リンクから取得」)。 */
 export const canAutoFill = (url: string) => siteOf(url) !== null;

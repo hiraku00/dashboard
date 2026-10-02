@@ -6,7 +6,7 @@
  *  Everything here is best effort: any failure -- timeout, non-HTML, a
  *  redirect to a refused host, no image tag -- resolves to "" rather than
  *  throwing, because a missing thumbnail must never fail saving an item. */
-import { parseLinkPreview, type LinkPreview } from "./link-preview.ts";
+import { parseLinkPreview, parseTverPreview, tverEpisodeId, type LinkPreview } from "./link-preview.ts";
 import { isPublicHttpUrl, metaRefreshUrl, pageImageUrl, youTubeThumbnailFromLinks } from "./thumbnail.ts";
 
 /** One deadline for the whole lookup, redirects included. */
@@ -27,6 +27,37 @@ const RETRY_DELAYS_MS = [300, 700];
 /** The link preview is a button the person waits on (nothing else is blocked), and some TV sites answer slowly -- テレ東BIZ takes
  *  1.5-2.5s to the first byte -- so it gets a longer deadline than the thumbnail lookup that a save waits on. */
 const PREVIEW_TIMEOUT_MS = 8000;
+
+const TVER_CONTENT = "https://statics.tver.jp/content";
+
+/** TVer の公開JSON(認証なし)を1つ読む。読めなければ null。 */
+async function fetchTverJson(kind: "episode" | "series", id: string, signal: AbortSignal): Promise<unknown> {
+  try {
+    const response = await fetch(`${TVER_CONTENT}/${kind}/${id}.json`, { signal, headers: { accept: "application/json" } });
+    return response.ok ? await response.json() : null;
+  } catch { return null; }
+}
+
+/** TVer のエピソードの番組情報。ページのHTMLは空の殻なので、公開JSONから読む(エピソード→そのシリーズ)。読めなければ null。 */
+export async function fetchTverPreview(episodeId: string, timeoutMs = PREVIEW_TIMEOUT_MS): Promise<LinkPreview | null> {
+  const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<null>((resolve) => {
+    timer = setTimeout(() => { controller.abort(); resolve(null); }, timeoutMs);
+  });
+  const read = async () => {
+    const episode = await fetchTverJson("episode", episodeId, controller.signal);
+    if (!episode || typeof episode !== "object") return null;
+    const seriesId = (episode as { seriesID?: unknown }).seriesID;
+    const series = typeof seriesId === "string" && seriesId ? await fetchTverJson("series", seriesId, controller.signal) : null;
+    return parseTverPreview(episode, series);
+  };
+  try {
+    return await Promise.race([read(), deadline]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 /** Links tried per item, so one save makes at most this many subrequests. */
 const MAX_LINKS = 2;
@@ -155,9 +186,13 @@ export async function fetchPageHead(url: string, timeoutMs = PREVIEW_TIMEOUT_MS)
   }
 }
 
-/** リンク先から読み取った番組情報と、(転送を辿った後の)ページのURL。読めなければ null。
+/** リンク先から読み取った番組情報と、(転送を辿った後の)ページのURL。TVer は公開JSON、ほかは HTML から読む。読めなければ null。
  *  詳細画面の「リンクから取得」と、同期の完了時の自動入力が、同じこの読み取りを使う。 */
 export async function fetchLinkPreview(url: string): Promise<{ preview: LinkPreview; url: string } | null> {
+  if (tverEpisodeId(url)) {
+    const preview = await fetchTverPreview(tverEpisodeId(url));
+    return preview ? { preview, url } : null;
+  }
   const page = await fetchPageHead(url);
   return page ? { preview: parseLinkPreview(page.html, page.url), url: page.url } : null;
 }
