@@ -12,7 +12,7 @@ from typing import Callable
 import numpy as np
 
 from . import layout as K
-from .parse import (TXT_CUT, TXT_END, TXT_MORE, Block, clean_name, drop_card_garbage, is_badge_blue, merge_fragments, read_counts)
+from .parse import (TXT_CUT, TXT_END, TXT_MORE, Block, clean_name, drop_card_garbage, is_badge_blue, is_card_text, merge_fragments, read_counts)
 from .screen import Line
 from .tallocr import TallImage
 from .timeparse import is_time_text
@@ -214,6 +214,7 @@ def parse_tall(image: TallImage, lines: list[Line], scale: float, win_w_pt: floa
                 b.counts_y = cy
                 band = (cy - 12, cy + 12)
             rest = drop_card_garbage(rest, cy if counts else None)
+            all_rest = rest
             for l in rest:
                 t = l.text.strip()
                 if band and band[0] <= l.y + l.h / 2 <= band[1] and l.x < K.NOTE_X_MAX + 10:
@@ -223,7 +224,7 @@ def parse_tall(image: TallImage, lines: list[Line], scale: float, win_w_pt: floa
                     stripped = t.replace(TXT_MORE, "").strip(" .…・")
                     if stripped:
                         b.lines.append(Line(stripped, l.x, l.y, l.w, l.h, l.conf))
-                elif l.x >= K.LINK_CARD_X_MIN:
+                elif is_card_text(l, all_rest):
                     b.link_title = (b.link_title + " " + t).strip()
                 else:
                     b.lines.append(l)

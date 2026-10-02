@@ -105,6 +105,7 @@ class Session:
         self.debug = log if os.environ.get("LINE_OPENCHAT_DEBUG") else (lambda s: None)
         self.stats = RunStats()
         self._visited: set[str] = set()                         # 走査で件数を見て、開くかを判断したノートのID
+        self._lost_position = False                             # 見出しを探して大きく動いた末に諦め、スクロール位置が分からなくなった
         self._left_open: dict | None = None                     # 開いた(開いているのを見つけた)まま、まだ閉じていないノート
         self._carry: tuple[Screen, list[Block]] | None = None   # _advance が撮った画面を、次の shot() で再利用する
 
@@ -208,6 +209,13 @@ class Session:
                 self.log(f"note {note['author_name']} {note['posted_at']} 💬{obs.comments} {'NEW ' if is_new else ''}{'OPEN ' if changed else ''}")
                 if changed:
                     opened = True
+                    if self._lost_position:
+                        # 見出しを探して上下へ大きく動いた末に諦めた。そのまま続けると、途中のノート(この下にある未確認のもの)を
+                        # 飛ばして、ずっと下から読み始めてしまう(実機で、先頭のノートの失敗後に、7件下の「のの」から再開した)。
+                        # 先頭へ戻る。確認済み(visited)のノートは読み飛ばすので、未確認のノートから再開する
+                        self._lost_position = False
+                        self.log("    位置が分からなくなったので、一覧の先頭へ戻って続けます")
+                        self.to_top()
                     break                       # 画面が変わったので撮り直す
                 if o.max_notes and stats.notes_scanned >= o.max_notes:
                     stats.stopped_early = True
@@ -344,6 +352,7 @@ class Session:
             self.scroll(8)
         if b2 is None or b2.more_y is not None:
             self.stats.warnings.append(f"本文を開けませんでした: {self._label(note)}")
+            self._lost_position = True
             return True
         obs2 = note_obs(b2, self.now)
         if obs2:
@@ -365,6 +374,7 @@ class Session:
             self.stats.warnings.append(f"{note['author_name']} {note['posted_at_raw']}: {exc}")
             note["needs_recheck"] = True
             note["pending_upload"] = True
+            self._lost_position = True
         if self._left_open is note:
             self._close_quietly(note)
 

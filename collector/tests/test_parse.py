@@ -127,3 +127,18 @@ def test_counts_row_with_only_reactions_still_reads_zero_comments():
     chat = SimChat([SimNote("はるも", "本文です。", "1時間前", reactions=5)], jitter=False)
     note = next(b for b in P.split_blocks(chat.screen()) if b.kind == "note")
     assert (note.reactions, note.comments) == (5, 0)
+
+
+def test_body_line_split_into_a_right_fragment_is_not_taken_for_card_text():
+    """本文2行目の右半分が別の断片になっても(x≥100)カードの文字と誤認せず、そこから下の本文を捨てない."""
+    body = [P.Line("映像の世紀 AI 未来を夢みたふたりの天才", 18, 240, 258, 14),
+            P.Line("10月1日 映像の世紀バタフライエフェクト", 18, 255, 243, 14),
+            P.Line("未来を夢みたふたり", 309, 255, 112, 14),
+            P.Line("現在のAIブームがどこから始まったのか", 18, 320, 300, 14),
+            P.Line("とりあえず、今後が楽しみではある。", 18, 480, 250, 14)]
+    kept = P.drop_card_garbage(body, 700.0)
+    assert [l.text for l in kept] == [l.text for l in body]
+    card = [P.Line("映像の世紀バタフライエフェクト", 130, 700 - 150, 200, 14), P.Line("地球", 40, 700 - 150, 30, 14)]
+    kept = P.drop_card_garbage(body + card, 700.0)
+    assert "地球" not in [l.text for l in kept]                  # 本物のカードの画像内の文字は、これまでどおり捨てる
+    assert "とりあえず、今後が楽しみではある。" in [l.text for l in kept]

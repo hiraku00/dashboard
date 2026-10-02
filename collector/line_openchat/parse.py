@@ -346,9 +346,21 @@ def merge_fragments(lines: list[Line]) -> list[Line]:
     return out
 
 
+CARD_THUMB_RIGHT = K.LINK_CARD_X_MIN + 60      # リンクカードの画像の右端(これより右まで続く左側の行は、画像内の文字ではなく本文)
+
+
+def is_card_text(l: Line, rest: list[Line]) -> bool:
+    """リンクカードの題名などの文字か. x が右寄りでも、同じ高さの左に、画像の右端を越えて続く本文の行があれば、
+    それは本文の1行がOCRで右側だけ別の断片に分かれたもの(実機で、本文2行目の「…AI 未来を夢みたふたり」の
+    右半分がカードの文字と誤認され、そこから下の本文が丸ごと捨てられた)."""
+    if l.x < K.LINK_CARD_X_MIN:
+        return False
+    return not any(m is not l and m.x < l.x and abs(m.cy - l.cy) <= 5 and m.x + m.w >= CARD_THUMB_RIGHT for m in rest)
+
+
 def drop_card_garbage(rest: list[Line], counts_cy: float | None) -> list[Line]:
     """リンクカード(左に画像、右に題名)の画像内の文字をOCRが拾うので、カードの高さにある左側の行を捨てる."""
-    link = [l for l in rest if l.x >= K.LINK_CARD_X_MIN]
+    link = [l for l in rest if is_card_text(l, rest)]
     if not link:
         return rest
     top = min(l.cy for l in link) - 25
@@ -434,6 +446,7 @@ def split_blocks(screen: Screen) -> list[Block]:
                 b.reactions, b.comments, b.comment_icon = counts
                 b.counts_y = cy
             rest = drop_card_garbage(rest, cy if counts else None)
+            all_rest = rest
             for l in rest:
                 t = l.text.strip()
                 if band and band[0] <= l.cy <= band[1] and l.x < K.NOTE_X_MAX + 10:
@@ -443,7 +456,7 @@ def split_blocks(screen: Screen) -> list[Block]:
                     stripped = t.replace(TXT_MORE, "").strip(" .…・")
                     if stripped:
                         b.lines.append(Line(stripped, l.x, l.y, l.w, l.h, l.conf))
-                elif l.x >= K.LINK_CARD_X_MIN:
+                elif is_card_text(l, all_rest):
                     b.link_title = (b.link_title + " " + t).strip()
                 else:
                     b.lines.append(l)
