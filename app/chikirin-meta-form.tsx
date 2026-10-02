@@ -39,12 +39,14 @@ export function MetaForm({ program, onSaved, onCancel }: { program: Program; onS
       const url = draft.links[0]?.url.trim() ?? "";
       const response = await fetch("/api/watch-list/link-preview", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ url }) });
       if (!response.ok) throw new Error(await readErrorMessage(response, "リンク先から番組情報を取得できませんでした。"));
-      const { preview } = await readJson<{ preview: LinkPreview }>(response);
+      const { preview, url: finalUrl } = await readJson<{ preview: LinkPreview; url?: string }>(response);
       setDraft((current) => ({
         ...current,
         broadcaster: preview.creatorName.slice(0, MAX_BROADCASTER) || current.broadcaster,
         programName: preview.seriesTitle.slice(0, MAX_EPISODE_TITLE) || current.programName,
         episodeTitle: preview.title.slice(0, MAX_EPISODE_TITLE) || current.episodeTitle,
+        // リンクは転送された先のURLにする(Watch List に登録されているのは転送先のURLなので、そろえないと「登録済」を判別できない)。
+        links: finalUrl ? current.links.map((link, i) => (i === 0 ? { ...link, url: finalUrl, label: siteOf(finalUrl)?.name || link.label } : link)) : current.links,
       }));
       setNotice("放送局・番組名・番組タイトルを入力しました。内容を確認して保存してください。");
     } catch (e) {

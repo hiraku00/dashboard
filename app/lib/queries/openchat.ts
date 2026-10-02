@@ -3,7 +3,7 @@
  *  app/lib/openchat-query.ts にある(cloudflare:workers を読み込むとunit testできないため)。 */
 import { env } from "cloudflare:workers";
 import { ensureSchema } from "@/db";
-import { metaFromRow, normalizeMeta } from "@/app/lib/openchat-meta";
+import { metaFromRow, normalizeMeta, siteOf } from "@/app/lib/openchat-meta";
 import { normalizeTextEdit } from "@/app/lib/openchat-input";
 import { canonicalUrl } from "@/app/lib/text";
 import { autoFillFields, canAutoFill, parseLinkPreview } from "@/app/lib/link-preview";
@@ -107,9 +107,11 @@ export async function fillMetaForSynced(noteIds: string[]): Promise<void> {
     await Promise.all(targets.map(async (t) => {
       const page = await fetchPageHead(t.url);
       const filled = page ? autoFillFields(parseLinkPreview(page.html, page.url), t.url) : { broadcaster: "", programName: "", episodeTitle: "" };
+      // リンクは、転送された先のURLにする(Watch List に登録されているのは転送先のURLなので、そろえないと「登録済」を判別できない)。
+      const links = page ? [{ url: page.url, label: siteOf(page.url)?.name ?? "" }] : [];
       await env.DB.prepare(
-        `INSERT OR IGNORE INTO openchat_note_meta (note_id, broadcaster, program_name, episode_title, links_json, updated_at) VALUES (?, ?, ?, ?, '[]', ?)`,
-      ).bind(t.id, filled.broadcaster, filled.programName, filled.episodeTitle, new Date().toISOString().replace(/\.\d+Z$/, "Z")).run();
+        `INSERT OR IGNORE INTO openchat_note_meta (note_id, broadcaster, program_name, episode_title, links_json, updated_at) VALUES (?, ?, ?, ?, ?, ?)`,
+      ).bind(t.id, filled.broadcaster, filled.programName, filled.episodeTitle, JSON.stringify(links), new Date().toISOString().replace(/\.\d+Z$/, "Z")).run();
     }));
   } catch { /* 放送情報は補助。入らなくても同期は成功させる。 */ }
 }
