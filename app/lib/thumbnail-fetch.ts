@@ -6,6 +6,7 @@
  *  Everything here is best effort: any failure -- timeout, non-HTML, a
  *  redirect to a refused host, no image tag -- resolves to "" rather than
  *  throwing, because a missing thumbnail must never fail saving an item. */
+import { parseLinkPreview, type LinkPreview } from "./link-preview.ts";
 import { isPublicHttpUrl, metaRefreshUrl, pageImageUrl, youTubeThumbnailFromLinks } from "./thumbnail.ts";
 
 /** One deadline for the whole lookup, redirects included. */
@@ -152,4 +153,11 @@ export async function fetchPageHead(url: string, timeoutMs = PREVIEW_TIMEOUT_MS)
   } finally {
     clearTimeout(timer);
   }
+}
+
+/** リンク先から読み取った番組情報と、(転送を辿った後の)ページのURL。読めなければ null。
+ *  詳細画面の「リンクから取得」と、同期の完了時の自動入力が、同じこの読み取りを使う。 */
+export async function fetchLinkPreview(url: string): Promise<{ preview: LinkPreview; url: string } | null> {
+  const page = await fetchPageHead(url);
+  return page ? { preview: parseLinkPreview(page.html, page.url), url: page.url } : null;
 }
