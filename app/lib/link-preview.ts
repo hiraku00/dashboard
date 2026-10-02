@@ -5,7 +5,7 @@
  *  番組名は dataLayer の 'program'(「Newsモーニングサテライト（モーサテ）」)に入っている。保存済みの項目の書き方
  *  (放送局「NHK」「テレ東」、番組名は括弧内の略称「モーサテ」「WBS」)に合わせる。知らないサイトは og:title だけ使う。 */
 import { attribute, decodeHtml, tagContent } from "./html-meta.ts";
-import { inferBroadcaster } from "./openchat-meta.ts";
+import { MAX_BROADCASTER, MAX_EPISODE_TITLE, inferBroadcaster, siteOf } from "./openchat-meta.ts";
 
 export type LinkPreview = { creatorName: string; seriesTitle: string; title: string };
 
@@ -65,4 +65,17 @@ export function parseLinkPreview(html: string, url: string): LinkPreview {
   }
   const siteName = metaProperty(html, "og:site_name");
   return { creatorName, seriesTitle: "", title: stripSuffix(ogTitle, [siteName]) };
+}
+
+/** 同期のときに放送情報を自動で入れてよいリンクか。サイトが分かっているもの(NHK ONE・テレ東BIZ)だけ。
+ *  知らないサイトは og:title が番組名にならないことが多いので、手で入れてもらう(詳細画面の「リンクから取得」)。 */
+export const canAutoFill = (url: string) => siteOf(url) !== null;
+
+/** 取得したページの情報を、保存する放送情報(放送局・番組名・番組タイトル)にする。放送局はリンク(転送前のURL)からも決める。 */
+export function autoFillFields(preview: LinkPreview, url: string) {
+  return {
+    broadcaster: (preview.creatorName || inferBroadcaster([url])).slice(0, MAX_BROADCASTER),
+    programName: preview.seriesTitle.slice(0, MAX_EPISODE_TITLE),
+    episodeTitle: preview.title.slice(0, MAX_EPISODE_TITLE),
+  };
 }

@@ -6,7 +6,8 @@ import { ensureSchema } from "@/db";
 import { metaFromRow, normalizeMeta } from "@/app/lib/openchat-meta";
 import { normalizeTextEdit } from "@/app/lib/openchat-input";
 import { canonicalUrl } from "@/app/lib/text";
-import { fetchPageThumbnail } from "@/app/lib/thumbnail-fetch";
+import { autoFillFields, canAutoFill, parseLinkPreview } from "@/app/lib/link-preview";
+import { fetchPageHead, fetchPageThumbnail } from "@/app/lib/thumbnail-fetch";
 import {
   buildProgramsFilter, PROGRAMS_ORDER_BY, toProgram, ROOM, resolveThumbnails, thumbnailSourceUrl,
   type CachedThumbnail, type Program, type ProgramsQuery,
@@ -84,6 +85,33 @@ export async function fetchThumbnailsForSynced(noteIds: string[]): Promise<void>
     const untried = rows.map((r) => ({ id: String(r.id), meta: metaFromRow(r), linkUrl: String(r.link_url ?? "") })).filter((p) => thumbnailSourceUrl(p));
     await Promise.all(untried.slice(0, SYNC_THUMBNAIL_LOOKUPS).map((p) => refreshThumbnail(p.id, p)));
   } catch { /* 画像は飾り */ }
+}
+
+/** 1回の同期で放送情報を取りに行くスレッドの数の上限(1件ごとに外部へのサブリクエストが最大3回かかる)。残りは次の同期で試す。 */
+const SYNC_META_LOOKUPS = 3;
+
+/** 放送情報(放送局・番組名・番組タイトル)がまだ無いスレッドのうち、リンクのサイトが分かるものを、リンク先のページから自動で入れる。
+ *  今回の同期で届いたスレッドを先に、足りなければ新しい順に過去のものも(1回に最大 SYNC_META_LOOKUPS 件)。
+ *  手で保存した行は上書きしない(INSERT OR IGNORE)。読み取れなかったときも空の行を残し、同じスレッドを毎回取りに行かない
+ *  (詳細画面の「リンクから取得」で、あとから入れられる)。失敗しても同期は成功させる。 */
+export async function fillMetaForSynced(noteIds: string[]): Promise<void> {
+  try {
+    const rows = (await env.DB.prepare(
+      `SELECT n.id, n.link_url FROM openchat_notes n
+         LEFT JOIN openchat_note_meta m ON m.note_id = n.id
+        WHERE m.note_id IS NULL AND n.deleted_at IS NULL AND n.link_url != ''
+          AND (n.author_is_target = 1 OR n.target_comment_count > 0)
+        ORDER BY ${noteIds.length ? `(n.id IN (${noteIds.map(() => "?").join(",")})) DESC,` : ""} n.posted_at DESC LIMIT 50`,
+    ).bind(...noteIds).all<Record<string, unknown>>()).results ?? [];
+    const targets = rows.map((r) => ({ id: String(r.id), url: String(r.link_url) })).filter((t) => canAutoFill(t.url)).slice(0, SYNC_META_LOOKUPS);
+    await Promise.all(targets.map(async (t) => {
+      const page = await fetchPageHead(t.url);
+      const filled = page ? autoFillFields(parseLinkPreview(page.html, page.url), t.url) : { broadcaster: "", programName: "", episodeTitle: "" };
+      await env.DB.prepare(
+        `INSERT OR IGNORE INTO openchat_note_meta (note_id, broadcaster, program_name, episode_title, links_json, updated_at) VALUES (?, ?, ?, ?, '[]', ?)`,
+      ).bind(t.id, filled.broadcaster, filled.programName, filled.episodeTitle, new Date().toISOString().replace(/\.\d+Z$/, "Z")).run();
+    }));
+  } catch { /* 放送情報は補助。入らなくても同期は成功させる。 */ }
 }
 
 const WATCH_STATUS_BY_RANK: Record<number, string> = { 3: "completed", 2: "in_progress", 1: "backlog" };

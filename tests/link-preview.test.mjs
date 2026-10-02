@@ -39,3 +39,16 @@ test("NHK ONE 番組ページ(series-tep)は、JSON-LD が無くても og:title 
   const html = `<head><meta property="og:title" content="南米ペルー・海面水温上昇で漁業に打撃 | キャッチ!世界のトップニュース"/></head>`;
   expect(parseLinkPreview(html, "https://www.web.nhk/tv/an/catchsekai/pl/series-tep-KQ2GPZPJWM/ep/14R8MPWCE1").seriesTitle).toBe("キャッチ!世界のトップニュース");
 });
+
+test("only links of a known site are filled automatically (one.nhk share URLs included)", async () => {
+  const { canAutoFill } = await import("../app/lib/link-preview.ts");
+  expect(canAutoFill("https://one.nhk/www.web.nhk/tv/pl/series-tep-KQ2GPZPJWM/ep/3VQXQCV7H1")).toBe(true);
+  expect(canAutoFill("https://www.web.nhk/tv/an/catchsekai/pl/series-tep-X/ep/Y")).toBe(true);
+  expect(canAutoFill("https://txbiz.tv-tokyo.co.jp/wbs")).toBe(true);
+  expect(canAutoFill("https://www.nhk-ondemand.jp/goods/G2025146599SA000/")).toBe(false);
+});
+test("the broadcaster falls back to the posted link, and every field is cut to its limit", async () => {
+  const { autoFillFields } = await import("../app/lib/link-preview.ts");
+  expect(autoFillFields({ creatorName: "", seriesTitle: "番組", title: "回" }, "https://one.nhk/www.web.nhk/tv/pl/x")).toEqual({ broadcaster: "NHK", programName: "番組", episodeTitle: "回" });
+  expect(autoFillFields({ creatorName: "NHK", seriesTitle: "あ".repeat(300), title: "い".repeat(300) }, "https://x.test").programName).toHaveLength(200);
+});
