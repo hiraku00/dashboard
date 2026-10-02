@@ -5,12 +5,15 @@ Driver への「押す」操作は Session._click だけが行い、必ず safet
 """
 from __future__ import annotations
 
+import json
 import os
 import re
+import shutil
 import time
 from collections import Counter
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Callable, Protocol
 
 from . import digits, identity, layout as K
@@ -21,6 +24,7 @@ from .screen import Screen
 from .timeparse import EXACT, parse_display_time, tolerance_minutes
 
 MAX_CLICKS_PER_RUN = 3000
+SNAPSHOT_KEEP = 30          # 新しいノートを見つけた画面を、直近これだけ残す
 SEEK_LOG_EVERY = 8          # 見出しを探す処理が長引いたとき、これ回数ごとに進捗をログへ出す
 SEEK_STUCK_LIMIT = 16       # 「手がかりはあるのに見出しが確認できない」がこれだけ連続したら、迷走とみなして早めに諦める
 THREAD_ROOM_BELOW_FOOTER = 120  # ノートの時刻行の下に、この高さ(pt)以上が見えていれば、直下の「前のコメントを見る」の有無を判断できる
@@ -56,6 +60,7 @@ class Options:
     pause: Callable[[], None] = lambda: None     # 実機では、ユーザーの操作を検知して Aborted を投げる
     checkpoint: Callable[[], None] = lambda: None  # ノート1件を処理するたびに呼ぶ(台帳の保存)
     settle: float = 0.0                 # クリック後の待ち(秒)
+    snapshot_dir: Path | None = None    # 新しいノートを見つけた画面の画像と読み取り結果を残す場所(幽霊ノートの原因調査用。None なら残さない)
     full_expand: bool = False           # True なら「前のコメントを見る」を常に押し切る(段階3の早期打ち切りをしない。切り戻し用)
 
 
@@ -197,6 +202,8 @@ class Session:
                     stats.warnings.append(warning)
                 visited.add(note["id"])
                 stats.notes_scanned += 1
+                if is_new:
+                    self._save_snapshot(note, screen, blocks)
                 needs_work = (is_new or note.get("needs_recheck", False) or not note["body_complete"]
                              or (obs.comments is not None and obs.comments != note["comment_count"]))
                 if needs_work:
@@ -238,6 +245,28 @@ class Session:
             prev_sig = sig
             step = self._advance(blocks, step)
         stats.warnings.append("スクロール回数の上限に達しました")
+
+    def _save_snapshot(self, note: dict, screen: Screen, blocks: list[Block]) -> None:
+        """新しいノートを見つけた画面を、画像と読み取り結果(ブロック・OCRの行)で残す. 本当に新しい投稿か、隣り合う投稿が
+        つながってできた幽霊かを、あとから見分けるため(直近 SNAPSHOT_KEEP 件だけ残す)。残せなくても実行は続ける。"""
+        d = self.opts.snapshot_dir
+        src = getattr(screen, "path", None)
+        if d is None or not src:
+            return
+        try:
+            d.mkdir(parents=True, exist_ok=True)
+            stem = f"{datetime.now().strftime('%Y%m%dT%H%M%S')}-{note['id'][:4]}"
+            shutil.copyfile(src, d / f"{stem}.png")
+            info = {"note": {k: note.get(k) for k in ("id", "author_name", "posted_at", "posted_at_raw", "comment_count")},
+                    "blocks": [{"kind": b.kind, "complete": b.complete, "author": b.author, "time_raw": b.time_raw, "comments": b.comments,
+                                "y_top": b.y_top, "y_time": b.y_time, "suspicious": b.suspicious, "body": b.text[:120]} for b in blocks],
+                    "lines": [{"text": ln.text, "x": ln.x, "y": ln.y, "w": ln.w, "h": ln.h} for ln in screen.lines]}
+            (d / f"{stem}.json").write_text(json.dumps(info, ensure_ascii=False, indent=1), encoding="utf-8")
+            for old in sorted(d.glob("*.png"))[:-SNAPSHOT_KEEP]:
+                old.unlink(missing_ok=True)
+                old.with_suffix(".json").unlink(missing_ok=True)
+        except OSError:
+            pass
 
     def _reached_old(self, note: dict) -> bool:
         from datetime import timedelta, timezone

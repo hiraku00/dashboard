@@ -631,3 +631,25 @@ def test_deleted_comments_still_force_a_full_expand():
     assert note["comment_count"] == 14 and not note["needs_recheck"]
     assert sum(1 for c in note["comments"] if c.get("deleted_at")) == 1
     assert sum(1 for c in note["comments"] if not c.get("deleted_at")) == 14   # 全部読めている(押し切った)
+
+
+def test_new_note_snapshot_is_saved_and_pruned(tmp_path, monkeypatch):
+    """新しいノートを見つけた画面を、画像と読み取り結果で残す(幽霊ノートの原因調査用)。古いものは消す。"""
+    import json
+    from line_openchat import session as S
+    monkeypatch.setattr(S, "SNAPSHOT_KEEP", 2)
+    img = tmp_path / "shot.png"
+    img.write_bytes(b"png")
+
+    class FakeScreen:
+        path = str(img)
+        lines: list = []
+
+    sess = S.Session.__new__(S.Session)
+    sess.opts = S.Options(snapshot_dir=tmp_path / "snaps")
+    for i in range(3):
+        sess._save_snapshot({"id": f"{i:04d}-x", "author_name": "A", "posted_at": "t", "posted_at_raw": "r", "comment_count": 0}, FakeScreen(), [])
+        import time; time.sleep(1.1)           # ファイル名は秒単位
+    pngs = sorted((tmp_path / "snaps").glob("*.png"))
+    assert len(pngs) == 2 and all(p.with_suffix(".json").exists() for p in pngs)
+    assert json.loads(pngs[0].with_suffix(".json").read_text())["note"]["author_name"] == "A"

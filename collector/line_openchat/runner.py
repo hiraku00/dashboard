@@ -146,7 +146,8 @@ def run_sync(cfg: SyncConfig, *, log: Callable[[str], None] = lambda s: None,
                 driver.pause()
 
         opts = Options(scan_days=cfg.scan_days, first_run=first_run, max_notes=cfg.max_notes, pause=pause,
-                       checkpoint=lambda: ledger.save(ledger_path), full_expand=cfg.full_expand)
+                       checkpoint=lambda: ledger.save(ledger_path), full_expand=cfg.full_expand,
+                       snapshot_dir=directory / "new-note-snapshots")
         started_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")     # 読み取りを始めた時刻(送信が遅れても、取得の時刻として残す)
         session = Session(driver, ledger, when, opts, log=note)
         try:
