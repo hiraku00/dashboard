@@ -7,7 +7,7 @@
  *  redirect to a refused host, no image tag -- resolves to "" rather than
  *  throwing, because a missing thumbnail must never fail saving an item. */
 import { parseLinkPreview, parseTverPreview, tverEpisodeId, type LinkPreview } from "./link-preview.ts";
-import { isPublicHttpUrl, metaRefreshUrl, pageImageUrl, youTubeThumbnailFromLinks } from "./thumbnail.ts";
+import { isPublicHttpUrl, metaRefreshUrl, pageImageUrl, tverThumbnailUrl, youTubeThumbnailFromLinks } from "./thumbnail.ts";
 
 /** One deadline for the whole lookup, redirects included. */
 const TIMEOUT_MS = 4000;
@@ -135,6 +135,8 @@ async function lookup(url: string, signal: AbortSignal): Promise<string> {
  *  signal in the local runtime, and this runs inside a request the user is
  *  waiting on. */
 export async function fetchPageThumbnail(url: string): Promise<string> {
+  const tver = tverThumbnailUrl(url);
+  if (tver) return tver;
   const controller = new AbortController();
   let timer: ReturnType<typeof setTimeout> | undefined;
   const deadline = new Promise<string>((resolve) => {
