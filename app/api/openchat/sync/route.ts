@@ -73,6 +73,9 @@ export const POST = route(async (request: Request) => {
     const v = input.value;
     await env.DB.prepare("UPDATE openchat_sync_runs SET completed_at=?,status=?,notes_scanned=?,notes_opened=?,comments_new=?,target_comments_new=?,warnings_json=? WHERE id=?")
       .bind(now, v.status, v.notesScanned, v.notesOpened, v.commentsNew, v.targetCommentsNew, JSON.stringify(v.warnings), run.id).run();
+    // 放送情報(放送局・番組名・タイトル): まだ無いスレッドだけ、リンク先から自動で入れる(失敗しても同期は成功)。
+    // ノートが1件も変わらない同期でも動くよう、notes ではなく完了時に呼ぶ。
+    await fillMetaForSynced();
     return Response.json({ ok: true, runId: run.id });
   }
 
@@ -92,8 +95,6 @@ export const POST = route(async (request: Request) => {
     try {
       for (let start = 0; start < statements.length; start += BATCH) await env.DB.batch(statements.slice(start, start + BATCH));
       for (const n of notes) results.push({ id: n.id });
-      // 放送情報(放送局・番組名・タイトル): まだ無いスレッドだけ、リンク先から自動で入れる(失敗しても同期は成功)。
-      await fillMetaForSynced(touched);
       // 一覧のサムネイル: まだ試していないスレッドだけ1回取る(失敗しても同期は成功)。
       await fetchThumbnailsForSynced(touched);
     } catch (error) {
