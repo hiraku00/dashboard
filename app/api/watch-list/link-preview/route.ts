@@ -12,5 +12,5 @@ export const POST = route(async (request: Request) => {
   if (!page) return Response.json({ error: "リンク先のページを読み取れませんでした。" }, { status: 422 });
   const preview = parseLinkPreview(page.html, page.url);
   if (!preview.creatorName && !preview.seriesTitle && !preview.title) return Response.json({ error: "リンク先から番組情報を読み取れませんでした。" }, { status: 422 });
-  return Response.json({ preview });
+  return Response.json({ preview, url: page.url });
 });
