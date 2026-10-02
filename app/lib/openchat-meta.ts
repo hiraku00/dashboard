@@ -63,6 +63,8 @@ export function metaFromRow(row: Record<string, unknown> | null | undefined): Me
 type Site = { host: string; pathPrefix?: string; name: string; broadcaster: string };
 export const SITES: Site[] = [
   { host: "web.nhk", name: "NHK ONE", broadcaster: "NHK" },
+  // one.nhk/www.web.nhk/… は、NHK ONE のページへ転送される共有用のURL(ノートにはこの形で貼られる)。
+  { host: "one.nhk", name: "NHK ONE", broadcaster: "NHK" },
   // テレ東BIZのページはどの番組(/wbs など)でも、リンク名は「テレ東BIZ」。
   { host: "txbiz.tv-tokyo.co.jp", name: "テレ東BIZ", broadcaster: "テレ東" },
 ];

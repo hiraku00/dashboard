@@ -36,6 +36,7 @@ describe("metaFromRow", () => {
 describe("sites: link names and the broadcaster inferred from a link", () => {
   test("NHK ONE and テレ東BIZ are recognised by host; every テレ東BIZ page (WBS included) is named テレ東BIZ", () => {
     expect(siteOf("https://www.web.nhk/tv/pl/series-tep-XXXX")).toMatchObject({ name: "NHK ONE", broadcaster: "NHK" });
+    expect(siteOf("https://one.nhk/www.web.nhk/tv/pl/series-tep-XXXX/ep/Y")).toMatchObject({ name: "NHK ONE", broadcaster: "NHK" });   // 共有用の転送URL
     for (const path of ["/wbs", "/wbs/", "/wbs/feature/post_1", "/wbsx"]) expect(siteOf(`https://txbiz.tv-tokyo.co.jp${path}`)).toMatchObject({ name: "テレ東BIZ", broadcaster: "テレ東" });
     expect(siteOf("https://txbiz.tv-tokyo.co.jp/other")).toMatchObject({ name: "テレ東BIZ", broadcaster: "テレ東" });  // 同じドメインの別番組も、テレ東BIZとして表示する
     expect(siteOf("https://txbiz.tv-tokyo.co.jp/")).toMatchObject({ name: "テレ東BIZ", broadcaster: "テレ東" });
