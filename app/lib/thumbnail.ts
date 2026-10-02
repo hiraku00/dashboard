@@ -11,6 +11,7 @@
  *  Imports use explicit .ts extensions for the same reason as
  *  app/lib/watch-list-item-input.ts. */
 import { attribute, decodeHtml, tagContent } from "./html-meta.ts";
+import { tverEpisodeId } from "./link-preview.ts";
 import { youTubeVideoId } from "./youtube.ts";
 
 /** i.ytimg.com serves mqdefault.jpg (320x180, 16:9, no letterbox bars) for
@@ -25,6 +26,13 @@ export function youTubeThumbnailFromLinks(links: Array<{ url?: unknown }>) {
     if (videoId) return youTubeThumbnailUrl(videoId);
   }
   return "";
+}
+
+/** A TVer episode page is an empty shell until its scripts run (no og:image in the HTML), but the CDN serves the episode's
+ *  thumbnail at an address made from the episode id. "" for any other URL. */
+export function tverThumbnailUrl(url: string) {
+  const id = tverEpisodeId(url);
+  return id ? `https://image-cdn.tver.jp/images/content/thumbnail/episode/xlarge/${id}.jpg` : "";
 }
 
 /** True only for a URL the server may fetch on the user's behalf: http(s) on

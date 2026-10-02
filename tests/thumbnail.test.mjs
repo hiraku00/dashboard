@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 
-import { isPublicHttpUrl, metaRefreshUrl, pageImageUrl, sameLinkSet, youTubeThumbnailFromLinks, youTubeThumbnailUrl } from "../app/lib/thumbnail.ts";
+import { isPublicHttpUrl, metaRefreshUrl, pageImageUrl, sameLinkSet, tverThumbnailUrl, youTubeThumbnailFromLinks, youTubeThumbnailUrl } from "../app/lib/thumbnail.ts";
 import { toItem } from "../app/lib/watch-list-query.ts";
 
 // The pure half of the Watch List thumbnail feature. The fetching half (and
@@ -77,4 +77,10 @@ test("ignores a meta tag that is not a refresh, or has no target", () => {
   expect(metaRefreshUrl('<meta http-equiv="content-type" content="text/html">', "https://example.org/")).toBe("");
   expect(metaRefreshUrl('<meta http-equiv="refresh" content="30">', "https://example.org/")).toBe("");
   expect(metaRefreshUrl("<html></html>", "https://example.org/")).toBe("");
+});
+
+test("a TVer episode's thumbnail is made from the episode id (its page HTML has no og:image); other TVer pages have none", () => {
+  expect(tverThumbnailUrl("https://tver.jp/episodes/ept025uufz")).toBe("https://image-cdn.tver.jp/images/content/thumbnail/episode/xlarge/ept025uufz.jpg");
+  expect(tverThumbnailUrl("https://tver.jp/series/srqyafxo6f")).toBe("");
+  expect(tverThumbnailUrl("https://example.com/episodes/ept025uufz")).toBe("");
 });
