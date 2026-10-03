@@ -653,3 +653,60 @@ def test_new_note_snapshot_is_saved_and_pruned(tmp_path, monkeypatch):
     pngs = sorted((tmp_path / "snaps").glob("*.png"))
     assert len(pngs) == 2 and all(p.with_suffix(".json").exists() for p in pngs)
     assert json.loads(pngs[0].with_suffix(".json").read_text())["note"]["author_name"] == "A"
+
+
+def _long_thread_chat():
+    """コメントの多いノートの直下に、別のノートがある一覧. 1行あたりの移動量を小さくして、見出しを探す範囲
+    (_seek_header)が、撮影の後のコメント欄の終わりから見出しまで届かない状況を作る(実機の Naozo 64件)."""
+    return SimChat([SimNote("Naozo", "昨夜放送のNHK 未解決事件について", "一昨日 午後 11:27", comments=comments(64, "N"), reactions=10),
+                    SimNote("ちきりん", "9月23日のWBSの真ん中あたり。工場について", "一昨日 午後 9:46", badge=True,
+                            comments=comments(12, "W"), reactions=10),
+                    SimNote("参加者D", "メッシと私 2026", "9.21 午後 7:57", comments=comments(2, "Y"), reactions=21)],
+                   jitter=False, lines_per_scroll_px=4.0)
+
+
+def test_a_long_thread_is_closed_after_reading_by_scrolling_back_by_the_captured_amount():
+    """撮影の後は、撮影で下へ進んだ分だけ上へ戻してから見出しを探す. コメントの多いノートでも閉じられ、
+    直下のノートも読める(実機で発生: 2026-10-03、閉じられなかった Naozo の下のちきりんが要確認になった)。"""
+    ledger, stats = run(_long_thread_chat())
+    assert not stats.warnings, stats.warnings
+    assert {n["author_name"]: n["comment_count"] for n in ledger.notes} == {"Naozo": 64, "ちきりん": 12, "参加者D": 2}
+    assert not any(n["needs_recheck"] for n in ledger.notes)
+
+
+def test_a_thread_that_cannot_be_closed_sends_the_scan_back_to_the_top():
+    """閉じられなかった(撮影で進んだ量が分からない、直す前の動き)ときは、警告を残し、一覧の先頭へ戻ってから続ける.
+    位置が分からないまま進んで、ノートを飛ばさない。"""
+    chat = _long_thread_chat()
+    s = Session(SimDriver(chat), Ledger(), NOW, Options(first_run=True))
+    s.reader.report_scroll = False
+    logs: list[str] = []
+    s.log = logs.append
+    stats = s.run()
+    assert any("閉じられませんでした" in w for w in stats.warnings), stats.warnings
+    assert any("一覧の先頭へ戻って続けます" in l for l in logs)
+    assert {n["author_name"] for n in s.ledger.notes} >= {"Naozo", "ちきりん", "参加者D"}
+
+
+def test_why_comments_are_read_in_full_is_logged():
+    """全部読み直す理由と、既読と判定できずに「前のコメントを見る」を押した理由を、ログに出す(後から原因を確かめるため)."""
+    chat = SimChat([SimNote("参加者A", "本文", "昨日 午前 9:45", comments=comments(30, "P"), reactions=10)], jitter=False)
+    ledger, _ = run(chat)
+    note = ledger.notes[0]
+    note["needs_recheck"] = True
+    chat.notes[0].comments.append(SimComment("参加者Z", "新しいコメントです。", "1時間前"))
+    _close_window(chat)
+    logs: list[str] = []
+    Session(SimDriver(chat), ledger, NOW, Options(first_run=False), log=logs.append).run()
+    assert any("コメントを全部読み直します(前回、要確認になったため)" in l for l in logs), logs
+
+    for c in note["comments"]:                                 # 台帳と一致せず、基準の時刻もない → 既読と判定できない
+        c["body_text"] = "別の文面"
+        c["author_name"] = "別人"
+    note["comments_checked_at"] = None
+    ledger.meta["last_run"] = {"at": NOW.isoformat(), "status": "aborted"}
+    chat.notes[0].comments.append(SimComment("参加者Y", "もう一つ新しいコメントです。", "1時間前"))
+    _close_window(chat)
+    logs.clear()
+    Session(SimDriver(chat), ledger, NOW, Options(first_run=False), log=logs.append).run()
+    assert any("既読と判定できません(基準: 基準の時刻なし(前回の同期が中断))" in l for l in logs), logs

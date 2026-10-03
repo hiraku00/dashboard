@@ -351,6 +351,7 @@ class SimThreadReader:
         self.prepared = 0
         self.calls: list = []               # read_thread に渡された、見出しの一覧上の位置(文書座標)
         self.last_info: dict = {}
+        self.report_scroll = True           # False: 撮影で進んだ行数を報告しない(直す前の動きの再現)
 
     def prepare(self) -> None:
         self.prepared += 1
@@ -372,8 +373,16 @@ class SimThreadReader:
         lines = [l for l in lines if l.y + l.h / 2 >= top - 4 and (bottom is None or l.y <= bottom)]
         runs = [r for r in tallparse.avatar_runs_tall(image, 1.0) if r[0] >= top - 4 and (bottom is None or r[0] <= bottom)]
         blocks, warnings = tallparse.parse_tall(image, lines, 1.0, float(K.WIN_W), digits_reader=dr, name_reader=nr, runs=runs)
+        # 実機と同じく、撮った後の画面はコメント欄の終わり(入力欄が画面の下寄り)にあり、下へ進んだ行数を残す
+        before = self.chat.scroll_y
+        if ends:
+            self.chat.scroll_y = min(max(before, ends[0] + 60 - K.WIN_H + 100), self.chat.max_scroll())
+        else:
+            self.chat.scroll_y = self.chat.max_scroll()
+        moved = self.chat.scroll_y - before
         self.last_info = {"frames": 1, "ends": 1 if ends else 0, "reached_end": not ends,
-                          "scan_sec": 0.0, "ocr_sec": 0.0, "parse_sec": 0.0}
+                          "scan_sec": 0.0, "ocr_sec": 0.0, "parse_sec": 0.0,
+                          "scrolled_lines": int(round(moved / self.chat.px_per_line)) if self.report_scroll else 0}
         if not ends:
             warnings.append("コメント欄の終わり(入力欄)が見つからないまま、一覧の末尾まで撮影しました")
         return tallparse.group_notes(blocks), warnings
