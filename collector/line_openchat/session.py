@@ -331,26 +331,38 @@ class Session:
                 res = self.ledger.apply_collection(note, [], 0, self.now_iso)
                 self._count(res)
             else:
-                self._collect_thread(note, expected, self._full_expand_required(note, is_new, expected))
+                reason = self._full_expand_reason(note, is_new, expected)
+                if reason:
+                    self.log(f"    コメントを全部読み直します({reason})")
+                self._collect_thread(note, expected, bool(reason))
                 moved = True
                 self.stats.notes_opened += 1
         return moved
 
-    def _full_expand_required(self, note: dict, is_new: bool, expected: int | None) -> bool:
+    def _full_expand_reason(self, note: dict, is_new: bool, expected: int | None) -> str | None:
         """「前のコメントを見る」を、読み込み済みの所で止めず、最後まで押し切る必要があるか.
         既読の判定(_already_read)を信用できない・安全に省けない状況では、必ず全部読む.
 
         既読の判定は、内容が一致する(a)か、前回実際に読んだ時刻より前(b)かのどちらかで成立する。
         (a)は comments_checked_at が無くても、既存コメントさえあれば試せる。comments_checked_at の
         有無だけで全部読むと決めると、段階3の導入後に一度も開いていないだけのノート(内容は台帳に
-        既にある)まで、無駄に全部読み直してしまう(実機で、パエリアがこれで不要に全部押していた)。"""
-        if self.opts.full_expand or self.opts.first_run or is_new or note.get("needs_recheck", False):
-            return True
-        if expected is None or expected < note["comment_count"]:
-            return True                                    # 件数が読めない・減っている(削除の可能性)は、全部読んで確かめる
+        既にある)まで、無駄に全部読み直してしまう(実機で、パエリアがこれで不要に全部押していた)。
+        戻り値: 全部読む必要があれば、その理由(ログに出す)。無ければ None。"""
+        if self.opts.full_expand:
+            return "全部読む指定"
+        if self.opts.first_run:
+            return "初回の実行"
+        if is_new:
+            return "新しいノート"
+        if note.get("needs_recheck", False):
+            return "前回、要確認になったため"
+        if expected is None:
+            return "件数を読めなかったため"                   # 件数が読めない・減っている(削除の可能性)は、全部読んで確かめる
+        if expected < note["comment_count"]:
+            return f"件数が減ったため({note['comment_count']} → {expected})"
         if not any(not c.get("deleted_at") for c in note["comments"]):
-            return True                                    # 比べる基準(既存コメント)が無い
-        return False
+            return "比べる基準になる既存のコメントが無いため"
+        return None
 
     def _find_block(self, blocks: list[Block], note: dict, kind: str = "note") -> Block | None:
         best, best_s = None, 0.0
@@ -408,7 +420,8 @@ class Session:
             self._close_quietly(note)
 
     def _close_quietly(self, note: dict) -> None:
-        """閉じる. 閉じられなくても実行は続ける(警告に残す。次の実行で、開いたまま残っていたものとして閉じる)."""
+        """閉じる. 閉じられなくても実行は続ける(警告に残す。次の実行で、開いたまま残っていたものとして閉じる).
+        閉じられなかったときは、見出しを探して大きく動いた後で位置が分からないので、一覧の先頭へ戻ってから続ける。"""
         try:
             self._close_thread(note)
             self.log("    コメント欄を閉じました")
@@ -416,6 +429,7 @@ class Session:
             raise
         except SessionError as exc:
             self.stats.warnings.append(f"{self._label(note)}: コメント欄を閉じられませんでした({exc})")
+            self._lost_position = True
 
     def _read_thread(self, note: dict, expected: int | None, partial: bool) -> None:
         """このノートのコメント欄だけを、見出しから終わりまで撮影・OCRし、台帳へ反映する(1回まで撮り直す)."""
@@ -432,6 +446,11 @@ class Session:
             info = getattr(self.reader, "last_info", None)
             if info:
                 self._log_capture(info)
+                # 撮影の後、画面はコメント欄の終わりにある。撮影で下へ進んだ分だけ上へ戻し、見出しの近くから探せるようにする。
+                # 戻さないと、コメントの多いノートでは、閉じるために見出しを探す範囲(_seek_header)が見出しまで届かず、
+                # 閉じられないまま次のノートへ進んでしまう(実機で発生: 2026-10-03、64件の Naozo で見出しを48回探して諦めた)
+                if info.get("scrolled_lines"):
+                    self.scroll(-int(info["scrolled_lines"]))
             best = self._match_group(note, groups)
             if best is not None and (best.comments or not (expected or 0)):
                 for w in warnings:
@@ -706,6 +725,7 @@ class Session:
         (_thread_region)。別のノートのものを取り違えて画面が遠くへ飛ぶと、その間のノートを走査が飛ばしてしまう。
         """
         active = [c for c in note["comments"] if not c.get("deleted_at")]
+        explained = False           # 既読と判定できずに押した理由を、ログに出したか(1件につき1回)
         prev_frame: tuple | None = None
         same = 0                    # 画面が変わらなかった回数(押しても・スクロールしても動かない = スクロールの端、または押せていない)
         visits: Counter = Counter()  # 同じ画面に来た回数(上下に往復して終わらないのを止める)
@@ -727,6 +747,10 @@ class Session:
                         continue
                     if self._already_read(oldest, active, note):
                         return True                            # 一番古い表示中のコメントが既読: これ以上は押さなくてよい
+                    if not explained:
+                        explained = True
+                        self.log(f"    「前のコメントを見る」を押します: 一番古い表示中のコメント「{oldest.author} {oldest.time_raw}」"
+                                 f"を既読と判定できません(基準: {self._read_basis(note)})")
                 l = cut[0]
                 self._click(ClickTarget("load_earlier_comments", l.x + l.w / 2, l.cy, expect_text=TXT_CUT), screen)
                 continue
@@ -736,6 +760,8 @@ class Session:
                 # (直下のブロックがコメント/入力欄/次のノートでも、時刻行が読めずブロックにならなくても、同じ)。
                 # 時刻行が画面の一番下に寄っていて、直下がまだ見えないときだけ、少し下へ進んで確かめる
                 if after is not None or screen.height - own.y_time >= THREAD_ROOM_BELOW_FOOTER:
+                    if not full_expand and not explained:
+                        self.log("    「前のコメントを見る」が無い(すべて表示されている)ので、全部を読みます")
                     return False
                 self.scroll(12)
                 continue
@@ -774,11 +800,7 @@ class Session:
             return False
         if identity.match_comment(active, obs.as_match_dict(), set(), 0) is not None:
             return True
-        last = note.get("comments_checked_at")
-        if not last:
-            last_run = self.ledger.meta.get("last_run") or {}
-            if last_run.get("status") != "aborted":
-                last = last_run.get("at")
+        last = self._read_basis_time(note)
         if not last:
             return False
         try:
@@ -788,6 +810,22 @@ class Session:
             return False
         margin = tolerance_minutes(obs.posted_precision, EXACT)
         return posted <= checked + timedelta(minutes=margin)
+
+    def _read_basis_time(self, note: dict) -> str | None:
+        """_already_read(b)の基準の時刻: このノートを前回読んだ時刻、無ければ前回の同期の開始時刻(中断していたら使わない)."""
+        last = note.get("comments_checked_at")
+        if not last:
+            last_run = self.ledger.meta.get("last_run") or {}
+            if last_run.get("status") != "aborted":
+                last = last_run.get("at")
+        return last
+
+    def _read_basis(self, note: dict) -> str:
+        """ログ用: 既読の判定に使った基準."""
+        if note.get("comments_checked_at"):
+            return f"このノートを前回読んだ時刻 {note['comments_checked_at']}"
+        last = self._read_basis_time(note)
+        return f"前回の同期の開始時刻 {last}" if last else "基準の時刻なし(前回の同期が中断)"
 
     def _same_note(self, b: Block, note: dict) -> bool:
         obs = note_obs(b, self.now)

@@ -60,9 +60,14 @@ class EndCounter:
     すべて撮れているので、それより下(走査で「変化なし」と判断したノート)は撮らなくてよい。
     画面ごとに、帯の全体で探し(画素だけなので軽い)、一覧上の位置で重複を除く。帯の端で切れたものは数えない(次の画面で全体が写る)。"""
 
-    def __init__(self, cal: capture.Calibration, target: int, finder: Callable[[np.ndarray, float], list[float]] = find_post_buttons):
+    def __init__(self, cal: capture.Calibration, target: int, finder: Callable[[np.ndarray, float], list[float]] = find_post_buttons,
+                 min_pos: float | None = None):
         self.cal, self.target = cal, target
         self._finder = finder
+        # 一覧上の位置(pt。最初の画面のウィンドウ内ptと同じ座標)がこれ以下の入力欄は数えない。読みたいノートの見出しより上に
+        # 写った、別のノートの開いたままのコメント欄の入力欄で止まらないため(実機で発生: 2026-10-03、閉じられなかった
+        # Naozo のコメント欄の入力欄で、直下のちきりんの撮影が1枚目で止まり、何も読めずに要確認になった)
+        self.min_pos = min_pos
         self.ends: list[float] = []          # 数えた入力欄の、一覧上の位置(pt)
         self.seconds = 0.0
 
@@ -75,10 +80,18 @@ class EndCounter:
         band = frame[cal.band_top:cal.band_bottom, : cal.x1]
         for y in self._finder(band, cal.scale):
             pos = (offset + cal.band_top) / cal.scale + y
+            if self.min_pos is not None and pos <= self.min_pos:
+                continue
             if all(abs(pos - e) > END_DUP_PT for e in self.ends):
                 self.ends.append(pos)
         self.seconds += time.time() - t0
         return len(self.ends) >= self.target
+
+
+def scrolled_lines(moved_px: int, cal: capture.Calibration) -> int:
+    """撮影で下へ進んだ量(画素で測った、最初の画面からのずれ)を、スクロールの行数にする. 撮影の後に、この分だけ上へ戻せば
+    見出しの近くに戻れる。実機のスクロールは3行単位(lineui.LineDriver.scroll)なので、3の倍数に丸める。"""
+    return int(round(moved_px / max(cal.px_per_line, 1e-6) / 3)) * 3
 
 
 class ThreadReader(Protocol):
@@ -90,6 +103,7 @@ class ThreadReader(Protocol):
     # 今の画面から下へ撮り、最初に見つかったコメント欄の終わり(入力欄の「投稿」ボタン)で止め、OCRして区切る.
     # start_y_pt: 読みたいノートの見出しの上端(今の画面のウィンドウ内pt)。これより上に写ったものは使わない。
     # 戻り値: (NoteGroupの列, 警告)
+    # 撮った後は、画面はコメント欄の終わりにある。last_info["scrolled_lines"] に、撮影で下へ進んだ行数を残す(見出しへ戻るのに使う)
 
 
 class TallThreadReader:
@@ -132,7 +146,7 @@ class TallThreadReader:
         try:
             t0 = time.time()
             first = src.grab()
-            counter = EndCounter(cal, 1)
+            counter = EndCounter(cal, 1, min_pos=start_y_pt)
 
             def on_frame(n: int) -> None:
                 if n % FRAME_LOG_EVERY == 0:
@@ -152,7 +166,8 @@ class TallThreadReader:
                 name_reader=tallocr.ocr_name_array, line_reader=tallocr.ocr_lines_array, runs=runs)
             t3 = time.time()
             self.last_info = {"frames": res.frames, "ends": len(counter.ends), "reached_end": res.reached_end,
-                              "scan_sec": t1 - t0, "ocr_sec": t2 - t1, "parse_sec": t3 - t2}
+                              "scan_sec": t1 - t0, "ocr_sec": t2 - t1, "parse_sec": t3 - t2,
+                              "scrolled_lines": scrolled_lines(st._offset, cal)}
             if not counter.ends:
                 warnings.append("コメント欄の終わり(入力欄)が見つからないまま、一覧の末尾まで撮影しました")
             if res.rejected:

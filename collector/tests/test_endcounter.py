@@ -106,3 +106,15 @@ def test_works_as_the_stop_condition_of_scan_down():
     full = scan_down(src2, cal2, scroll_to_top(src2), stop=EndCounter(cal2, 2, finder=lambda b, s: []))
     assert full.reached_end and full.frames > early.frames
     full.stitcher.close()
+
+
+def test_buttons_at_or_above_the_note_header_are_not_counted():
+    """読みたいノートの見出しより上に写った入力欄(別のノートの、開いたままのコメント欄)では止まらない.
+    実機で発生: 閉じられなかったノートの入力欄で、直下のノートの撮影が1枚目で止まり、何も読めなかった。"""
+    # 見出しはウィンドウ内 300pt。1枚目: 帯の中 y=150 → 一覧上 70+150=220(見出しより上)、y=500 → 570(下)
+    ys = iter([[150.0, 500.0]])
+    c = EndCounter(CAL, 1, finder=lambda band, scale: next(ys), min_pos=300.0)
+    assert c(frame(), 0) is True and c.ends == [570.0]
+    ys2 = iter([[150.0], []])
+    c2 = EndCounter(CAL, 1, finder=lambda band, scale: next(ys2), min_pos=300.0)
+    assert c2(frame(), 0) is False and c2(frame(), 400) is False and c2.ends == []
