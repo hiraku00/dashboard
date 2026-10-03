@@ -76,6 +76,8 @@ export const POST = route(async (request: Request) => {
     // 放送情報(放送局・番組名・タイトル): まだ無いスレッドだけ、リンク先から自動で入れる(失敗しても同期は成功)。
     // ノートが1件も変わらない同期でも動くよう、notes ではなく完了時に呼ぶ。
     await fillMetaForSynced();
+    // 一覧のサムネイル: 放送情報の自動入力の後で取る(自動入力がリンクを転送先のURLに置き換えるので、先に取ると古い画像扱いになる)。
+    await fetchThumbnailsForSynced();
     return Response.json({ ok: true, runId: run.id });
   }
 
@@ -95,8 +97,6 @@ export const POST = route(async (request: Request) => {
     try {
       for (let start = 0; start < statements.length; start += BATCH) await env.DB.batch(statements.slice(start, start + BATCH));
       for (const n of notes) results.push({ id: n.id });
-      // 一覧のサムネイル: まだ試していないスレッドだけ1回取る(失敗しても同期は成功)。
-      await fetchThumbnailsForSynced(touched);
     } catch (error) {
       console.error(error);
       for (const n of notes) results.push({ id: n.id, error: "保存に失敗しました。" });
