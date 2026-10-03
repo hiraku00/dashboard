@@ -43,6 +43,7 @@ async function startRun() {
   return body.runId as string;
 }
 const send = (notes: unknown[]) => sync({ action: "notes", clientRunId: run, notes });
+const complete = () => sync({ action: "complete", clientRunId: run, status: "success", stats: {}, warnings: [] });
 
 describe("sync API", () => {
   test("start is idempotent for a retried request and unknown runs are rejected", async () => {
@@ -424,18 +425,38 @@ describe("thumbnails", () => {
 
   test("sync fetches the image once for a new thread; a failed lookup is recorded as tried and not repeated", async () => {
     await startRun();
-    const good = note({ linkUrl: "https://blog.example.org/post" });
-    const bad = note({ linkUrl: "https://noimage.example.org/x" });
+    const good = note({ linkUrl: "https://blog.example.org/post", postedAt: "2099-01-01T00:00:00Z" });   // 新しいものから取るので、確実に対象に入れる
+    const bad = note({ linkUrl: "https://noimage.example.org/x", postedAt: "2099-01-01T00:00:00Z" });
     await send([good, bad]);
+    await complete();                                     // サムネイルは完了時(放送情報の自動入力の後)に取る
     expect(await thumbOf(good.id)).toBe("https://blog.example.org/img/cover.png");
     expect((await row(bad.id))?.thumbnail_url).toBe(""); // tried, nothing found
     expect(await thumbOf(bad.id)).toBe("");
 
     // A second sync of the same threads does not look again: a marker put on the stored row survives.
     await env.DB.prepare("UPDATE openchat_note_thumbnails SET checked_at = 'sentinel' WHERE note_id IN (?, ?)").bind(good.id, bad.id).run();
+    await startRun();
     await send([good, bad]);
+    await complete();
     const after = await env.DB.prepare("SELECT checked_at FROM openchat_note_thumbnails WHERE note_id = ?").bind(bad.id).first<{ checked_at: string }>();
     expect(after?.checked_at).toBe("sentinel");
+  });
+
+  test("a thread whose link was replaced after its image was looked up (auto-fill redirect) is looked up again at the next sync completion", async () => {
+    // 実例: ノートのリンク one.nhk/… で取った後、放送情報の自動入力がリンクを転送先 www.web.nhk/… に置き換え、
+    // 一覧では「古い画像」として捨てられて、保存し直すまで出なかった。完了時に、今のリンクで取り直す。
+    await startRun();
+    const n = note({ linkUrl: "https://noimage.example.org/share-link", postedAt: "2099-01-02T00:00:00Z" });
+    await send([n]);
+    await complete();
+    expect((await row(n.id))?.source_url).toBe("https://noimage.example.org/share-link");
+    await env.DB.prepare("INSERT INTO openchat_note_meta (note_id, broadcaster, program_name, episode_title, links_json, updated_at) VALUES (?, '', '', '', ?, '2099-01-02T00:00:00Z')")
+      .bind(n.id, JSON.stringify([{ url: "https://blog.example.org/redirected", label: "" }])).run();
+    expect(await thumbOf(n.id)).toBe("");                 // 記録したリンクが今のリンクと違うので、使わない
+    await startRun();
+    await complete();                                     // ノートが1件も変わらない同期でも取り直す
+    expect((await row(n.id))?.source_url).toBe("https://blog.example.org/redirected");
+    expect(await thumbOf(n.id)).toBe("https://blog.example.org/img/cover.png");
   });
 
   test("saving a corrected link fetches the image again; an unchanged link with an image does not", async () => {

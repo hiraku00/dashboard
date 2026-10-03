@@ -70,20 +70,25 @@ export async function refreshThumbnail(noteId: string, program: Pick<Program, "m
 /** 1回の同期で新しく取りに行くスレッドの数の上限(1件ごとに外部へのサブリクエストが最大3回かかる)。残りは次の同期で試す。 */
 const SYNC_THUMBNAIL_LOOKUPS = 8;
 
-/** 同期で届いたスレッドのうち、サムネイルをまだ一度も試していないものだけ、1回取りに行く。
+/** サムネイルを、まだ試していないスレッドと、試したときのリンクが今のリンク(一覧のリンク列の1件目)と違うスレッドについて、1回取りに行く。
+ *  同期の完了時に、放送情報の自動入力(fillMetaForSynced)の後で呼ぶ。自動入力はリンクを転送先のURLに置き換えるので、
+ *  先に取るとノートのリンクカードのURLで記録され、一覧では「古い画像」として捨てられて、保存し直すまで出なかった
+ *  (実例: 2026-10-03「北の女と南の男」。one.nhk/… で記録 → www.web.nhk/… に置き換わって非表示)。
  *  見つからなかったときも「試した」と記録する(refreshThumbnail が空の行を残す)ので、同じリンクで繰り返し取りには行かない。
- *  OCRの誤りを手で直すと放送情報の保存で取り直す。失敗しても同期は成功させる。 */
-export async function fetchThumbnailsForSynced(noteIds: string[]): Promise<void> {
+ *  新しいスレッドから順に1回 SYNC_THUMBNAIL_LOOKUPS 件まで(古いものは同期のたびに少しずつ)。失敗しても同期は成功させる。 */
+export async function fetchThumbnailsForSynced(): Promise<void> {
   try {
-    if (!noteIds.length) return;
     const rows = (await env.DB.prepare(
       `SELECT n.id, n.link_url, m.links_json FROM openchat_notes n
          LEFT JOIN openchat_note_meta m ON m.note_id = n.id
          LEFT JOIN openchat_note_thumbnails t ON t.note_id = n.id
-        WHERE n.id IN (${noteIds.map(() => "?").join(",")}) AND n.deleted_at IS NULL AND t.note_id IS NULL`,
-    ).bind(...noteIds).all<Record<string, unknown>>()).results ?? [];
-    const untried = rows.map((r) => ({ id: String(r.id), meta: metaFromRow(r), linkUrl: String(r.link_url ?? "") })).filter((p) => thumbnailSourceUrl(p));
-    await Promise.all(untried.slice(0, SYNC_THUMBNAIL_LOOKUPS).map((p) => refreshThumbnail(p.id, p)));
+        WHERE n.deleted_at IS NULL
+          AND COALESCE(NULLIF(json_extract(m.links_json, '$[0].url'), ''), n.link_url) != ''
+          AND (t.note_id IS NULL OR t.source_url != COALESCE(NULLIF(json_extract(m.links_json, '$[0].url'), ''), n.link_url))
+        ORDER BY n.posted_at DESC LIMIT 50`,
+    ).all<Record<string, unknown>>()).results ?? [];
+    const pending = rows.map((r) => ({ id: String(r.id), meta: metaFromRow(r), linkUrl: String(r.link_url ?? "") })).filter((p) => thumbnailSourceUrl(p));
+    await Promise.all(pending.slice(0, SYNC_THUMBNAIL_LOOKUPS).map((p) => refreshThumbnail(p.id, p)));
   } catch { /* 画像は飾り */ }
 }
 
