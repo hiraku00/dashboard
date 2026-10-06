@@ -12,6 +12,9 @@ _REL = re.compile(r"^(\d+)(秒|分|時間)前$")
 _DAY = re.compile(r"^(一昨日|昨日)(午[前後])(\d{1,2}):(\d{2})$")
 _DATE = re.compile(r"^(?:(\d{4})\.)?(\d{1,2})\.(\d{1,2})(午[前後])(\d{1,2}):(\d{2})$")
 _TODAY = re.compile(r"^(午[前後])(\d{1,2}):(\d{2})$")
+# 1分に満たない投稿の表示。「今」に加えて「ちょっと前」がある(実機で確認: 2026-10-06。認識できずに時刻の行が区切りにならず、
+# 一番新しいコメントを丸ごと読み落として「件数不一致 表示7 / 取得6」の要確認になった)
+_JUST_NOW = ("今", "ちょっと前")
 
 
 @dataclass(frozen=True)
@@ -27,7 +30,7 @@ def _squash(text: str) -> str:
 
 def is_time_text(text: str) -> bool:
     t = _squash(text)
-    return t == "今" or any(r.match(t) for r in (_REL, _DAY, _DATE, _TODAY))
+    return t in _JUST_NOW or any(r.match(t) for r in (_REL, _DAY, _DATE, _TODAY))
 
 
 def _hour24(ampm: str, h: str) -> int:
@@ -43,7 +46,7 @@ def parse_display_time(raw: str, now: datetime) -> ParsedTime | None:
     if now.tzinfo is None:
         raise ValueError("now must be timezone-aware")
     t = _squash(raw)
-    if t == "今":
+    if t in _JUST_NOW:
         return ParsedTime(_utc(now), APPROX_MIN, raw)
     m = _REL.match(t)
     if m:
