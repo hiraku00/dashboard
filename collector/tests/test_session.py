@@ -736,3 +736,16 @@ def test_a_block_that_borrowed_the_next_notes_time_is_not_put_into_the_ledger():
     assert len(borrowed) == 1 and "hibye" in borrowed[0] and "Naozo" in borrowed[0], stats.warnings
     assert not any(n["needs_recheck"] for n in ledger.notes)
     assert chat.forbidden_clicks == []
+
+
+def test_a_comment_shown_as_just_posted_is_read():
+    """1分に満たないコメントは、時刻の行が「ちょっと前」になる。時刻として認識し、件数を合わせる
+    (実機で発生: 2026-10-06、認識できずに一番新しいコメントを読み落とし、「件数不一致 表示7 / 取得6」で要確認になった)。"""
+    chat = SimChat([SimNote("ちきりん", "10月5日キャッチ！世界のトップニュース\n中国で拡がるAI故人サービス", "昨日 午後 4:13", badge=True,
+                            comments=comments(6, "K") + [SimComment("参加者Z", "たった今書いたコメントです。", "ちょっと前")], reactions=10)],
+                   jitter=False)
+    ledger, stats = run(chat)
+    note = ledger.notes[0]
+    assert not stats.warnings, stats.warnings
+    assert note["comment_count"] == 7 and not note["needs_recheck"]
+    assert any(c["posted_at_raw"] == "ちょっと前" for c in note["comments"])

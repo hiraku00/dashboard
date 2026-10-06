@@ -30,6 +30,8 @@ def test_relative_forms_are_approximate():
     assert t.precision == APPROX_HOUR and t.utc == "2026-09-23T16:00:00Z"
     assert p("35分前").precision == APPROX_MIN
     assert p("今").precision == APPROX_MIN
+    assert p("ちょっと前").precision == APPROX_MIN and p("ちょっと前").utc == "2026-09-24T03:00:00Z"   # 1分に満たない投稿
+    assert is_time_text("ちょっと 前")
 
 
 def test_ocr_spacing_variants():
