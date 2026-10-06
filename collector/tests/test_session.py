@@ -710,3 +710,29 @@ def test_why_comments_are_read_in_full_is_logged():
     logs.clear()
     Session(SimDriver(chat), ledger, NOW, Options(first_run=False), log=logs.append).run()
     assert any("既読と判定できません(基準: 基準の時刻なし(前回の同期が中断))" in l for l in logs), logs
+
+
+def test_a_block_that_borrowed_the_next_notes_time_is_not_put_into_the_ledger():
+    """自分の時刻の行を読み落とし、次の投稿の作者名も読めない(合体を画面で見抜けない)と、「作者と本文はこのノート、時刻と件数は
+    次の投稿」のブロックになる。台帳には入れず(幽霊を作らない・本物を書き換えない)、警告して画面を残す
+    (実機で発生: 2026-10-05、hibye の本文に Naozo の時刻と件数がついたノートが処理され、本物の hibye は読まれなかった)。"""
+    chat = SimChat([SimNote("参加者A", "別のノートの本文です。", "9.25 午後 9:58", comments=comments(2, "A"), reactions=10),
+                    SimNote("hibye", "9/22、23に前後編で放送された世界のドキュメンタリーがとても面白かったのでシェアします。",
+                            "9.24 午前 0:14", card="世界のドキュメンタリー", comments=comments(11, "H"), reactions=63),
+                    SimNote("Naozo", "昨夜放送のNHK 未解決事件について。最初は何気なく見ていたのですが、考えさせられる番組でした。",
+                            "9.23 午後 11:27", comments=comments(15, "N"), reactions=110),
+                    SimNote("参加者D", "メッシと私 2026", "9.21 午後 7:57", comments=comments(2, "Y"), reactions=21)], jitter=False)
+    ledger, stats = run(chat)
+    assert {n["author_name"]: n["comment_count"] for n in ledger.notes} == {"参加者A": 2, "hibye": 11, "Naozo": 15, "参加者D": 2}
+    hibye = by_author(ledger, "hibye")[0]
+    before = (hibye["posted_at"], hibye["comment_count"], hibye["needs_recheck"])
+
+    chat.hide_time, chat.hide_name = {1}, {2}             # hibye の時刻の行と、Naozo の作者名を読み落とす
+    _close_window(chat)
+    s, stats = _next_run(chat, ledger)
+    assert len(ledger.notes) == 4, [(n["author_name"], n["posted_at_raw"]) for n in ledger.notes]   # 幽霊ノートを作らない
+    assert (hibye["posted_at"], hibye["comment_count"], hibye["needs_recheck"]) == before           # 本物を書き換えない
+    borrowed = [w for w in stats.warnings if "取り込んで" in w]
+    assert len(borrowed) == 1 and "hibye" in borrowed[0] and "Naozo" in borrowed[0], stats.warnings
+    assert not any(n["needs_recheck"] for n in ledger.notes)
+    assert chat.forbidden_clicks == []

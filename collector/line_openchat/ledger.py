@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from . import identity
-from .timeparse import better_time
+from .timeparse import better_time, tolerance_minutes
 
 LEDGER_VERSION = 1
 TARGET_NAME = "ちきりん"
@@ -178,6 +178,31 @@ class Ledger:
             note["pending_upload"] = True
         note["last_checked_at"] = now_iso
         return note, new
+
+    def borrowed_time(self, obs: NoteObs) -> tuple[dict, dict] | None:
+        """隣の投稿の時刻と件数を取り込んで読めたブロックか. そうなら (作者と本文が一致する本物のノート, 時刻の持ち主のノート).
+
+        自分の時刻の行を読み落とすと、ブロックは次の投稿の時刻の行まで続き、「作者と本文はこのノート、時刻と件数は次の投稿」
+        になる(実機で発生: 2026-09-29 と 2026-10-05、hibye の本文に Naozo の時刻と件数がついた幽霊ノート)。
+        画面の区切り(parse.split_blocks の merged)で見抜けなかったときの、台帳の側の見分け方: 作者と本文(長いもの)が
+        生きているノートと一致するのに時刻が違い、その時刻が別の作者の生きているノートと一致する。両方そろうときだけ取り込みとみなす
+        (同じ人が同じ本文を投稿し直した場合は、時刻が他人の投稿と一致しないので対象外)。"""
+        cand = obs.as_match_dict()
+        if len(identity.norm_text(obs.body_text)) < 20:
+            return None
+        live = [n for n in self.notes if not n.get("deleted_at")]
+        for owner in live:
+            if identity.name_sim(owner["author_name"], obs.author) < 0.9 or identity.sim(owner["body_text"], obs.body_text) < 0.9:
+                continue
+            tol = tolerance_minutes(owner["posted_at_precision"], obs.posted_precision)
+            if identity.minutes_between(owner["posted_at"], obs.posted_at) <= tol:
+                return None                       # 時刻も合っている: 本物のノートそのもの
+            for other in live:
+                if other is owner or identity.name_sim(other["author_name"], obs.author) >= identity.NAME_SIM:
+                    continue
+                if identity.minutes_between(other["posted_at"], obs.posted_at) <= tolerance_minutes(other["posted_at_precision"], obs.posted_precision):
+                    return owner, other
+        return None
 
     def identity_warning(self, note: dict) -> str | None:
         """バッジと名前が食い違うノートの警告(1つのノートにつき1回だけ)。名前だけの一致は対象外にしている。"""
