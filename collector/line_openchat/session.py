@@ -110,6 +110,7 @@ class Session:
         self.debug = log if os.environ.get("LINE_OPENCHAT_DEBUG") else (lambda s: None)
         self.stats = RunStats()
         self._visited: set[str] = set()                         # 走査で件数を見て、開くかを判断したノートのID
+        self._borrowed: set[tuple[str, str]] = set()           # 隣の投稿の時刻を取り込んだと警告した(本物のノートのID, 時刻の表示)
         self._lost_position = False                             # 見出しを探して大きく動いた末に諦め、スクロール位置が分からなくなった
         self._left_open: dict | None = None                     # 開いた(開いているのを見つけた)まま、まだ閉じていないノート
         self._carry: tuple[Screen, list[Block]] | None = None   # _advance が撮った画面を、次の shot() で再利用する
@@ -194,6 +195,10 @@ class Session:
                 if obs is None:
                     stats.warnings.append(f"時刻を読めないノートがあります: {b.time_raw!r}")
                     continue
+                borrowed = self.ledger.borrowed_time(obs)
+                if borrowed:
+                    self._skip_borrowed(borrowed, obs, screen, blocks)
+                    continue
                 note, is_new = self.ledger.upsert_note(obs, self.now_iso)
                 if note["id"] in visited:
                     continue
@@ -245,6 +250,21 @@ class Session:
             prev_sig = sig
             step = self._advance(blocks, step)
         stats.warnings.append("スクロール回数の上限に達しました")
+
+    def _skip_borrowed(self, borrowed: tuple[dict, dict], obs: NoteObs, screen: Screen, blocks: list[Block]) -> None:
+        """隣の投稿の時刻と件数を取り込んで読めたブロック(ledger.borrowed_time)は、台帳に入れない(幽霊ノートを作らない・
+        本物のノートを書き換えない)。警告は1回の実行で1回だけ出し、原因を確かめられるよう画面を残す。
+        本物のノートは、このブロックが画面からずれた次の画面で、正しく読まれる。"""
+        owner, other = borrowed
+        key = (owner["id"], obs.posted_raw)
+        if key in self._borrowed:
+            return
+        self._borrowed.add(key)
+        self.stats.warnings.append(f"{owner['author_name']} {owner['posted_at_raw']} のノートが、下の {other['author_name']} "
+                                   f"{other['posted_at_raw']} の時刻と件数(💬{obs.comments})を取り込んで読めたので、この読み取りは使いません"
+                                   "(時刻の行の読み落とし。画面を new-note-snapshots に残しました)")
+        self._save_snapshot({"id": f"borrowed-{owner['id']}", "author_name": owner["author_name"], "posted_at": obs.posted_at,
+                             "posted_at_raw": obs.posted_raw, "comment_count": obs.comments}, screen, blocks)
 
     def _save_snapshot(self, note: dict, screen: Screen, blocks: list[Block]) -> None:
         """新しいノートを見つけた画面を、画像と読み取り結果(ブロック・OCRの行)で残す. 本当に新しい投稿か、隣り合う投稿が

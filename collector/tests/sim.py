@@ -121,6 +121,8 @@ class SimChat:
         self.digits_unreadable = False   # 1倍のディスプレイで、小さな数字をOCRが読めない状態
         self.digit_flaky_first = False   # 実機で見られた: 1桁の数字の最初の読み取り(repeat=3, enlarge=5)だけ失敗する
         self.share_w = 16.0            # 共有アイコンの幅(実機では13.5ptと細いことがある)
+        self.hide_time: set[int] = set()   # 時刻の行をOCRが読み落とすノート(一覧の何番目か)
+        self.hide_name: set[int] = set()   # 作者名の行をOCRが読み落とすノート
 
     # ---------- 文書の組み立て ----------
     def layout(self):
@@ -137,9 +139,10 @@ class SimChat:
             if badge:
                 rects.append((34, y0 + 14, 46, y0 + 26, BADGE))      # 実機と同じく x≈45 まで張り出す
 
-        for n in self.notes:
+        for idx, n in enumerate(self.notes):
             avatar(y, n.badge)
-            lines.append(Line(n.author, 49, y + 5, 60, 15))
+            if idx not in self.hide_name:
+                lines.append(Line(n.author, 49, y + 5, 60, 15))
             y += 38
             body = n.text
             wrapped = _wrap(body, 26)
@@ -198,7 +201,8 @@ class SimChat:
             lines.append(Line(f"0 {rd} @ {count}山", 16.4, cy - 9, 100, 18, 0.5))
             zones.append(("reaction_icon", rx, cy - 8, rx + 17, cy + 8, n))
             y = cy + 16
-            lines.append(Line(n.time, 14.8, y, 90, 15))
+            if idx not in self.hide_time:
+                lines.append(Line(n.time, 14.8, y, 90, 15))
             y += 30
             if n.open:
                 shown_n = min(len(n.comments), 10 + 10 * n.earlier_loaded)
@@ -232,7 +236,8 @@ class SimChat:
         return lines, rects, digits, names, y, zones
 
     def _doc(self):
-        sig = tuple((n.open, n.expanded, n.earlier_loaded, len(n.comments)) for n in self.notes)
+        sig = (tuple((n.open, n.expanded, n.earlier_loaded, len(n.comments)) for n in self.notes),
+               tuple(sorted(self.hide_time)), tuple(sorted(self.hide_name)))
         if getattr(self, "_sig", None) != sig:
             self._sig, self._cache = sig, self.layout()
         return self._cache
