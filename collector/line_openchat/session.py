@@ -27,6 +27,7 @@ MAX_CLICKS_PER_RUN = 3000
 SNAPSHOT_KEEP = 30          # 新しいノートを見つけた画面を、直近これだけ残す
 SEEK_LOG_EVERY = 8          # 見出しを探す処理が長引いたとき、これ回数ごとに進捗をログへ出す
 SEEK_STUCK_LIMIT = 16       # 「手がかりはあるのに見出しが確認できない」がこれだけ連続したら、迷走とみなして早めに諦める
+MISSED_RECENT_DAYS = 7      # 今回読めなかったノートを警告する対象: この日数以内に確認できていたもの(消されたノートを警告し続けない)
 THREAD_ROOM_BELOW_FOOTER = 120  # ノートの時刻行の下に、この高さ(pt)以上が見えていれば、直下の「前のコメントを見る」の有無を判断できる
 HINT_TIME_TOLERANCE_MIN = 240   # 手がかりの近くの投稿時刻が、このノートの投稿時刻とこれ(分)を超えてズレていたら、
                                  # 本文が似ているだけの別の投稿とみなし、手がかりとして使わない
@@ -162,11 +163,40 @@ class Session:
             self.log("一覧を走査します(変わったノートは、その場で読み取って閉じます)")
             self.reader.prepare()                 # 撮影の調整(倍率などを測る。一覧の先頭へ戻る)
             self._scan()
+            self._warn_missed()
         except Aborted as exc:
             stats.aborted = True
             stats.warnings.append(f"中断: {exc}")
         self._log_digits()
         return stats
+
+    def _warn_missed(self) -> None:
+        """走査した範囲(確認したノートの投稿日時の新しい端〜古い端)にあるのに、今回一度も確認できなかったノートを警告する.
+
+        一覧の画面で、投稿がブロックとして読めない(OCRが時刻の行や名前を読み落とし、隣の投稿と合体するなど)と、そのノートは
+        何も言わずに飛ばされる(実機: 2026-10-07〜10-10、ちきりんのノートが走査のたびに5〜11件抜け、その間のコメントを
+        取り込めていなかった)。直近 MISSED_RECENT_DAYS 日以内に確認できていたものだけを対象にする(LINEで消されたノートが、
+        いつまでも警告に出続けないように)。"""
+        seen = [n for n in self.ledger.notes if n["id"] in self._visited]
+        if not seen:
+            return
+        newest, oldest = max(n["posted_at"] for n in seen), min(n["posted_at"] for n in seen)
+        recent = self.now - timedelta(days=MISSED_RECENT_DAYS)
+        missed = []
+        for n in self.ledger.notes:
+            if n["id"] in self._visited or n.get("deleted_at") or not (oldest <= n["posted_at"] <= newest):
+                continue
+            try:
+                checked = datetime.fromisoformat(n["last_checked_at"])
+            except (TypeError, ValueError):
+                continue
+            if checked.tzinfo is not None and checked >= recent:
+                missed.append(n)
+        if missed:
+            missed.sort(key=lambda n: n["posted_at"], reverse=True)
+            names = "、".join(self._label(n) for n in missed[:5]) + (f" ほか{len(missed) - 5}件" if len(missed) > 5 else "")
+            self.stats.warnings.append(f"一覧を走査した範囲にあるのに、今回は読めなかったノートが{len(missed)}件あります"
+                                       f"(コメントの増減を確認できていません): {names}")
 
     def _log_digits(self) -> None:
         """件数の数字を、どの方法で読んだか(見本との照合 / OCR / 読めない)。移行期間は、見本とOCRの食い違いも出す."""
