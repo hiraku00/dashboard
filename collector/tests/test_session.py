@@ -749,3 +749,26 @@ def test_a_comment_shown_as_just_posted_is_read():
     assert not stats.warnings, stats.warnings
     assert note["comment_count"] == 7 and not note["needs_recheck"]
     assert any(c["posted_at_raw"] == "ちょっと前" for c in note["comments"])
+
+
+def test_a_note_in_the_scanned_range_that_was_not_read_this_time_is_warned():
+    """一覧で投稿がブロックとして読めないと、そのノートは何も言わずに飛ばされる(実機: 2026-10-07〜10-10、ちきりんのノートが
+    走査のたびに5〜11件抜け、その間のコメントを取り込めていなかった)。走査した範囲にあるのに読めなかったノートを警告する."""
+    ledger, stats = run(build(jitter=False))
+    assert not any("読めなかったノート" in w for w in stats.warnings)          # 全部読めた回は出ない
+    chat = build(jitter=False)
+    chat.notes = [n for n in chat.notes if n.author != "参加者D"]                # 走査した範囲(投稿日時)の内側のノートが読めなかった
+    _, stats = run(chat, ledger)
+    missed = [w for w in stats.warnings if "読めなかったノート" in w]
+    assert len(missed) == 1 and "1件" in missed[0] and "参加者D" in missed[0], stats.warnings
+
+
+def test_a_note_not_seen_for_a_week_is_not_warned_again():
+    """LINEで消されたノートが、いつまでも警告に出続けないように、直近7日以内に確認できていたものだけを対象にする."""
+    ledger, _ = run(build(jitter=False))
+    gone = next(n for n in ledger.notes if n["author_name"] == "参加者D")
+    gone["last_checked_at"] = (NOW - timedelta(days=8)).isoformat(timespec="seconds")
+    chat = build(jitter=False)
+    chat.notes = [n for n in chat.notes if n.author != "参加者D"]
+    _, stats = run(chat, ledger)
+    assert not any("読めなかったノート" in w for w in stats.warnings), stats.warnings
