@@ -7,6 +7,7 @@ export const GET = route(async (request: Request) => {
   const page = await listPrograms({
     q: searchParams.get("q"),
     kind: searchParams.get("kind"),
+    sort: searchParams.get("sort"),
     page: searchParams.get("page"),
     limit: Number(searchParams.get("limit")) || undefined,
   });
