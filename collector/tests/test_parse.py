@@ -150,3 +150,19 @@ def test_url_line_after_a_line_reaching_the_right_edge_is_not_glued_to_it():
              P.Line("https://www.nhk-ondemand.jp/goods/G2025146599SA000/?", 17, 270, 371, 14),
              P.Line("capid=sns002", 17, 285, 88, 14)]
     assert P.join_lines(lines, 380.0) == "10月1日 映像の世紀バタフライエフェクト AI 未来を夢みたふたり\nhttps://www.nhk-ondemand.jp/goods/G2025146599SA000/?capid=sns002"
+
+
+def test_reaction_faces_on_the_counts_row_are_not_taken_for_card_text():
+    """数の行の右端のリアクションの顔アイコンを、OCRが「1きききき」と読むことがある(x≥100 なので、カードの題名と誤認していた。
+    画面をタイルに分けて読むと拾うことがある: 2026-10-10)。カードの無いノートの題名が汚れず、カードのあるノートの題名も変わらない."""
+    chat = make_chat()
+    chat.notes[1].open = False
+    screen = chat.screen()
+    before = [(b.author, b.link_title, b.text) for b in P.split_blocks(screen) if b.kind == "note"]
+    for b in [b for b in P.split_blocks(screen) if b.kind == "note"]:
+        cy = b.y_time - P.K.COUNTS_ROW_ABOVE_TIME
+        screen.lines.append(P.Line("1きききき", 328.9, cy - 7, 50, 14))
+    screen.lines.sort(key=lambda l: (round(l.y / 4), l.x))
+    after = [(b.author, b.link_title, b.text) for b in P.split_blocks(screen) if b.kind == "note"]
+    assert after == before
+    assert before[0][1] == "" and "工場ニュース" in before[1][1]

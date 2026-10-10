@@ -445,6 +445,10 @@ def split_blocks(screen: Screen) -> list[Block]:
             if counts:
                 b.reactions, b.comments, b.comment_icon = counts
                 b.counts_y = cy
+            # 数の行の右側(共有アイコン・リアクションの顔アイコン)の誤読は、本文でもリンクカードでもない(カードは必ず数の行より上)。
+            # 顔アイコンは「1きききき」などと読まれ、x≥100 なのでカードの題名と誤認される(画面をタイルに分けて読むと拾うことが
+            # ある: 2026-10-10 の検証で、カードの無いノートの題名が「1きききき」になった)。件数が読めたかどうかによらず捨てる
+            rest = [l for l in rest if not (l.x >= K.LINK_CARD_X_MIN and cy - 12 <= l.cy <= cy + 12)]
             rest = drop_card_garbage(rest, cy if counts else None)
             all_rest = rest
             for l in rest:
