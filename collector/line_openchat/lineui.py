@@ -20,6 +20,7 @@ from AppKit import NSApplicationActivateIgnoringOtherApps, NSBitmapImageRep, NSR
 from Foundation import NSMakeRange, NSURL
 
 from . import layout as K
+from . import tallocr
 from .safety import ALLOWED_AX_ACTIONS, ReadOnlyViolation
 from .screen import Line
 from .session import Aborted
@@ -187,18 +188,49 @@ class MacScreen:
         self.lines: list[Line] = self._ocr()
 
     def _ocr(self) -> list[Line]:
+        """画面全体を1回で読んだ行を土台に、タイルに分けて読んだ行で、読み落としの穴だけを埋める.
+
+        Retinaのウィンドウ(高さ2000px超)を1回で読むと、Visionが行をまとめて読み落とすことがある(実機で、時刻の行が2つ抜けて
+        3つの投稿が1つに合体した: 2026-10-10 Naozo)。全体の読みは座標も文字も一切変えずに残し、それと重ならない位置の行だけを
+        タイルの読みから足す(tallocr.fill_gaps)。これまで読めていた行は、必ずそのまま残る。"""
+        base = self._recognize(Vision.VNImageRequestHandler.alloc().initWithURL_options_(NSURL.fileURLWithPath_(self.path), None))
+        tile_px, overlap_px = tallocr.tile_sizes(self._scale)
+        h_px = Quartz.CGImageGetHeight(self._cg)
+        if h_px <= tile_px:
+            return base
+        # タイルは1回だけ(境目を半分ずらした2回目は読まない)。各タイルの中央寄り(端から重なりの半分以上内側)の行だけを採るので、
+        # どの高さも、どれか1枚のタイルの中央寄りで読まれる。全体の読みも土台にあるため、2回目で増えたのはアイコンの誤読だけで、
+        # ノートの読み取り結果は変わらなかった(2026-10-10、保存済みの実画面20枚で比較。2回目は1枚あたり約1秒遅くなる)
+        extra: list[Line] = []
+        to_pt = self.win.h / h_px                    # 土台と同じ換算(画像の高さ = ウィンドウの高さ)
+        starts = tallocr._starts(h_px, tile_px, overlap_px, 0)
+        for i, y0 in enumerate(starts):
+            h = min(tile_px, h_px - y0)
+            nxt = starts[i + 1] if i + 1 < len(starts) else h_px
+            lo = y0 + (overlap_px / 2 if y0 > 0 else 0)
+            hi = y0 + h if nxt >= h_px else min(y0 + h, nxt + overlap_px / 2)
+            tile = Quartz.CGImageCreateWithImageInRect(self._cg, Quartz.CGRectMake(0, y0, self._px_w, h))
+            handler = Vision.VNImageRequestHandler.alloc().initWithCGImage_options_(tile, None)
+            for line in self._recognize(handler, y0 * to_pt, h * to_pt):
+                if lo <= line.cy / to_pt < hi:           # タイルの端で切れた行は採らない(隣のタイルの中央寄りで読む)
+                    extra.append(line)
+        return tallocr.fill_gaps(base, extra)
+
+    def _recognize(self, handler, top_pt: float = 0.0, h_pt: float | None = None) -> list[Line]:
+        """画像(全体、または横幅いっぱいのタイル: 上端 top_pt・高さ h_pt)を読み、行をウィンドウの座標(pt)で返す.
+        タイルは横幅いっぱいなので、文字単位の位置(_cand、text_center_x で使う)の x は、全体の読みと同じ換算で使える."""
+        h_pt = self.win.h if h_pt is None else h_pt
         req = Vision.VNRecognizeTextRequest.alloc().init()
         req.setRecognitionLevel_(Vision.VNRequestTextRecognitionLevelAccurate)
         req.setRecognitionLanguages_(["ja-JP", "en-US"])
         req.setUsesLanguageCorrection_(True)
-        handler = Vision.VNImageRequestHandler.alloc().initWithURL_options_(NSURL.fileURLWithPath_(self.path), None)
         handler.performRequests_error_([req], None)
         lines = []
         for o in req.results() or []:
             c = o.topCandidates_(1)[0]
             b = o.boundingBox()
-            line = Line(str(c.string()), b.origin.x * self.win.w, (1 - b.origin.y - b.size.height) * self.win.h,
-                        b.size.width * self.win.w, b.size.height * self.win.h, float(c.confidence()))
+            line = Line(str(c.string()), b.origin.x * self.win.w, top_pt + (1 - b.origin.y - b.size.height) * h_pt,
+                        b.size.width * self.win.w, b.size.height * h_pt, float(c.confidence()))
             line._cand = c  # type: ignore[attr-defined]   # 文字単位の位置を後で取るため
             lines.append(line)
         lines.sort(key=lambda l: (round(l.y / 4), l.x))

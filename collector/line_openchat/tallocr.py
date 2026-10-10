@@ -140,6 +140,33 @@ def ocr_tall(image: TallImage, width_px: int, scale: float, enlarge: int | None 
     return merged
 
 
+def same_place(a: Line, b: Line) -> bool:
+    """2つの行が、画面の同じ場所を読んだものか. 縦は低い方の高さの半分以上重なり、横も重なる(2ptの隙間までは重なりとみなす)."""
+    v = min(a.y + a.h, b.y + b.h) - max(a.y, b.y)
+    hz = min(a.x + a.w, b.x + b.w) - max(a.x, b.x)
+    return v >= min(a.h, b.h) / 2 and hz > -2
+
+
+def fill_gaps(base: list[Line], extra: list[Line]) -> list[Line]:
+    """base(画面全体を1回で読んだ行)を一切変えずに残し、extra(タイルの読み)のうち、base のどの行とも同じ場所にないものだけを足す.
+
+    足すのは、全体の読みが読み落とした場所の行だけ。同じ場所を2通りに読んだ行(全体とタイル、タイルどうし)を両方残すと、
+    parse.merge_fragments で1行につながって文字が重複したり、時刻の行が2本になって区切りが狂うため、必ず1つにする。
+    extra どうしで同じ場所のものは、_better(時刻として読める方、信頼度の高い方)を採る。"""
+    picked: list[Line] = []
+    for line in extra:
+        if any(same_place(line, b) for b in base):
+            continue
+        dup = next((i for i, p in enumerate(picked) if same_place(line, p)), None)
+        if dup is None:
+            picked.append(line)
+        elif _better(line, picked[dup]):
+            picked[dup] = line
+    out = list(base) + picked
+    out.sort(key=lambda l: (round(l.y / 4), l.x))
+    return out
+
+
 def _ocr_png(img, langs, correction) -> str:
     fd, path = tempfile.mkstemp(suffix=".png", prefix="linesmall-")
     os.close(fd)
