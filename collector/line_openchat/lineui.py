@@ -20,7 +20,7 @@ from AppKit import NSApplicationActivateIgnoringOtherApps, NSBitmapImageRep, NSR
 from Foundation import NSMakeRange, NSURL
 
 from . import layout as K
-from . import tallocr
+from . import tallocr, timing
 from .safety import ALLOWED_AX_ACTIONS, ReadOnlyViolation
 from .screen import Line
 from .session import Aborted
@@ -193,7 +193,8 @@ class MacScreen:
         Retinaのウィンドウ(高さ2000px超)を1回で読むと、Visionが行をまとめて読み落とすことがある(実機で、時刻の行が2つ抜けて
         3つの投稿が1つに合体した: 2026-10-10 Naozo)。全体の読みは座標も文字も一切変えずに残し、それと重ならない位置の行だけを
         タイルの読みから足す(tallocr.fill_gaps)。これまで読めていた行は、必ずそのまま残る。"""
-        base = self._recognize(Vision.VNImageRequestHandler.alloc().initWithURL_options_(NSURL.fileURLWithPath_(self.path), None))
+        with timing.span("OCR全体"):
+            base = self._recognize(Vision.VNImageRequestHandler.alloc().initWithURL_options_(NSURL.fileURLWithPath_(self.path), None))
         tile_px, overlap_px = tallocr.tile_sizes(self._scale)
         h_px = Quartz.CGImageGetHeight(self._cg)
         if h_px <= tile_px:
@@ -201,6 +202,13 @@ class MacScreen:
         # タイルは1回だけ(境目を半分ずらした2回目は読まない)。各タイルの中央寄り(端から重なりの半分以上内側)の行だけを採るので、
         # どの高さも、どれか1枚のタイルの中央寄りで読まれる。全体の読みも土台にあるため、2回目で増えたのはアイコンの誤読だけで、
         # ノートの読み取り結果は変わらなかった(2026-10-10、保存済みの実画面20枚で比較。2回目は1枚あたり約1秒遅くなる)
+        with timing.span("OCRタイル"):
+            extra = self._tile_lines()
+        return tallocr.fill_gaps(base, extra)
+
+    def _tile_lines(self) -> list[Line]:
+        h_px = Quartz.CGImageGetHeight(self._cg)
+        tile_px, overlap_px = tallocr.tile_sizes(self._scale)
         extra: list[Line] = []
         to_pt = self.win.h / h_px                    # 土台と同じ換算(画像の高さ = ウィンドウの高さ)
         starts = tallocr._starts(h_px, tile_px, overlap_px, 0)
@@ -214,7 +222,7 @@ class MacScreen:
             for line in self._recognize(handler, y0 * to_pt, h * to_pt):
                 if lo <= line.cy / to_pt < hi:           # タイルの端で切れた行は採らない(隣のタイルの中央寄りで読む)
                     extra.append(line)
-        return tallocr.fill_gaps(base, extra)
+        return extra
 
     def _recognize(self, handler, top_pt: float = 0.0, h_pt: float | None = None) -> list[Line]:
         """画像(全体、または横幅いっぱいのタイル: 上端 top_pt・高さ h_pt)を読み、行をウィンドウの座標(pt)で返す.
@@ -354,7 +362,8 @@ class LineDriver:
         fd, path = tempfile.mkstemp(suffix=".png", prefix="linenote-")
         os.close(fd)
         os.chmod(path, 0o600)
-        subprocess.run(["screencapture", "-x", "-o", "-l", str(win.id), path], check=True)
+        with timing.span("screencapture"):
+            subprocess.run(["screencapture", "-x", "-o", "-l", str(win.id), path], check=True)
         if self._prev is not None and not self.keep:
             self._prev.close()
         self._prev = MacScreen(path, win)
@@ -369,8 +378,8 @@ class LineDriver:
             ev = Quartz.CGEventCreateScrollWheelEvent(None, Quartz.kCGScrollEventUnitLine, 1, -step)
             Quartz.CGEventSetLocation(ev, (x, y))
             Quartz.CGEventPost(Quartz.kCGHIDEventTap, ev)
-            time.sleep(0.03)
-        time.sleep(wait)
+            timing.sleep("スクロール操作", 0.03)
+        timing.sleep("スクロール後の待ち", wait)
         self._last_pos, self._last_action = (x, y), time.time()
 
     def click_at(self, x: float, y: float) -> None:
@@ -382,7 +391,7 @@ class LineDriver:
             Quartz.CGEventPost(Quartz.kCGHIDEventTap, ev)
             time.sleep(0.05)
         self._last_pos, self._last_action = (pt.x, pt.y), time.time()
-        time.sleep(1.2)
+        timing.sleep("クリック後の待ち", 1.2)
 
     def thread_reader(self):
         from .threadread import TallThreadReader
@@ -437,15 +446,16 @@ class MacFrameSource:
 
     def grab(self):
         """スクロールや描画が落ち着くまで(続けて2枚が同じになるまで)撮り直す."""
-        self.driver.pause(strict=False)
-        prev = self._shoot()
-        for _ in range(self.SETTLE_TRIES):
-            time.sleep(0.1)
-            cur = self._shoot()
-            if cur.shape == prev.shape and self._np.array_equal(cur, prev):
-                return cur
-            prev = cur
-        return prev
+        with timing.span("撮影(落ち着くまで)"):
+            self.driver.pause(strict=False)
+            prev = self._shoot()
+            for _ in range(self.SETTLE_TRIES):
+                time.sleep(0.1)
+                cur = self._shoot()
+                if cur.shape == prev.shape and self._np.array_equal(cur, prev):
+                    return cur
+                prev = cur
+            return prev
 
     def scroll(self, lines: int) -> None:
         self.driver.pause(strict=False)
