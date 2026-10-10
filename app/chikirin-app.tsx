@@ -76,14 +76,17 @@ function ProgramLinks({ links, label }: { links: Array<{ url: string; text: stri
   </div>;
 }
 
-// collector/README.md「ちきりんオプチャ（LINE）」節と同じ内容。Client IDは秘密ではない
+// collector/README.md「ちきりんオプチャ（LINE）」節と同じ同期の仕方(READMEは cd collector してから打つ形)。Client IDは秘密ではない
 // (collector/launchd/com.watch-list.manage-asset-collector.plist.template を参照。秘密のClient Secretは
 // コマンドが自動でmacOS Keychainから読むため、コマンドには含まれない)。
 const SYNC_CLIENT_ID = "f47d396cd28306989ca5737cce5a006c.access";
+const SYNC_ENV = `PYTHONPATH=collector PORTAL_URL=https://dashboard.hiraku00.workers.dev PORTAL_SYNC_CLIENT_ID='${SYNC_CLIENT_ID}'`;
+// リポジトリの直下(dashboard)で、cd せずにそのまま打てる形。台帳などの保存先は collector/line_openchat の場所から決まるので、
+// どこで実行しても同じ(collector/data/line_openchat)
 const SYNC_COMMANDS = [
-  { label: "同期コマンド(collectorディレクトリで実行。数分かかる)", command: `cd collector\nPORTAL_URL=https://dashboard.hiraku00.workers.dev PORTAL_SYNC_CLIENT_ID='${SYNC_CLIENT_ID}' python3 -m line_openchat.sync` },
-  { label: "初回だけ: 依存パッケージのインストール", command: "python3 -m pip install -r line_openchat/requirements.txt" },
-  { label: "一覧の最後まで全件を読み直したいとき(台帳が無い場合など)", command: "python3 -m line_openchat.sync --first-run" },
+  { label: "同期コマンド(リポジトリの直下で実行。数分かかる)", command: `${SYNC_ENV} python3 -m line_openchat.sync` },
+  { label: "初回だけ: 依存パッケージのインストール", command: "python3 -m pip install -r collector/line_openchat/requirements.txt" },
+  { label: "一覧の最後まで全件を読み直したいとき(台帳が無い場合など)", command: `${SYNC_ENV} python3 -m line_openchat.sync --first-run` },
 ];
 
 /** コマンド1つ分の表示: コピー押下で navigator.clipboard へ、失敗したら選択状態にする。 */

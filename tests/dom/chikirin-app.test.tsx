@@ -386,17 +386,21 @@ test("the sync warnings are listed with what they are about", () => {
 });
 
 test("同期コマンド popup shows the sync command with a copy button, and copies it to the clipboard", async () => {
-  const writeText = vi.fn(() => Promise.resolve());
+  const writeText = vi.fn<(text: string) => Promise<void>>(() => Promise.resolve());
   Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
   render(<ChikirinApp initialPage={page([program()])} initialRun={null} />);
   expect(screen.queryByRole("dialog")).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "同期コマンド" }));
   const dialog = screen.getByRole("dialog");
-  expect(within(dialog).getByText(/PORTAL_SYNC_CLIENT_ID/)).toBeTruthy();
+  // 同期と全件読み直しの両方に、Portalへ送るための環境変数が付く(全件読み直しに無いと、送られずに終わっていた)
+  expect(within(dialog).getAllByText(/PORTAL_SYNC_CLIENT_ID/)).toHaveLength(2);
   expect(within(dialog).getByText(/画面ロックを解除/)).toBeTruthy();
   const copyButtons = within(dialog).getAllByRole("button", { name: "コピー" });
   fireEvent.click(copyButtons[0]);
   await waitFor(() => expect(writeText).toHaveBeenCalledWith(expect.stringContaining("python3 -m line_openchat.sync")));
+  const copied = writeText.mock.calls[0][0];
+  expect(copied.startsWith("PYTHONPATH=collector ")).toBe(true);     // リポジトリの直下で、cd せずにそのまま打てる
+  expect(copied).not.toContain("cd collector");
   expect(within(dialog).getByText("コピーしました")).toBeTruthy();
   fireEvent.click(within(dialog).getByRole("button", { name: "閉じる" }));
   expect(screen.queryByRole("dialog")).toBeNull();
