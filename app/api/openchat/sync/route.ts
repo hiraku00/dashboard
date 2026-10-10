@@ -22,16 +22,17 @@ const BATCH = 50;   // 1回のD1 batchに入れる文の数(manage-asset/sync �
 function noteStatement(n: NoteInput) {
   // target_comment_count はコメントを書き込んだあとで数え直すので、ここでは触らない。
   // first_seen_at も、最初に見たときの値を残す。手で直した本文(body_edited=1)は、OCRの本文で上書きしない。
+  // link_title(リンクカードの題名のOCR)は使い道が無く、顔アイコンの誤読が入るので、受け取らずに空で持つ(列は残す)。
   return env.DB.prepare(`INSERT INTO openchat_notes
     (id,room,author_name,author_is_target,program_title,link_title,link_url,body_text,body_complete,posted_at,posted_at_precision,posted_at_raw,comment_count,needs_recheck,first_seen_at,last_checked_at,deleted_at)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+    VALUES (?,?,?,?,?,'',?,?,?,?,?,?,?,?,?,?,?)
     ON CONFLICT(id) DO UPDATE SET room=excluded.room,author_name=excluded.author_name,author_is_target=excluded.author_is_target,
-      program_title=excluded.program_title,link_title=excluded.link_title,link_url=excluded.link_url,
+      program_title=excluded.program_title,link_title='',link_url=excluded.link_url,
       body_text=CASE WHEN openchat_notes.body_edited=1 THEN openchat_notes.body_text ELSE excluded.body_text END,
       body_complete=excluded.body_complete,posted_at=excluded.posted_at,posted_at_precision=excluded.posted_at_precision,
       posted_at_raw=excluded.posted_at_raw,comment_count=excluded.comment_count,needs_recheck=excluded.needs_recheck,
       last_checked_at=excluded.last_checked_at,deleted_at=excluded.deleted_at`)
-    .bind(n.id, n.room, n.authorName, n.authorIsTarget ? 1 : 0, n.programTitle, n.linkTitle, n.linkUrl, n.bodyText, n.bodyComplete ? 1 : 0,
+    .bind(n.id, n.room, n.authorName, n.authorIsTarget ? 1 : 0, n.programTitle, n.linkUrl, n.bodyText, n.bodyComplete ? 1 : 0,
       n.postedAt, n.postedAtPrecision, n.postedAtRaw, n.commentCount, n.needsRecheck ? 1 : 0, n.firstSeenAt, n.lastCheckedAt, n.deletedAt);
 }
 

@@ -6,7 +6,7 @@ from line_openchat.ledger import CommentObs, Ledger, NoteObs, extract_url, first
 
 def nobs(author="参加者A", body="9/16 クローズアップ現代 部屋が借りられない", at="2026-09-22T00:45:00Z", prec="exact",
          raw="一昨日 午前 9:45", comments=3, badge=False, complete=True):
-    return NoteObs(author, badge, body, at, prec, raw, comments, "", complete)
+    return NoteObs(author, badge, body, at, prec, raw, comments, complete)
 
 
 def cobs(author="参加者G", body="番組の話を思い出しました。", at="2026-09-23T16:00:00Z", prec="approx_hour", raw="7時間前", badge=False, conf=1.0):
@@ -221,3 +221,19 @@ def test_badge_and_name_mismatch_is_warned_once():
     assert len([w for w in r.warnings if "公式バッジ" in w]) == 2
     r2 = led.apply_collection(note, [cobs(author="ちきりん", body="偽コメント", badge=False), cobs(author="匿名", body="バッジだけ", at="2026-09-23T17:00:00Z", raw="6時間前", badge=True)], 2, NOW)
     assert not [w for w in r2.warnings if "公式バッジ" in w]
+
+
+def test_link_card_title_is_neither_kept_nor_sent(tmp_path):
+    """リンクカードの題名のOCRは、顔アイコンの誤読(「あききます。」など)が入り、使い道も無かったので持たない(2026-10-10)。
+    以前の台帳に残っている値は、読み込んだときに捨てる."""
+    from line_openchat.uploader import note_payload
+    led = Ledger()
+    note, _ = led.upsert_note(nobs(), NOW)
+    assert "link_title" not in note
+    assert "linkTitle" not in note_payload(note)
+    path = tmp_path / "ledger.json"
+    led.save(path)
+    data = json.loads(path.read_text(encoding="utf-8"))
+    data["notes"][0]["link_title"] = "あききます。"
+    path.write_text(json.dumps(data), encoding="utf-8")
+    assert "link_title" not in Ledger.load(path).notes[0]

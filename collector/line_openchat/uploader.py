@@ -35,7 +35,7 @@ def note_payload(note: dict, comments: list[dict] | None = None) -> dict:
     cs = note["comments"] if comments is None else comments
     return {
         "id": note["id"], "room": note["room"], "authorName": note["author_name"], "authorIsTarget": bool(note["author_is_target"]),
-        "programTitle": note["program_title"], "linkTitle": note["link_title"], "linkUrl": note["link_url"],
+        "programTitle": note["program_title"], "linkUrl": note["link_url"],
         "bodyText": note["body_text"], "bodyComplete": bool(note["body_complete"]),
         "postedAt": note["posted_at"], "postedAtPrecision": note["posted_at_precision"], "postedAtRaw": note["posted_at_raw"],
         "commentCount": int(note["comment_count"]), "needsRecheck": bool(note["needs_recheck"]),

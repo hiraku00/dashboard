@@ -20,7 +20,7 @@ export type CommentInput = {
 };
 
 export type NoteInput = {
-  id: string; room: string; authorName: string; authorIsTarget: boolean; programTitle: string; linkTitle: string;
+  id: string; room: string; authorName: string; authorIsTarget: boolean; programTitle: string;
   linkUrl: string; bodyText: string; bodyComplete: boolean; postedAt: string; postedAtPrecision: Precision;
   postedAtRaw: string; commentCount: number; needsRecheck: boolean; firstSeenAt: string; lastCheckedAt: string;
   deletedAt: string | null; comments: CommentInput[];
@@ -111,7 +111,7 @@ export function normalizeNote(raw: unknown): Normalized<NoteInput> {
   return {
     value: {
       id: n.id, room, authorName, authorIsTarget: n.authorIsTarget === true, programTitle: clean(n.programTitle, 200),
-      linkTitle: clean(n.linkTitle, 300), linkUrl: /^https?:\/\//.test(clean(n.linkUrl, 1000)) ? clean(n.linkUrl, 1000) : "",
+      linkUrl: /^https?:\/\//.test(clean(n.linkUrl, 1000)) ? clean(n.linkUrl, 1000) : "",
       bodyText: cleanBody(n.bodyText), bodyComplete: n.bodyComplete === true, postedAt, postedAtPrecision: n.postedAtPrecision,
       postedAtRaw: clean(n.postedAtRaw, 60), commentCount: count(n.commentCount), needsRecheck: n.needsRecheck === true,
       firstSeenAt: seen, lastCheckedAt: normalizeStamp(n.lastCheckedAt) ?? seen, deletedAt: normalizeStamp(n.deletedAt), comments,

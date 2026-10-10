@@ -28,7 +28,7 @@ let schemaReady = false;
  *  than reconciled, since the drizzle ORM was never actually used to query. */
 /** Bump whenever the DDL below changes, so existing databases re-run it once.
  *  A database whose schema_meta row already matches skips the whole batch. */
-const SCHEMA_VERSION = 10;
+const SCHEMA_VERSION = 11;
 
 /** Reads the recorded schema version. A database that predates schema_meta (or
  *  a brand new one) has no table, and the query fails rather than returning a
@@ -302,6 +302,9 @@ export async function ensureSchema({ seed = true }: { seed?: boolean } = {}) {
   // Schema version 10: 手で直した本文は同期で上書きしない(migrations/0014_openchat_body_edited.sql)。
   await env.DB.prepare("ALTER TABLE openchat_notes ADD COLUMN body_edited INTEGER NOT NULL DEFAULT 0").run().catch(() => {});
   await env.DB.prepare("ALTER TABLE openchat_comments ADD COLUMN body_edited INTEGER NOT NULL DEFAULT 0").run().catch(() => {});
+  // Schema version 11: リンクカードの題名のOCR(link_title)は使わない(同期でも空で持つ。app/api/openchat/sync/route.ts)。
+  // 顔アイコンの誤読(「あききます。」など)が入っていたので、残っている値を1回だけ空にする(migrations/0015_openchat_clear_link_title.sql)。
+  await env.DB.prepare("UPDATE openchat_notes SET link_title = '' WHERE link_title <> ''").run();
   // Schema version 3. SQLite has no ADD COLUMN IF NOT EXISTS, so a database that
   // already has the column (a fresh one, from the CREATE above) throws and the
   // error is the expected "nothing to do".

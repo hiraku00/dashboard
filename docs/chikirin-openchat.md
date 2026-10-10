@@ -104,7 +104,7 @@ Cloudflare Worker
 | 作者名 | アバターと同じ高さで、40 < x < 80 から始まるOCR行。取れなければその範囲だけ再OCR。先頭の記号（`）` `©` `•` など）は取り除く |
 | 公式バッジ（ちきりん判定） | アバターの下側45%〜下端+6pt、x=32〜49 の範囲に、青い画素（R<40, 90≤G≤180, B≥235）が40pt²以上。実機では `#0070FF` の単色と `#00A4FF→#0096FF` の縦グラデーションの両方があった |
 | ブロックが完全かどうか | ブロック内に作者行があれば完全。画面の上端から30pt以内のアバターは、切れている可能性があるので不完全とする |
-| 本文 | ノート: 作者行より下で x < 32 の行。x > 100 の行はリンクカード（`link_title` に入れる）。コメント: 作者行より下の行 |
+| 本文 | ノート: 作者行より下で x < 32 の行。x > 100 の行はリンクカード（本文から外す。題名は持たない: 顔アイコンの誤読が入り、使い道も無かったため）。コメント: 作者行より下の行 |
 | 右端の小さな文字 | x > 330 かつ幅 < 70 の行（いいね数など）は捨てる |
 | 「もっと見る」 | ノート本文の続きを開くボタン。ちきりんのノートの場合だけ押す（x=60, 該当行のy） |
 | 「前のコメントを見る」 | コメント欄の途中の区切り（`__CUT__`）。押すと古いコメント(実機の実測: 1回で10件)が追加で表示される。必要なときだけ押す。詳細は「[前のコメントを見るを必要なときだけ押す](#前のコメントを見るを必要なときだけ押す)」|
@@ -293,7 +293,7 @@ CREATE TABLE IF NOT EXISTS openchat_notes (
   author_name TEXT NOT NULL,
   author_is_target INTEGER NOT NULL DEFAULT 0,   -- ちきりんのノートか
   program_title TEXT NOT NULL DEFAULT '',        -- 本文の最初の1行（120文字まで）
-  link_title TEXT NOT NULL DEFAULT '',           -- リンクカードの題名
+  link_title TEXT NOT NULL DEFAULT '',           -- 使わない(常に空。2026-10-10 まではリンクカードの題名のOCR)
   link_url TEXT NOT NULL DEFAULT '',             -- 本文中に読み取れたURL（あれば）
   body_text TEXT NOT NULL DEFAULT '',            -- ちきりんのノートは全文、それ以外は画面に見えている範囲
   body_complete INTEGER NOT NULL DEFAULT 0,      -- 「もっと見る」を開いて全文を取ったか
@@ -364,7 +364,7 @@ manage-asset の `/api/manage-asset/sync` と同じ start → 本体 → complet
 // notes（1リクエスト20ノートまで。Workers FreeのCPU上限（10ms）に収めるため）
 { "action": "notes", "clientRunId": "...", "notes": [
   { "id": "uuid", "room": "atsumare-tv", "authorName": "ちきりん", "authorIsTarget": true,
-    "programTitle": "9月23日の報道特集の真ん中あたり。…", "linkTitle": "", "linkUrl": "",
+    "programTitle": "9月23日の報道特集の真ん中あたり。…", "linkUrl": "",
     "bodyText": "…", "bodyComplete": true,
     "postedAt": "2026-09-23T14:46:00Z", "postedAtPrecision": "exact", "postedAtRaw": "昨日 午後9:46",
     "commentCount": 7, "needsRecheck": false, "firstSeenAt": "…", "lastCheckedAt": "…", "deletedAt": null,
@@ -397,11 +397,11 @@ manage-asset の `/api/manage-asset/sync` と同じ start → 本体 → complet
 - `kind=thread`: ちきりんが立てたノートだけ
 - `kind=comment`: ちきりんのコメントがあるノートだけ（本人が立てたノートでも、本人のコメントがあれば含む）
 - `kind=none`: ちきりんが関わらないノートだけ
-- `q`: 番組名（`program_title` / `link_title`）と、ノートの本文（スレッド主の投稿）・ちきりんのコメントの部分一致
+- `q`: 画面に出ている情報の部分一致。ノートの本文（スレッド主の投稿）・ちきりんのコメント・放送情報（放送局・番組名・番組タイトル）。画面に出ないOCRの値（`program_title` / `link_title`）は探さない
 
 ```jsonc
 { "programs": [
-  { "noteId": "uuid", "programTitle": "…", "linkTitle": "…", "linkUrl": "…",
+  { "noteId": "uuid", "programTitle": "…", "linkUrl": "…",
     "noteAuthor": "参加者B", "noteByTarget": false, "notePostedAt": "…", "notePrecision": "exact",
     "targetBody": null,                    // noteByTarget のときだけ本文
     "noteBody": "…",                       // スレッド主の投稿（番組の情報）。全ノート共通

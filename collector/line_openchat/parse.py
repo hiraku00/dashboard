@@ -36,7 +36,7 @@ class Block:
     comment_icon: tuple[float, float] | None = None
     more_y: float | None = None     # 「もっと見る」の行の中心y
     more_x: float | None = None
-    link_title: str = ""
+    link_title: str = ""            # リンクカードの文字(本文から外すための受け皿。台帳には持たない)
     min_conf: float = 1.0
     wrap_right: float = K.WRAP_RIGHT   # 折り返しの判定(ウィンドウ幅によって変わる)
     suspicious: bool = False        # 本文の中に時刻の行のようなものが混ざっている(隣のコメントと混ざって読めた疑い)

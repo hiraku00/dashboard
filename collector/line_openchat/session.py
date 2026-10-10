@@ -84,7 +84,7 @@ def note_obs(b: Block, now: datetime) -> NoteObs | None:
     if t is None:
         return None
     return NoteObs(author=b.author, badge=b.badge, body_text=b.text, posted_at=t.utc, posted_precision=t.precision,
-                   posted_raw=t.raw, comments=b.comments, link_title=b.link_title, body_complete=b.more_y is None,
+                   posted_raw=t.raw, comments=b.comments, body_complete=b.more_y is None,
                    min_conf=b.min_conf)
 
 
