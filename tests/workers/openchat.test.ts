@@ -159,7 +159,7 @@ describe("programs list", () => {
   });
 
   test("a note the target commented on more than once carries every one of her comments, oldest first", async () => {
-    const p = (await listPrograms({ q: "他人のノートに複数" })).programs[0];
+    const p = (await listPrograms({ q: "スレッド主の番組情報" })).programs[0];
     expect(p.noteByTarget).toBe(false);
     expect(p.targetBody).toBeNull();
     expect(p.noteBody).toBe("他人のノート本文(スレッド主の番組情報)");      // スレッド主の投稿(番組の情報)
@@ -168,7 +168,7 @@ describe("programs list", () => {
   });
 
   test("marks links that are also in the Watch List (matched by canonical URL, ignoring deleted items)", async () => {
-    const p = (await listPrograms({ q: "他人のノートに複数" })).programs[0];
+    const p = (await listPrograms({ q: "スレッド主の番組情報" })).programs[0];
     const now = "2026-09-26T00:00:00Z";
     await env.DB.batch([
       env.DB.prepare("INSERT INTO items (id, content_type, title, status, watched_on, created_at, updated_at) VALUES ('oc-w1', 'movie', 'oc watched', 'completed', '2026-09-30', ?, ?)").bind(now, now),
@@ -177,14 +177,14 @@ describe("programs list", () => {
       env.DB.prepare("INSERT INTO item_links (id, item_id, url, canonical_url) VALUES ('oc-w2-l', 'oc-w2', 'https://gone.example.test/v', 'https://gone.example.test/v')").bind(),
     ]);
     await saveProgramMeta(p.noteId, { links: [{ url: "https://watched.example.test/v#frag", label: "" }, { url: "https://gone.example.test/v", label: "" }, { url: "https://none.example.test/", label: "" }] });
-    const page = await listPrograms({ q: "他人のノートに複数" });
+    const page = await listPrograms({ q: "スレッド主の番組情報" });
     expect(page.watched).toEqual({ "https://watched.example.test/v#frag": { url: "https://watched.example.test/v?utm_source=x#t", title: "oc watched", count: 1, status: "completed", watchedOn: "2026-09-30" } });   // 視聴済(完了した日も返す)
     await saveProgramMeta(p.noteId, { links: [] });
     await env.DB.batch([env.DB.prepare("DELETE FROM items WHERE id IN ('oc-w1','oc-w2')"), env.DB.prepare("DELETE FROM item_links WHERE item_id IN ('oc-w1','oc-w2')")]);
   });
 
   test("detail returns one listed program with all her comments, and 404s for deleted or unknown notes", async () => {
-    const p = (await listPrograms({ q: "他人のノートに複数" })).programs[0];
+    const p = (await listPrograms({ q: "スレッド主の番組情報" })).programs[0];
     const detail = await getProgram(p.noteId);
     expect(detail?.noteBody).toBe("他人のノート本文(スレッド主の番組情報)");
     expect(detail?.targetComments.map((c) => c.bodyText)).toEqual(["一つ目のコメント 鉄道会社", "二つ目のコメント"]);
@@ -223,7 +223,7 @@ describe("programs list", () => {
   });
 
   test("edited broadcaster, episode title and links are saved apart from the synced data, searchable, and survive a re-sync", async () => {
-    const p = (await listPrograms({ q: "他人のノートに複数" })).programs[0];
+    const p = (await listPrograms({ q: "スレッド主の番組情報" })).programs[0];
     expect(p.meta).toEqual({ broadcaster: "", programName: "", episodeTitle: "", links: [] });
     const saved = await saveProgramMeta(p.noteId, { broadcaster: "テスト放送局", episodeTitle: "一覧テスト独自の放送タイトル", links: [{ url: "https://example.test/ep", label: "番組ページ" }] });
     expect(saved && "meta" in saved && saved.meta.broadcaster).toBe("テスト放送局");
@@ -269,7 +269,7 @@ describe("programs list", () => {
     const id = `run-${uid("r")}`;
     await sync({ action: "start", clientRunId: id, clientVersion: "test" });                  // いまが最後の取得
     await sync({ action: "complete", clientRunId: id, status: "success", stats: {}, warnings: [] });
-    const p = (await listPrograms({ q: "他人のノートに複数" })).programs[0];
+    const p = (await listPrograms({ q: "スレッド主の番組情報" })).programs[0];
     const older = "2026-09-01T09:00:00+07:00", fresh = new Date(Date.now() + 3_000).toISOString();          // 最後の取得のあとに見つけた投稿
     await env.DB.prepare("UPDATE openchat_comments SET first_seen_at = ? WHERE note_id = ? AND is_target = 1").bind(older, p.noteId).run();
     await env.DB.prepare("UPDATE openchat_notes SET first_seen_at = ? WHERE id = ?").bind(older, p.noteId).run();   // スレッド自身も古い(新着では無い)ことにする
@@ -315,7 +315,7 @@ describe("programs list", () => {
   });
 
   test("a program's issues say why it needs checking (recheck, incomplete body); a clean one has none", async () => {
-    const p = (await listPrograms({ q: "他人のノートに複数" })).programs[0];
+    const p = (await listPrograms({ q: "スレッド主の番組情報" })).programs[0];
     expect(p.issues).toEqual(expect.arrayContaining([expect.stringContaining("本文が途中")]));   // note()の既定は body_complete=false
     await env.DB.prepare("UPDATE openchat_notes SET needs_recheck = 1, body_complete = 0 WHERE id = ?").bind(p.noteId).run();
     expect((await getProgram(p.noteId))?.issues).toHaveLength(2);
@@ -324,7 +324,7 @@ describe("programs list", () => {
   });
 
   test("the target's own thread shows her body and her comments on it", async () => {
-    const p = (await listPrograms({ q: "本人スレッド" })).programs[0];
+    const p = (await listPrograms({ q: "ちきりんが立てた本文" })).programs[0];
     expect(p.noteByTarget).toBe(true);
     expect(p.targetBody).toBe("ちきりんが立てた本文");
     expect(p.targetComments.map((c) => c.bodyText)).toEqual(["本人スレッドへの補足"]);
@@ -368,18 +368,33 @@ describe("programs list", () => {
     const past = await listPrograms({ limit: 1, page: first.total + 5 });
     expect(past.programs).toEqual([]);
     expect(past.total).toBe(first.total);
-    const filtered = await listPrograms({ q: "他人のノートに複数", page: 1 });
+    const filtered = await listPrograms({ q: "スレッド主の番組情報", page: 1 });
     expect(filtered.total).toBe(1);                           // 件数は、絞り込み後
   });
 
   test("a comment marked deleted is no longer listed", async () => {
-    const p = (await listPrograms({ q: "他人のノートに複数" })).programs[0];
+    const p = (await listPrograms({ q: "スレッド主の番組情報" })).programs[0];
     const target = p.targetComments[0];
     await startRun();
-    await send([note({ id: ids.others, room: "atsumare-tv", programTitle: "一覧テスト: 他人のノートに複数コメント", postedAt: "2026-09-21T06:00:00Z",
-      comments: [comment({ id: target.id, ordinal: 0, authorName: "ちきりん", isTarget: true, bodyText: target.bodyText, postedAt: target.postedAt, deletedAt: "2026-09-24T05:00:00Z" })] })]);
-    const after = (await listPrograms({ q: "他人のノートに複数" })).programs[0];
+    await send([note({ id: ids.others, room: "atsumare-tv", programTitle: "一覧テスト: 他人のノートに複数コメント", bodyText: "他人のノート本文(スレッド主の番組情報)",
+      postedAt: "2026-09-21T06:00:00Z", comments: [comment({ id: target.id, ordinal: 0, authorName: "ちきりん", isTarget: true, bodyText: target.bodyText, postedAt: target.postedAt, deletedAt: "2026-09-24T05:00:00Z" })] })]);
+    const after = (await listPrograms({ q: "スレッド主の番組情報" })).programs[0];
     expect(after.targetComments.map((c) => c.bodyText)).toEqual(["二つ目のコメント"]);
+  });
+
+  test("search finds only what the screen shows: not the OCR first line or link card title, but the hand-edited programme name", async () => {
+    // 2026-10-10: リンクカードの題名のOCRに顔アイコンの誤読(「あききます。」)が入り、画面のどこにも無い文字で検索にヒットしていた
+    await startRun();
+    const hidden = note({ programTitle: "画面に出ない一行目テスト", linkTitle: "あききます。", bodyText: "検索テスト用のスレッド本文", postedAt: "2026-09-18T06:00:00Z" });
+    await send([hidden]);
+    const row = await env.DB.prepare("SELECT link_title FROM openchat_notes WHERE id = ?").bind(hidden.id).first<{ link_title: string }>();
+    expect(row?.link_title).toBe("");                                            // リンクカードの題名は受け取らない
+    expect((await listPrograms({ q: "あききます" })).programs).toEqual([]);
+    expect((await listPrograms({ q: "画面に出ない一行目" })).programs).toEqual([]);
+    expect((await listPrograms({ q: "検索テスト用のスレッド本文" })).programs.map((p) => p.noteId)).toEqual([hidden.id]);
+    expect((await listPrograms({ q: "手で直した番組名テスト" })).programs).toEqual([]);
+    await saveProgramMeta(hidden.id, { programName: "手で直した番組名テスト" });
+    expect((await listPrograms({ q: "手で直した番組名テスト" })).programs.map((p) => p.noteId)).toEqual([hidden.id]);   // 手で直した番組名で探せる
   });
 });
 

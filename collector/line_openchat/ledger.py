@@ -61,7 +61,6 @@ class NoteObs:
     posted_precision: str
     posted_raw: str
     comments: int | None = None
-    link_title: str = ""
     body_complete: bool = False
     min_conf: float = 1.0
 
@@ -119,7 +118,11 @@ class Ledger:
         data = json.loads(path.read_text(encoding="utf-8"))
         if data.get("version") != LEDGER_VERSION:
             raise RuntimeError(f"台帳のバージョンが違います: {data.get('version')}")
-        return cls(data.get("room", DEFAULT_ROOM), data.get("notes", []), data.get("meta", {}))
+        notes = data.get("notes", [])
+        for n in notes:
+            # リンクカードの題名のOCRは持たない(顔アイコンの誤読が入り、使い道も無かった: 2026-10-10)。以前の台帳に残っている値は捨てる
+            n.pop("link_title", None)
+        return cls(data.get("room", DEFAULT_ROOM), notes, data.get("meta", {}))
 
     def save(self, path: Path | None = None) -> None:
         path = path or default_path()
@@ -148,7 +151,7 @@ class Ledger:
             note = {
                 "id": str(uuid.uuid4()), "room": self.room, "author_name": obs.author, "author_votes": {obs.author: 1},
                 "author_is_target": False, "badge_seen": False,
-                "program_title": "", "link_title": "", "link_url": "", "body_text": "", "body_complete": False,
+                "program_title": "", "link_url": "", "body_text": "", "body_complete": False,
                 "posted_at": obs.posted_at, "posted_at_precision": obs.posted_precision, "posted_at_raw": obs.posted_raw,
                 "comment_count": 0, "target_comment_count": 0, "needs_recheck": False,
                 "first_seen_at": now_iso, "last_checked_at": now_iso, "comments_checked_at": None, "deleted_at": None,
@@ -173,9 +176,6 @@ class Ledger:
                 note["link_url"] = extract_url(obs.body_text) or note.get("link_url", "")
                 note["pending_upload"] = True
             note["body_complete"] = note["body_complete"] or obs.body_complete
-        if obs.link_title and not note["link_title"]:
-            note["link_title"] = obs.link_title
-            note["pending_upload"] = True
         note["last_checked_at"] = now_iso
         return note, new
 
@@ -331,7 +331,7 @@ class Ledger:
             notes[n["id"]] = {
                 "id": n["id"], "room": room, "author_name": n["authorName"], "author_votes": {n["authorName"]: 1},
                 "author_is_target": bool(n.get("authorIsTarget")), "badge_seen": bool(n.get("authorIsTarget")),
-                "program_title": n.get("programTitle", ""), "link_title": n.get("linkTitle", ""), "link_url": n.get("linkUrl", ""),
+                "program_title": n.get("programTitle", ""), "link_url": n.get("linkUrl", ""),
                 "body_text": n.get("bodyHead", ""), "body_complete": bool(n.get("bodyComplete")),
                 "posted_at": n["postedAt"], "posted_at_precision": n["postedAtPrecision"], "posted_at_raw": n.get("postedAtRaw", ""),
                 "comment_count": int(n.get("commentCount", 0)), "target_comment_count": 0,

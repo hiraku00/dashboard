@@ -45,13 +45,15 @@ export function buildProgramsFilter(query: ProgramsQuery): { where: string; valu
   const q = clean(query.q, 120);
   if (q) {
     const pattern = likePattern(q);
-    // 番組名(ノートの1行目・リンクカードの題名)、スレッド主の投稿(本文)、ちきりんのコメント本文を探す。
+    // 画面に出ている情報だけを探す: スレッド主の投稿(本文)、ちきりんのコメント本文、放送情報(放送局・番組名・番組タイトル)。
+    // 画面に出ないOCRの値(ノートの1行目 program_title・リンクカードの題名 link_title)は探さない。リアクションの顔アイコンの
+    // 誤読(「あききます。」など)が入っていて、画面のどこにも無い文字でヒットしていた(2026-10-10)。1行目は本文の先頭と同じ。
     // ほかの人のコメント本文は、検索の対象にしない(件数などから内容が推測できてしまうため)。
-    clauses.push(`(n.program_title LIKE ? ESCAPE '\\' OR n.link_title LIKE ? ESCAPE '\\'
-      OR n.body_text LIKE ? ESCAPE '\\'
+    clauses.push(`(n.body_text LIKE ? ESCAPE '\\'
       OR EXISTS (SELECT 1 FROM openchat_comments c WHERE c.note_id = n.id AND c.is_target = 1 AND c.deleted_at IS NULL AND c.body_text LIKE ? ESCAPE '\\')
-      OR EXISTS (SELECT 1 FROM openchat_note_meta m WHERE m.note_id = n.id AND (m.broadcaster LIKE ? ESCAPE '\\' OR m.episode_title LIKE ? ESCAPE '\\')))`);
-    values.push(pattern, pattern, pattern, pattern, pattern, pattern);
+      OR EXISTS (SELECT 1 FROM openchat_note_meta m WHERE m.note_id = n.id
+        AND (m.broadcaster LIKE ? ESCAPE '\\' OR m.program_name LIKE ? ESCAPE '\\' OR m.episode_title LIKE ? ESCAPE '\\')))`);
+    values.push(pattern, pattern, pattern, pattern, pattern);
   }
   const requested = Math.floor(Number(query.limit));
   const limit = requested > 0 ? Math.min(50, requested) : PAGE_SIZE;
@@ -66,7 +68,7 @@ export type ProgramComment = { id: string; bodyText: string; postedAt: string; p
 /** ちきりんの関わり方: thread=ちきりんが立てたスレッド、comment=他の人のスレッドにちきりんのコメントがある、none=どちらでもない。 */
 export type Involvement = "thread" | "comment" | "none";
 export type Program = {
-  noteId: string; programTitle: string; linkTitle: string; linkUrl: string;
+  noteId: string; programTitle: string; linkUrl: string;
   noteAuthor: string; noteByTarget: boolean; notePostedAt: string; notePrecision: string;
   /** ちきりんが立てたノートのときだけ本文が入る。ほかの人のノートは null。 */
   targetBody: string | null;
@@ -112,7 +114,7 @@ function buildProgram(note: Record<string, unknown>, targetComments: Array<Recor
     .map((c) => ({ id: String(c.id), bodyText: String(c.body_text ?? ""), postedAt: String(c.posted_at), precision: String(c.posted_at_precision) }));
   const involvement: Involvement = byTarget ? "thread" : filteredComments.length > 0 ? "comment" : "none";
   return {
-    noteId: String(note.id), programTitle: String(note.program_title ?? ""), linkTitle: String(note.link_title ?? ""),
+    noteId: String(note.id), programTitle: String(note.program_title ?? ""),
     linkUrl: String(note.link_url ?? ""), noteAuthor: String(note.author_name ?? ""),
     noteByTarget: byTarget, notePostedAt: String(note.posted_at), notePrecision: String(note.posted_at_precision),
     targetBody: byTarget ? String(note.body_text ?? "") : null,

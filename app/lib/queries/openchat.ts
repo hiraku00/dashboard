@@ -27,7 +27,7 @@ export async function listPrograms(query: ProgramsQuery = {}): Promise<ProgramsP
   const [countRow, rows] = await Promise.all([
     env.DB.prepare(`SELECT COUNT(*) AS c FROM openchat_notes n ${where}`).bind(...values).first<{ c: number }>(),
     env.DB.prepare(
-      `SELECT n.id, n.author_name, n.author_is_target, n.program_title, n.link_title, n.link_url, n.body_text,
+      `SELECT n.id, n.author_name, n.author_is_target, n.program_title, n.link_url, n.body_text,
               n.posted_at, n.posted_at_precision, n.comment_count, n.last_checked_at, n.needs_recheck, n.body_complete, n.first_seen_at
          FROM openchat_notes n ${where} ${PROGRAMS_ORDER_BY} LIMIT ? OFFSET ?`,
     ).bind(...values, limit, offset).all<Record<string, unknown>>(),
@@ -212,7 +212,7 @@ export async function saveProgramText(id: string, input: unknown): Promise<Progr
 export async function getProgram(id: string): Promise<Program | null> {
   await ensureSchema({ seed: false });
   const note = (await env.DB.prepare(
-    `SELECT n.id, n.author_name, n.author_is_target, n.program_title, n.link_title, n.link_url, n.body_text,
+    `SELECT n.id, n.author_name, n.author_is_target, n.program_title, n.link_url, n.body_text,
             n.posted_at, n.posted_at_precision, n.comment_count, n.last_checked_at, n.needs_recheck, n.body_complete, n.first_seen_at
        FROM openchat_notes n
       WHERE n.id = ? AND n.room = ? AND n.deleted_at IS NULL`,
@@ -267,7 +267,7 @@ const LEDGER_COMMENT_LIMIT = 40000;
 export async function exportLedger() {
   await ensureSchema({ seed: false });
   const notes = (await env.DB.prepare(
-    `SELECT id, author_name, author_is_target, program_title, link_title, link_url, substr(body_text, 1, 200) AS body_head,
+    `SELECT id, author_name, author_is_target, program_title, link_url, substr(body_text, 1, 200) AS body_head,
             body_complete, posted_at, posted_at_precision, posted_at_raw, comment_count, needs_recheck, first_seen_at,
             last_checked_at, deleted_at
        FROM openchat_notes WHERE room = ? ORDER BY posted_at DESC LIMIT ?`,
@@ -281,7 +281,7 @@ export async function exportLedger() {
     truncated: notes.length >= LEDGER_NOTE_LIMIT || comments.length >= LEDGER_COMMENT_LIMIT,
     notes: notes.map((n) => ({
       id: n.id, authorName: n.author_name, authorIsTarget: Number(n.author_is_target) === 1, programTitle: n.program_title,
-      linkTitle: n.link_title, linkUrl: n.link_url, bodyHead: n.body_head, bodyComplete: Number(n.body_complete) === 1,
+      linkUrl: n.link_url, bodyHead: n.body_head, bodyComplete: Number(n.body_complete) === 1,
       postedAt: n.posted_at, postedAtPrecision: n.posted_at_precision, postedAtRaw: n.posted_at_raw,
       commentCount: n.comment_count, needsRecheck: Number(n.needs_recheck) === 1, firstSeenAt: n.first_seen_at,
       lastCheckedAt: n.last_checked_at, deletedAt: n.deleted_at,

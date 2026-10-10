@@ -34,15 +34,19 @@ describe("buildProgramsFilter", () => {
     expect(parseKind("weird")).toBe("all");
   });
 
-  test("search looks at titles, every thread's body and the target's own comments only", () => {
+  test("search looks only at what the screen shows: every thread's body, the target's own comments and the edited programme info", () => {
     const f = buildProgramsFilter({ q: "鉄道" });
-    expect(f.values.filter((v) => v === "%鉄道%")).toHaveLength(6);      // 番組名・リンク題名・本文・ちきりんのコメント・放送局・放送タイトル
+    expect(f.values.filter((v) => v === "%鉄道%")).toHaveLength(5);      // 本文・ちきりんのコメント・放送局・番組名・番組タイトル
+    // 画面に出ないOCRの値(1行目・リンクカードの題名)は探さない(顔アイコンの誤読で、画面に無い文字がヒットしていた)
+    expect(f.where).not.toContain("program_title");
+    expect(f.where).not.toContain("link_title");
+    expect(f.where).toContain("m.program_name LIKE");
     expect(f.where).toContain("c.is_target = 1");
     // 全スレッドの本文は探すが、ほかの人のコメント本文を直接探す条件は無い
     expect(f.where).toContain("n.body_text LIKE");
     expect(f.where).not.toContain("author_is_target");
     expect(f.where.match(/body_text LIKE/g)).toHaveLength(2);
-    expect(f.where).toContain("openchat_note_meta");                       // 編集した放送局・放送タイトルも探す
+    expect(f.where).toContain("openchat_note_meta");                       // 編集した放送局・番組名・番組タイトルも探す
   });
 
   test("search terms are escaped and cut to D1's 50-byte LIKE limit", () => {
