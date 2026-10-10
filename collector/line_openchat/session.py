@@ -16,7 +16,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Callable, Protocol
 
-from . import digits, identity, layout as K
+from . import digits, identity, layout as K, timing
 from .ledger import CollectionResult, CommentObs, Ledger, NoteObs
 from .parse import Block, TXT_CUT, TXT_MORE, split_blocks
 from .safety import ClickTarget, guard_click
@@ -124,7 +124,8 @@ class Session:
         self.opts.pause()
         screen = self.d.shot()
         self.stats.shots += 1
-        return screen, split_blocks(screen)
+        with timing.span("ブロック区切り"):
+            return screen, split_blocks(screen)
 
     def scroll(self, lines: int) -> None:
         self._carry = None
@@ -159,6 +160,7 @@ class Session:
         反映 → コメントアイコンを押して閉じる。毎回閉じて終わるので、次の実行もコメント欄が閉じた状態から始まる。"""
         stats = self.stats
         digits.reset_stats()
+        timing.reset()
         try:
             self.log("一覧を走査します(変わったノートは、その場で読み取って閉じます)")
             self.reader.prepare()                 # 撮影の調整(倍率などを測る。一覧の先頭へ戻る)
@@ -168,6 +170,8 @@ class Session:
             stats.aborted = True
             stats.warnings.append(f"中断: {exc}")
         self._log_digits()
+        if timing.TOTALS:
+            self.log(f"所要時間の内訳: {timing.report()}")
         return stats
 
     def _warn_missed(self) -> None:
@@ -338,7 +342,8 @@ class Session:
         for attempt in range(3):
             screen, after = self.shot()
             if f0 is not None:
-                m = self.reader.motion(f0, self.reader.frame())
+                with timing.span("動きの確認"):
+                    m = self.reader.motion(f0, self.reader.frame())
                 if m in ("ok", "unchanged"):
                     self._carry = (screen, after)
                     return min(30, step + 3) if m == "ok" and attempt == 0 else step
