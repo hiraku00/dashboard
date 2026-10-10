@@ -9,7 +9,7 @@ import { canonicalUrl } from "@/app/lib/text";
 import { autoFillFields, canAutoFill } from "@/app/lib/link-preview";
 import { fetchLinkPreview, fetchPageThumbnail } from "@/app/lib/thumbnail-fetch";
 import {
-  buildProgramsFilter, PROGRAMS_ORDER_BY, toProgram, ROOM, resolveThumbnails, thumbnailSourceUrl,
+  buildProgramsFilter, programsOrderBy, toProgram, ROOM, resolveThumbnails, thumbnailSourceUrl,
   type CachedThumbnail, type Program, type ProgramsQuery,
 } from "@/app/lib/openchat-query";
 
@@ -23,13 +23,13 @@ export type ProgramsPage = { programs: Program[]; total: number; page: number; p
  *  ほかの人のコメントは読み込まない(SQLの時点で is_target = 1 に絞る)。 */
 export async function listPrograms(query: ProgramsQuery = {}): Promise<ProgramsPage> {
   await ensureSchema({ seed: false });
-  const { where, values, limit, offset, page } = buildProgramsFilter(query);
+  const { where, values, limit, offset, page, sort } = buildProgramsFilter(query);
   const [countRow, rows] = await Promise.all([
     env.DB.prepare(`SELECT COUNT(*) AS c FROM openchat_notes n ${where}`).bind(...values).first<{ c: number }>(),
     env.DB.prepare(
       `SELECT n.id, n.author_name, n.author_is_target, n.program_title, n.link_url, n.body_text,
               n.posted_at, n.posted_at_precision, n.comment_count, n.last_checked_at, n.needs_recheck, n.body_complete, n.first_seen_at
-         FROM openchat_notes n ${where} ${PROGRAMS_ORDER_BY} LIMIT ? OFFSET ?`,
+         FROM openchat_notes n ${where} ${programsOrderBy(sort)} LIMIT ? OFFSET ?`,
     ).bind(...values, limit, offset).all<Record<string, unknown>>(),
   ]);
   const notes = rows.results ?? [];

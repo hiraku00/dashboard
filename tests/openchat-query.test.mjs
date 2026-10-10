@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, test } from "vitest";
 import {
-  buildProgramsFilter, formatPostedAt, likePattern, parseKind, resolveThumbnails, thumbnailSourceUrl, toProgram, MAX_PAGE, PAGE_SIZE,
+  buildProgramsFilter, formatPostedAt, likePattern, parseKind, parseSort, programsOrderBy, resolveThumbnails, thumbnailSourceUrl, toProgram, MAX_PAGE, PAGE_SIZE,
 } from "../app/lib/openchat-query.ts";
 
 // vinextの静的解析は searchParams の読み取りだけでは動的ページと判定しない(実機で確認:
@@ -67,6 +67,25 @@ describe("buildProgramsFilter", () => {
   test("limit is clamped", () => {
     expect(buildProgramsFilter({ limit: 999 }).limit).toBe(50);
     expect(buildProgramsFilter({ limit: -5 }).limit).toBe(PAGE_SIZE);
+  });
+});
+
+describe("sort", () => {
+  test("posted is the default; unknown values fall back to it", () => {
+    expect(parseSort(undefined)).toBe("posted");
+    expect(parseSort("weird")).toBe("posted");
+    expect(parseSort("latest")).toBe("latest");
+    expect(buildProgramsFilter({}).sort).toBe("posted");
+    expect(buildProgramsFilter({ sort: "latest" }).sort).toBe("latest");
+  });
+
+  test("latest orders by the newest chikirin post, threads without one last", () => {
+    expect(programsOrderBy("posted")).toBe("ORDER BY n.posted_at DESC, n.id ASC");
+    const sql = programsOrderBy("latest");
+    expect(sql).toContain("MAX(c.posted_at)");
+    expect(sql).toContain("c.is_target = 1");
+    expect(sql).toContain("IS NULL");
+    expect(sql).toMatch(/DESC, n\.posted_at DESC, n\.id ASC$/);
   });
 });
 

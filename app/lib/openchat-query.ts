@@ -13,13 +13,21 @@ export const ROOM = "atsumare-tv";
 
 /** all: 全スレッド(既定)。involved: ちきりんが関わる(旧仕様の一覧と同じ)。thread/comment: involved の内訳。none: 関わらないスレッドだけ。 */
 export type ProgramKind = "all" | "involved" | "thread" | "comment" | "none";
-export type ProgramsQuery = { q?: string | null; kind?: string | null; page?: number | string | null; limit?: number | null };
+export type ProgramsQuery = { q?: string | null; kind?: string | null; sort?: string | null; page?: number | string | null; limit?: number | null };
 
 function clean(value: unknown, max = 200): string {
   return typeof value === "string" ? value.trim().slice(0, max) : "";
 }
 
 const KINDS: ProgramKind[] = ["all", "involved", "thread", "comment", "none"];
+
+/** 並び順。posted: スレッドの起票日時が新しい順(既定)。latest: ちきりんの最新の投稿(コメント、なければスレッド自身)が新しい順。 */
+export type ProgramSort = "posted" | "latest";
+const SORTS: ProgramSort[] = ["posted", "latest"];
+
+export function parseSort(value: unknown): ProgramSort {
+  return (SORTS as string[]).includes(value as string) ? (value as ProgramSort) : "posted";
+}
 
 export function parseKind(value: unknown): ProgramKind {
   return (KINDS as string[]).includes(value as string) ? (value as ProgramKind) : "all";
@@ -32,7 +40,7 @@ export function likePattern(term: string): string {
 }
 
 /** 一覧に載るノート: 既定(all)は全スレッド。kind で、ちきりんの関わり方に絞り込める。 */
-export function buildProgramsFilter(query: ProgramsQuery): { where: string; values: unknown[]; limit: number; offset: number; page: number; kind: ProgramKind } {
+export function buildProgramsFilter(query: ProgramsQuery): { where: string; values: unknown[]; limit: number; offset: number; page: number; kind: ProgramKind; sort: ProgramSort } {
   const kind = parseKind(query.kind);
   const clauses = ["n.room = ?", "n.deleted_at IS NULL"];
   const values: unknown[] = [ROOM];
@@ -59,10 +67,21 @@ export function buildProgramsFilter(query: ProgramsQuery): { where: string; valu
   const limit = requested > 0 ? Math.min(50, requested) : PAGE_SIZE;
   const wantedPage = Math.floor(Number(query.page));
   const page = wantedPage >= 1 ? Math.min(wantedPage, MAX_PAGE) : 1;
-  return { where: `WHERE ${clauses.join(" AND ")}`, values, limit, offset: (page - 1) * limit, page, kind };
+  return { where: `WHERE ${clauses.join(" AND ")}`, values, limit, offset: (page - 1) * limit, page, kind, sort: parseSort(query.sort) };
 }
 
-export const PROGRAMS_ORDER_BY = "ORDER BY n.posted_at DESC, n.id ASC";
+/** ちきりんの最新の投稿の日時(一覧の「最新ちきりん」列、toProgram の latestAt と同じ): ちきりんのコメントのうち最新、なければちきりんが立てたスレッド自身。関わりが無ければ NULL。 */
+const LATEST_TARGET_AT = `COALESCE(
+  (SELECT MAX(c.posted_at) FROM openchat_comments c WHERE c.note_id = n.id AND c.is_target = 1 AND c.deleted_at IS NULL),
+  CASE WHEN n.author_is_target = 1 THEN n.posted_at END)`;
+
+/** latest は、ちきりんが関わらないスレッド(日時が無い)を最後にまとめる。同じ日時は起票日時の新しい順。 */
+export function programsOrderBy(sort: ProgramSort): string {
+  if (sort === "latest") return `ORDER BY (${LATEST_TARGET_AT}) IS NULL, ${LATEST_TARGET_AT} DESC, n.posted_at DESC, n.id ASC`;
+  return "ORDER BY n.posted_at DESC, n.id ASC";
+}
+
+export const PROGRAMS_ORDER_BY = programsOrderBy("posted");
 
 export type ProgramComment = { id: string; bodyText: string; postedAt: string; precision: string };
 /** ちきりんの関わり方: thread=ちきりんが立てたスレッド、comment=他の人のスレッドにちきりんのコメントがある、none=どちらでもない。 */

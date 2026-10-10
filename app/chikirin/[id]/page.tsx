@@ -13,7 +13,7 @@ export default async function ChikirinDetailPage({ params, searchParams }: { par
 async function backHref(searchParams: Promise<Record<string, string | string[] | undefined>>) {
   const sp = await searchParams;
   const listQuery = new URLSearchParams();
-  for (const key of ["q", "kind", "page"]) {
+  for (const key of ["q", "kind", "sort", "page"]) {
     const value = sp[key];
     if (typeof value === "string" && value) listQuery.set(key, value);
   }

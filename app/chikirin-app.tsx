@@ -6,7 +6,7 @@ import Link from "next/link";
 import { PortalHeader } from "./portal-nav";
 import { readErrorMessage, readJson } from "./lib/json";
 import { inferBroadcaster, siteOf } from "./lib/openchat-meta.ts";
-import { formatPostedAt, type Program, type ProgramKind } from "./lib/openchat-query.ts";
+import { formatPostedAt, type Program, type ProgramKind, type ProgramSort } from "./lib/openchat-query.ts";
 import { MAX_LIKE_TERM_BYTES, truncateUtf8Bytes, utf8ByteLength } from "./lib/sql-text.ts";
 import { watchListSearchTerm } from "./lib/text.ts";
 import { useLatestRequest } from "./lib/use-latest-request";
@@ -21,6 +21,7 @@ export type RunSummary = {
 } | null;
 
 const kindLabel: Record<ProgramKind, string> = { all: "すべて", involved: "ちきりんあり", thread: "ちきりんのスレッド", comment: "ちきりんのコメント", none: "ちきりんなし" };
+const sortLabel: Record<ProgramSort, string> = { posted: "スレッド起票日時", latest: "最新ちきりん" };
 const runStatusLabel: Record<string, string> = { success: "成功", partial: "一部に警告あり", failed: "失敗", aborted: "中断", started: "実行中" };
 
 /** 最後の取得: collector が読み取りを始めた時刻(送信が遅れても、取得の時刻)。日時はすべて日本時間(JST)。 */
@@ -129,7 +130,7 @@ function SyncCommandHelp() {
   </>;
 }
 
-export function ChikirinApp({ initialPage = null, initialRun = null, initialQuery = "", initialKind = "all" }: { initialPage?: ProgramsPage | null; initialRun?: RunSummary; initialQuery?: string; initialKind?: ProgramKind } = {}) {
+export function ChikirinApp({ initialPage = null, initialRun = null, initialQuery = "", initialKind = "all", initialSort = "posted" }: { initialPage?: ProgramsPage | null; initialRun?: RunSummary; initialQuery?: string; initialKind?: ProgramKind; initialSort?: ProgramSort } = {}) {
   const [programs, setPrograms] = useState<Program[]>(initialPage?.programs ?? []);
   const [watched, setWatched] = useState(initialPage?.watched ?? {});
   const [total, setTotal] = useState(initialPage?.total ?? 0);
@@ -137,6 +138,7 @@ export function ChikirinApp({ initialPage = null, initialRun = null, initialQuer
   const [page, setPage] = useState(initialPage?.page ?? 1);
   const [query, setQuery] = useState(initialQuery);
   const [kind, setKind] = useState<ProgramKind>(initialKind);
+  const [sort, setSort] = useState<ProgramSort>(initialSort);
   const [loading, setLoading] = useState(!initialPage);
   const [notice, setNotice] = useState("");
   const { begin, isCurrent } = useLatestRequest();
@@ -149,6 +151,7 @@ export function ChikirinApp({ initialPage = null, initialRun = null, initialQuer
       const p = new URLSearchParams();
       if (query) p.set("q", query);
       if (kind !== "all") p.set("kind", kind);
+      if (sort !== "posted") p.set("sort", sort);
       if (page > 1) p.set("page", String(page));
       const response = await fetch(`/api/openchat/programs?${p}`);
       if (!response.ok) throw new Error(await readErrorMessage(response, "一覧を読み込めませんでした。再読み込みしてください。"));
@@ -163,7 +166,7 @@ export function ChikirinApp({ initialPage = null, initialRun = null, initialQuer
     } finally {
       if (isCurrent(requestId)) setLoading(false);
     }
-  }, [query, kind, page, begin, isCurrent]);
+  }, [query, kind, sort, page, begin, isCurrent]);
 
   // サーバーが同じ既定の表示(絞り込みなし・1ページ目)を描いていれば、最初の1回は読み直さない。
   useSearchReload(reload, query, Boolean(initialPage));
@@ -172,6 +175,7 @@ export function ChikirinApp({ initialPage = null, initialRun = null, initialQuer
   const listQuery = new URLSearchParams();
   if (query) listQuery.set("q", query);
   if (kind !== "all") listQuery.set("kind", kind);
+  if (sort !== "posted") listQuery.set("sort", sort);
   if (page > 1) listQuery.set("page", String(page));
   const listQuerySuffix = listQuery.toString() ? `?${listQuery}` : "";
 
@@ -202,6 +206,9 @@ export function ChikirinApp({ initialPage = null, initialRun = null, initialQuer
         </label>
         <div className="chikirin-kinds" role="group" aria-label="表示する投稿">
           {(Object.keys(kindLabel) as ProgramKind[]).map((key) => <button type="button" key={key} className={key === kind ? "chikirin-kind is-active" : "chikirin-kind"} aria-pressed={key === kind} onClick={() => { setPage(1); setKind(key); }}>{kindLabel[key]}</button>)}
+        </div>
+        <div className="chikirin-kinds" role="group" aria-label="並び順">
+          {(Object.keys(sortLabel) as ProgramSort[]).map((key) => <button type="button" key={key} className={key === sort ? "chikirin-kind is-active" : "chikirin-kind"} aria-pressed={key === sort} title={key === "latest" ? "ちきりんの最新の投稿が新しい順(ちきりんが関わらないスレッドは最後)" : "スレッドの起票日時が新しい順"} onClick={() => { setPage(1); setSort(key); }}>{sortLabel[key]}順</button>)}
         </div>
       </div>
       {!loading && programs.length === 0 && <div className="empty-state"><strong>該当する番組はありません。</strong><p>{initialRun || query || kind !== "all" ? "条件を変えてみてください。" : "同期が終わるとここに表示されます。"}</p></div>}
