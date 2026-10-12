@@ -95,19 +95,27 @@ export async function fetchThumbnailsForSynced(): Promise<void> {
 /** 1回の同期で放送情報を取りに行くスレッドの数の上限(1件ごとに外部へのサブリクエストが最大3回かかる)。残りは次の同期で試す。 */
 const SYNC_META_LOOKUPS = 3;
 
+/** 空の放送情報の行(読み取れなかった跡)を、あとから取り直す期間。これより古いスレッドは諦める(同じリンクを永久に取りに行かない)。 */
+const META_RETRY_DAYS = 3;
+
 /** 放送情報(放送局・番組名・番組タイトル)がまだ無いスレッドのうち、リンクのサイトが分かるものを、リンク先のページから自動で入れる。
  *  ちきりんが関わらないスレッドも含め、新しいものから順に(1回に最大 SYNC_META_LOOKUPS 件。古いものは同期のたびに少しずつ)。
  *  ノートが1件も変わらない同期でも動くよう、同期の完了時(complete)に呼ぶ。noteIds を渡すと、そのスレッドを先にする。
- *  手で保存した行は上書きしない(INSERT OR IGNORE)。読み取れなかったときも空の行を残し、同じスレッドを毎回取りに行かない
- *  (詳細画面の「リンクから取得」で、あとから入れられる)。失敗しても同期は成功させる。 */
+ *  手で保存した行は上書きしない。読み取れなかったときは空の行を残して「試した」ことを示す。空の行は、投稿から META_RETRY_DAYS 日の間は
+ *  次の同期で取り直す(一時的な通信の失敗で、番組情報が入らないまま残っていた)。まだ試していないスレッドを先にし、空の行は後。
+ *  取り直しで入るのは、行がまだ全部空のときだけ(その間に手で保存された内容は消さない)。
+ *  詳細画面の「リンクから取得」で、いつでも入れられる。失敗しても同期は成功させる。 */
 export async function fillMetaForSynced(noteIds: string[] = []): Promise<void> {
   try {
+    const retryAfter = new Date(Date.now() - META_RETRY_DAYS * 86_400_000).toISOString().replace(/\.\d+Z$/, "Z");
     const rows = (await env.DB.prepare(
       `SELECT n.id, n.link_url FROM openchat_notes n
          LEFT JOIN openchat_note_meta m ON m.note_id = n.id
-        WHERE m.note_id IS NULL AND n.deleted_at IS NULL AND n.link_url != ''
-        ORDER BY ${noteIds.length ? `(n.id IN (${noteIds.map(() => "?").join(",")})) DESC,` : ""} n.posted_at DESC LIMIT 50`,
-    ).bind(...noteIds).all<Record<string, unknown>>()).results ?? [];
+        WHERE n.deleted_at IS NULL AND n.link_url != ''
+          AND (m.note_id IS NULL
+               OR (m.broadcaster = '' AND m.program_name = '' AND m.episode_title = '' AND m.links_json = '[]' AND n.posted_at >= ?))
+        ORDER BY (m.note_id IS NULL) DESC, ${noteIds.length ? `(n.id IN (${noteIds.map(() => "?").join(",")})) DESC,` : ""} n.posted_at DESC LIMIT 50`,
+    ).bind(retryAfter, ...noteIds).all<Record<string, unknown>>()).results ?? [];
     const targets = rows.map((r) => ({ id: String(r.id), url: String(r.link_url) })).filter((t) => canAutoFill(t.url)).slice(0, SYNC_META_LOOKUPS);
     await Promise.all(targets.map(async (t) => {
       const page = await fetchLinkPreview(t.url);
@@ -115,7 +123,10 @@ export async function fillMetaForSynced(noteIds: string[] = []): Promise<void> {
       // リンクは、転送された先のURLにする(Watch List に登録されているのは転送先のURLなので、そろえないと「登録済」を判別できない)。
       const links = page ? [{ url: page.url, label: siteOf(page.url)?.name ?? "" }] : [];
       await env.DB.prepare(
-        `INSERT OR IGNORE INTO openchat_note_meta (note_id, broadcaster, program_name, episode_title, links_json, updated_at) VALUES (?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO openchat_note_meta (note_id, broadcaster, program_name, episode_title, links_json, updated_at) VALUES (?, ?, ?, ?, ?, ?)
+         ON CONFLICT(note_id) DO UPDATE SET broadcaster = excluded.broadcaster, program_name = excluded.program_name, episode_title = excluded.episode_title,
+           links_json = excluded.links_json, updated_at = excluded.updated_at
+         WHERE openchat_note_meta.broadcaster = '' AND openchat_note_meta.program_name = '' AND openchat_note_meta.episode_title = '' AND openchat_note_meta.links_json = '[]'`,
       ).bind(t.id, filled.broadcaster, filled.programName, filled.episodeTitle, JSON.stringify(links), new Date().toISOString().replace(/\.\d+Z$/, "Z")).run();
     }));
   } catch { /* 放送情報は補助。入らなくても同期は成功させる。 */ }

@@ -6,7 +6,7 @@
  *  Everything here is best effort: any failure -- timeout, non-HTML, a
  *  redirect to a refused host, no image tag -- resolves to "" rather than
  *  throwing, because a missing thumbnail must never fail saving an item. */
-import { parseLinkPreview, parseTverPreview, tverEpisodeId, type LinkPreview } from "./link-preview.ts";
+import { nhkIdVariants, parseLinkPreview, parseTverPreview, tverEpisodeId, type LinkPreview } from "./link-preview.ts";
 import { isPublicHttpUrl, metaRefreshUrl, pageImageUrl, tverThumbnailUrl, youTubeThumbnailFromLinks } from "./thumbnail.ts";
 
 /** One deadline for the whole lookup, redirects included. */
@@ -196,5 +196,11 @@ export async function fetchLinkPreview(url: string): Promise<{ preview: LinkPrev
     return preview ? { preview, url } : null;
   }
   const page = await fetchPageHead(url);
-  return page ? { preview: parseLinkPreview(page.html, page.url), url: page.url } : null;
+  if (page) return { preview: parseLinkPreview(page.html, page.url), url: page.url };
+  // 読めなければ、OCRの読み違い(1 → I など)を直した候補のURLを順に試す。見つかったページのURLを返す(保存されるリンクも直る)。
+  for (const variant of nhkIdVariants(url)) {
+    const fixed = await fetchPageHead(variant);
+    if (fixed) return { preview: parseLinkPreview(fixed.html, fixed.url), url: fixed.url };
+  }
+  return null;
 }

@@ -67,3 +67,16 @@ test("TVer: 公開JSONから、放送局・タイトル・番組名を読む。�
   // 放送局はURLからは決まらないので、ページの情報(日テレ)が入る
   expect(autoFillFields({ creatorName: "日テレ", seriesTitle: "バンキシャ！", title: "t" }, "https://tver.jp/episodes/ept025uufz").broadcaster).toBe("日テレ");
 });
+
+test("NHK ONE: OCRが「1」を「I」と読み違えたIDを、直した候補のURLにする(直す文字の少ない順)", async () => {
+  const { nhkIdVariants } = await import("../app/lib/link-preview.ts");
+  const url = "https://www.web.nhk/tv/an/anotherstories/pl/series-tep-VWRZIWWNYP/ep/XMEJLRFMIF";
+  expect(nhkIdVariants(url)).toEqual([
+    "https://www.web.nhk/tv/an/anotherstories/pl/series-tep-VWRZ1WWNYP/ep/XMEJLRFMIF",
+    "https://www.web.nhk/tv/an/anotherstories/pl/series-tep-VWRZIWWNYP/ep/XMEJLRFM1F",
+    "https://www.web.nhk/tv/an/anotherstories/pl/series-tep-VWRZ1WWNYP/ep/XMEJLRFM1F",
+  ]);
+  expect(nhkIdVariants("https://www.web.nhk/tv/pl/series-tep-YN5YRJ9KP6/ep/YL446Q5LPZ")).toEqual([]);
+  expect(nhkIdVariants("https://example.com/series-tep-IIII/ep/OOOO")).toEqual([]);
+  expect(nhkIdVariants("https://www.web.nhk/tv/pl/series-tep-IOIO/ep/IOIO")).toEqual([]);
+});
