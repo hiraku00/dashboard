@@ -104,26 +104,48 @@ export function autoFillFields(preview: LinkPreview, url: string) {
   };
 }
 
-/** NHK ONE のURLの ID(series-tep-… と /ep/…)は、OCR が「1」を「I」、「0」を「O」と読み違えることがある(実例: VWRZ1WWNYP → VWRZIWWNYP で404)。
- *  読み違えかもしれない I / O を 1 / 0 に直した候補のURLを、直す文字の少ない順に返す(元のURLは含まない)。
- *  迷う文字が多いときは当てずっぽうになるので、候補を出さない。NHK ONE 以外のURLも出さない。 */
+/** NHK ONE のURLの ID(series-tep-… と /ep/…。どちらも10文字)は、OCRが読み違えることがある。見つかっている型は2つ。
+ *  - 「1」を「I」、「0」を「O」と読む(実例: VWRZ1WWNYP → VWRZIWWNYP で404)。
+ *  - 縦線のノイズを「I」として1文字足す(実例: 6NMMPMNK5K → 6NMMPMINK5K の11文字で404)。
+ *  読み違えかもしれない文字を直した候補のURLを、直す箇所の少ない順に返す(元のURLは含まない)。
+ *  候補が多いときは当てずっぽうになるので出さない。NHK ONE 以外のURLも出さない。 */
 export function nhkIdVariants(url: string): string[] {
   let u: URL;
   try { u = new URL(url); } catch { return []; }
   if (u.hostname.replace(/^www\./, "") !== "web.nhk") return [];
-  const idPattern = /(series-tep-|\/ep\/)([A-Z0-9]+)/g;
-  const slots: Array<{ at: number; to: string }> = [];
-  for (const m of u.pathname.matchAll(idPattern)) {
-    const start = (m.index ?? 0) + m[1].length;
-    [...m[2]].forEach((ch, i) => { if (ch === "I" || ch === "O") slots.push({ at: start + i, to: ch === "I" ? "1" : "0" }); });
+  const ids = [...u.pathname.matchAll(/(series-tep-|\/ep\/)([A-Z0-9]+)/g)].map((m) => ({ at: (m.index ?? 0) + m[1].length, id: m[2] }));
+  // 1つのIDの候補(直す箇所の数, 直したID)。元のIDは直す箇所0。
+  const candidatesOf = (id: string) => {
+    const result: Array<{ changes: number; id: string }> = [{ changes: 0, id }];
+    const swaps = [...id].flatMap((ch, i) => (ch === "I" || ch === "O" ? [i] : []));
+    if (swaps.length <= 3) {
+      for (let mask = 1; mask < 1 << swaps.length; mask++) {
+        const chars = [...id];
+        let changes = 0;
+        swaps.forEach((at, i) => { if (mask & (1 << i)) { chars[at] = chars[at] === "I" ? "1" : "0"; changes++; } });
+        result.push({ changes, id: chars.join("") });
+      }
+    }
+    if (id.length === 11) {
+      for (const at of [...id].flatMap((ch, i) => (ch === "I" || ch === "1" ? [i] : []))) result.push({ changes: 1, id: id.slice(0, at) + id.slice(at + 1) });
+    }
+    return result;
+  };
+  let combos: Array<{ changes: number; ids: string[] }> = [{ changes: 0, ids: [] }];
+  for (const { id } of ids) {
+    const options = candidatesOf(id);
+    combos = combos.flatMap((c) => options.map((o) => ({ changes: c.changes + o.changes, ids: [...c.ids, o.id] }))).slice(0, 64);
   }
-  if (!slots.length || slots.length > 3) return [];
-  const results: Array<{ changes: number; url: string }> = [];
-  for (let mask = 1; mask < 1 << slots.length; mask++) {
-    const chars = [...u.pathname];
-    let changes = 0;
-    slots.forEach((slot, i) => { if (mask & (1 << i)) { chars[slot.at] = slot.to; changes++; } });
-    results.push({ changes, url: `${u.origin}${chars.join("")}${u.search}` });
-  }
-  return results.sort((a, b) => a.changes - b.changes).map((r) => r.url);
+  const seen = new Set([url]);
+  return combos
+    .filter((c) => c.changes > 0 && c.changes <= 3)
+    .sort((a, b) => a.changes - b.changes)
+    .map((c) => {
+      let path = u.pathname;
+      // 後ろのIDから置き換える(前のIDの長さが変わっても位置がずれない)。
+      for (let k = ids.length - 1; k >= 0; k--) path = path.slice(0, ids[k].at) + c.ids[k] + path.slice(ids[k].at + ids[k].id.length);
+      return `${u.origin}${path}${u.search}`;
+    })
+    .filter((v) => !seen.has(v) && seen.add(v))
+    .slice(0, 8);
 }
