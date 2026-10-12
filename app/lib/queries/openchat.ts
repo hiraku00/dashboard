@@ -74,7 +74,8 @@ const SYNC_THUMBNAIL_LOOKUPS = 8;
  *  同期の完了時に、放送情報の自動入力(fillMetaForSynced)の後で呼ぶ。自動入力はリンクを転送先のURLに置き換えるので、
  *  先に取るとノートのリンクカードのURLで記録され、一覧では「古い画像」として捨てられて、保存し直すまで出なかった
  *  (実例: 2026-10-03「北の女と南の男」。one.nhk/… で記録 → www.web.nhk/… に置き換わって非表示)。
- *  見つからなかったときも「試した」と記録する(refreshThumbnail が空の行を残す)ので、同じリンクで繰り返し取りには行かない。
+ *  見つからなかったときも「試した」と記録する(refreshThumbnail が空の行を残す)。空の行は、一時的な通信の失敗かもしれないので、
+ *  投稿から META_RETRY_DAYS 日の間は取り直す(それより古いものは、同じリンクで繰り返し取りには行かない)。まだ試していないスレッドを先にする。
  *  新しいスレッドから順に1回 SYNC_THUMBNAIL_LOOKUPS 件まで(古いものは同期のたびに少しずつ)。失敗しても同期は成功させる。 */
 export async function fetchThumbnailsForSynced(): Promise<void> {
   try {
@@ -84,9 +85,10 @@ export async function fetchThumbnailsForSynced(): Promise<void> {
          LEFT JOIN openchat_note_thumbnails t ON t.note_id = n.id
         WHERE n.deleted_at IS NULL
           AND COALESCE(NULLIF(json_extract(m.links_json, '$[0].url'), ''), n.link_url) != ''
-          AND (t.note_id IS NULL OR t.source_url != COALESCE(NULLIF(json_extract(m.links_json, '$[0].url'), ''), n.link_url))
-        ORDER BY n.posted_at DESC LIMIT 50`,
-    ).all<Record<string, unknown>>()).results ?? [];
+          AND (t.note_id IS NULL OR t.source_url != COALESCE(NULLIF(json_extract(m.links_json, '$[0].url'), ''), n.link_url)
+               OR (t.thumbnail_url = '' AND n.posted_at >= ?))
+        ORDER BY (t.note_id IS NULL) DESC, n.posted_at DESC LIMIT 50`,
+    ).bind(new Date(Date.now() - META_RETRY_DAYS * 86_400_000).toISOString().replace(/\.\d+Z$/, "Z")).all<Record<string, unknown>>()).results ?? [];
     const pending = rows.map((r) => ({ id: String(r.id), meta: metaFromRow(r), linkUrl: String(r.link_url ?? "") })).filter((p) => thumbnailSourceUrl(p));
     await Promise.all(pending.slice(0, SYNC_THUMBNAIL_LOOKUPS).map((p) => refreshThumbnail(p.id, p)));
   } catch { /* 画像は飾り */ }

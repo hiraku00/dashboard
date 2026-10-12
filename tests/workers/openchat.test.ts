@@ -438,10 +438,10 @@ describe("thumbnails", () => {
   const thumbOf = async (id: string) => (await listPrograms({ limit: 50 })).programs.find((p) => p.noteId === id)?.thumbnailUrl;
   const row = (id: string) => env.DB.prepare("SELECT source_url, thumbnail_url FROM openchat_note_thumbnails WHERE note_id = ?").bind(id).first<{ source_url: string; thumbnail_url: string }>();
 
-  test("sync fetches the image once for a new thread; a failed lookup is recorded as tried and not repeated", async () => {
+  test("sync fetches the image once for a new thread; a failed lookup of an old thread is recorded as tried and not repeated", async () => {
     await startRun();
     const good = note({ linkUrl: "https://blog.example.org/post", postedAt: "2099-01-01T00:00:00Z" });   // 新しいものから取るので、確実に対象に入れる
-    const bad = note({ linkUrl: "https://noimage.example.org/x", postedAt: "2099-01-01T00:00:00Z" });
+    const bad = note({ linkUrl: "https://noimage.example.org/x", postedAt: "2020-01-01T00:00:00Z" });    // 取り直す期間(投稿から3日)より古い
     await send([good, bad]);
     await complete();                                     // サムネイルは完了時(放送情報の自動入力の後)に取る
     expect(await thumbOf(good.id)).toBe("https://blog.example.org/img/cover.png");
@@ -455,6 +455,20 @@ describe("thumbnails", () => {
     await complete();
     const after = await env.DB.prepare("SELECT checked_at FROM openchat_note_thumbnails WHERE note_id = ?").bind(bad.id).first<{ checked_at: string }>();
     expect(after?.checked_at).toBe("sentinel");
+  });
+
+  test("a failed lookup of a recent thread is looked up again at the next sync completion", async () => {
+    await startRun();
+    const recent = note({ linkUrl: "https://noimage.example.org/y", postedAt: new Date().toISOString().replace(/\.\d+Z$/, "Z") });
+    await send([recent]);
+    await complete();
+    expect((await row(recent.id))?.thumbnail_url).toBe("");
+    await env.DB.prepare("UPDATE openchat_note_thumbnails SET checked_at = 'sentinel' WHERE note_id = ?").bind(recent.id).run();
+    await startRun();
+    await send([recent]);
+    await complete();
+    const after = await env.DB.prepare("SELECT checked_at FROM openchat_note_thumbnails WHERE note_id = ?").bind(recent.id).first<{ checked_at: string }>();
+    expect(after?.checked_at).not.toBe("sentinel");
   });
 
   test("a thread whose link was replaced after its image was looked up (auto-fill redirect) is looked up again at the next sync completion", async () => {
