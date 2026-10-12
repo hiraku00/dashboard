@@ -77,6 +77,10 @@ def request_json(url: str, headers: dict[str, str] | None = None, timeout: int =
         raise ExchangeError("取引所APIの応答を解析できませんでした") from exc
 
 
+# Binanceに価格ペア(<SYMBOL>USDT)がないと分かっているコイン。引くと毎回400になる。
+NO_PUBLIC_PRICE_SYMBOLS = {"ETHW"}
+
+
 def public_price(symbol: str) -> Decimal | None:
     """Get a conservative USD reference price from Binance public ticker.
 
@@ -86,6 +90,8 @@ def public_price(symbol: str) -> Decimal | None:
     symbol = symbol.upper()
     if symbol in {"USD", "USDT", "USDC", "BUSD", "FDUSD", "TUSD", "DAI"}:
         return Decimal("1")
+    if symbol in NO_PUBLIC_PRICE_SYMBOLS:
+        return None
     if symbol == "JPY":
         try:
             data = request_json("https://api.binance.com/api/v3/ticker/price?symbol=USDTJPY")
