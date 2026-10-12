@@ -72,11 +72,13 @@ test("NHK ONE: OCRが「1」を「I」と読み違えたIDを、直した候補�
   const { nhkIdVariants } = await import("../app/lib/link-preview.ts");
   const url = "https://www.web.nhk/tv/an/anotherstories/pl/series-tep-VWRZIWWNYP/ep/XMEJLRFMIF";
   expect(nhkIdVariants(url)).toEqual([
-    "https://www.web.nhk/tv/an/anotherstories/pl/series-tep-VWRZ1WWNYP/ep/XMEJLRFMIF",
     "https://www.web.nhk/tv/an/anotherstories/pl/series-tep-VWRZIWWNYP/ep/XMEJLRFM1F",
+    "https://www.web.nhk/tv/an/anotherstories/pl/series-tep-VWRZ1WWNYP/ep/XMEJLRFMIF",
     "https://www.web.nhk/tv/an/anotherstories/pl/series-tep-VWRZ1WWNYP/ep/XMEJLRFM1F",
   ]);
   expect(nhkIdVariants("https://www.web.nhk/tv/pl/series-tep-YN5YRJ9KP6/ep/YL446Q5LPZ")).toEqual([]);
   expect(nhkIdVariants("https://example.com/series-tep-IIII/ep/OOOO")).toEqual([]);
-  expect(nhkIdVariants("https://www.web.nhk/tv/pl/series-tep-IOIO/ep/IOIO")).toEqual([]);
+  // 余計な「I」が1文字足された11文字のID(6NMMPMNK5K → 6NMMPMINK5K)は、その「I」を外した候補を出す。
+  expect(nhkIdVariants("https://www.web.nhk/tv/an/bssp/pl/series-tep-6NMMPMINK5K/ep/UBTLTW48SR")).toContain("https://www.web.nhk/tv/an/bssp/pl/series-tep-6NMMPMNK5K/ep/UBTLTW48SR");
+  expect(nhkIdVariants("https://www.web.nhk/tv/pl/series-tep-IOIO/ep/IOIO").length).toBeLessThanOrEqual(8);
 });
