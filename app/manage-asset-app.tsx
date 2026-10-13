@@ -184,7 +184,7 @@ export function ManageAssetApp({
         <CurrencyView state={state} history={history} historyDays={historyDays} historyDetail={historyDetail} active={view === "currency"} lidoRewards={lidoRewards} usdJpyRates={usdJpyRates} today={today} ensureHistory={ensureHistory} ensureCurrencyData={ensureCurrencyData} />
       </div>
       <div hidden={view !== "update"}>
-        <SyncView latestRun={latestSyncRun} today={today} />
+        <SyncView latestRun={latestSyncRun} today={today} active={view === "update"} />
       </div>
       <div hidden={view !== "settings"}>
         <SettingsView state={state} />

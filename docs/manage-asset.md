@@ -7,7 +7,7 @@ Manage Assetは既存アプリの表示仕様を基準にした資産ダッシ�
 - ホーム: 総資産、資産推移、資産配分、保有資産
 - 保管場所: Lido、取引所、DeFiなどの保管場所別内訳
 - 通貨推移: stETH、BTC、USDT、ETH、BNBなどの通貨別履歴
-- データ更新: 取得元ごとの成功日時、同期状態、古いデータの警告
+- データ更新: 取得元ごとの成功日時、同期状態、古いデータの警告、「今すぐ再取得」ボタン
 - 設定: 表示や同期に関する設定
 
 各画面は他のポータル機能と同じくServer Componentとして実装されたネイティブなReact実装です（`app/manage-asset-overview.tsx`・`manage-asset-locations.tsx`・`manage-asset-currency.tsx`・`manage-asset-settings.tsx`・`manage-asset-sync-view.tsx`）。計算ロジックは`app/lib/manage-asset-core.ts`の純関数に集約されており、表示上の文言、桁数、表の列、グラフの期間、ホバー表示を変更する場合は`tests/manage-asset-core.test.mjs`で数値の同値性を確認します。設定・データ更新は読み取り専用です（取引所の追加、認証情報の変更、ウォレットの編集はMac側collectorが担当し、このポータルには対応する書き込みAPIがありません）。
@@ -45,6 +45,21 @@ launchd
   → /api/manage-asset/sync へService Authで送信
   → asset_sync_runs / asset_snapshots / asset_positionsへ保存
 ```
+
+## 今すぐ再取得
+
+ポータルはAPIキーを持たないため、「データ更新」画面のボタンは取得そのものを行わず、`asset_resync_requests`に「依頼した事実」だけを書く（`/api/manage-asset/sync`の`request_resync`アクション）。実際の取得は、Mac側collectorの既存launchdティック（`StartInterval`60秒）が、毎回ポータルに未処理の依頼がないか確認し（`sync_to_portal.py --check-resync`）、見つかれば設定済みの時間枠外でも即時に全ウォレット・全取引所を再取得する（`daily_update.py`の`resync_request_id`分岐）。取得後は成功・失敗にかかわらず依頼を消化する（`--fulfill-resync`、`fulfill_resync`アクション）。新たな常時ポーリングのジョブは増やしていない。
+
+```text
+データ更新画面のボタン
+  → /api/manage-asset/sync { action: "request_resync" }
+  → asset_resync_requestsへ1行追加
+  → （Macが起動していれば）次のlaunchdティック(最大60秒)で検知
+  → 全ウォレット・全取引所を再取得 → 通常の同期と同じ経路でポータルへpush
+  → /api/manage-asset/sync { action: "fulfill_resync" } で依頼を消化
+```
+
+Macが起動していない、またはcollectorのlaunchdが停止している間は依頼は反映されない。
 
 ## Keychain
 
@@ -98,6 +113,8 @@ APIキーは次の命名規則でmacOS Keychainに保存します。
 - `app/manage-asset-overview.tsx` / `manage-asset-locations.tsx` / `manage-asset-currency.tsx` / `manage-asset-settings.tsx` / `manage-asset-sync-view.tsx`: 各画面の実装
 - `app/lib/manage-asset-core.ts`: 計算ロジック（純関数、テスト済み）
 - `app/lib/queries/manage-asset.ts`: D1読み取りの共有ロジック（ページとAPIの両方が呼ぶ）
-- `app/api/manage-asset/`: 表示・同期API
+- `app/api/manage-asset/`: 表示・同期API（`sync`は取り込みと「今すぐ再取得」依頼の両方を扱う）
 - `collector/`: ローカル取得処理
+- `collector/scripts/daily_update.py`: launchdから呼ばれる日次更新・再取得依頼の検知
+- `collector/scripts/sync_to_portal.py`: ポータルへの同期・再取得依頼の確認/消化
 - `scripts/sync-manage-asset.mjs`: 手動同期

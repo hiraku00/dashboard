@@ -80,6 +80,34 @@ def post(base_url: str, token: str, body: dict, timeout: int = 30) -> dict:
     raise last_error or RuntimeError("Portal sync failed")
 
 
+def get(base_url: str, token: str, timeout: int = 15) -> dict:
+    client_id = os.environ.get("PORTAL_SYNC_CLIENT_ID", "").strip()
+    if not client_id:
+        raise RuntimeError("PORTAL_SYNC_CLIENT_IDを設定してください")
+    request = urllib.request.Request(
+        base_url.rstrip("/") + "/api/manage-asset/sync",
+        headers={
+            "CF-Access-Client-Id": client_id,
+            "CF-Access-Client-Secret": token,
+            "User-Agent": "manage-asset-portal-sync/1.0",
+        },
+        method="GET",
+    )
+    context = ssl.create_default_context(cafile=certifi.where())
+    with urllib.request.urlopen(request, timeout=timeout, context=context) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+
+def check_pending_resync(base_url: str, token: str) -> str | None:
+    """Return the pending「今すぐ再取得」request id, if the portal has one."""
+    pending = get(base_url, token).get("pendingResyncRequest")
+    return str(pending["id"]) if isinstance(pending, dict) and pending.get("id") else None
+
+
+def fulfill_resync(base_url: str, token: str, request_id: str) -> None:
+    post(base_url, token, {"action": "fulfill_resync", "requestId": request_id})
+
+
 def as_source(source_id: str, source: dict, source_type: str, provider: str, name: str, address: str = "") -> dict:
     return {"sourceId": source_id, "sourceType": source_type, "provider": provider, "displayName": name, "publicAddress": address}
 
@@ -109,7 +137,30 @@ def exchange_entry(row: dict) -> dict:
 
 
 def main() -> int:
-    base_url = (sys.argv[1] if len(sys.argv) > 1 else os.environ.get("PORTAL_URL", "")).strip()
+    args = sys.argv[1:]
+    # daily_update.py's launchd tick shells out here to check/clear the portal's
+    # 「今すぐ再取得」request, reusing this module's existing auth/retry plumbing
+    # instead of duplicating it. These two modes print/act and exit before the
+    # normal sync path below, which otherwise always takes argv[1] as the URL.
+    if args and args[0] == "--check-resync":
+        base_url = (args[1] if len(args) > 1 else os.environ.get("PORTAL_URL", "")).strip()
+        if not base_url:
+            print("PORTAL_URLまたは第2引数でポータルURLを指定してください", file=sys.stderr)
+            return 2
+        print(check_pending_resync(base_url, keychain_token()) or "")
+        return 0
+    if args and args[0] == "--fulfill-resync":
+        if len(args) < 2:
+            print("リクエストIDを指定してください", file=sys.stderr)
+            return 2
+        base_url = (args[2] if len(args) > 2 else os.environ.get("PORTAL_URL", "")).strip()
+        if not base_url:
+            print("PORTAL_URLまたは第3引数でポータルURLを指定してください", file=sys.stderr)
+            return 2
+        fulfill_resync(base_url, keychain_token(), args[1])
+        return 0
+
+    base_url = (args[0] if args else os.environ.get("PORTAL_URL", "")).strip()
     if not base_url:
         print("PORTAL_URLまたは第1引数でポータルURLを指定してください", file=sys.stderr)
         return 2

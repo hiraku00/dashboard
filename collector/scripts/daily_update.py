@@ -219,6 +219,40 @@ def update_exchanges(run_id: str, source_ids: set[str] | None = None) -> tuple[i
     return success, failed, failed_ids, errors
 
 
+def check_pending_resync_request(portal_url: str) -> str | None:
+    """Ask the portal whether its「今すぐ再取得」button has an unfulfilled request.
+
+    Shells out to sync_to_portal.py rather than importing it so the existing
+    Keychain-token lookup and retry/timeout handling there is not duplicated.
+    A failure here (network, portal down) just means this tick behaves as if
+    nothing was requested -- the next tick, a minute later, tries again.
+    """
+    try:
+        result = subprocess.run(
+            [sys.executable, str(ROOT / "scripts" / "sync_to_portal.py"), "--check-resync", portal_url],
+            check=False, capture_output=True, text=True, timeout=15,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        LOG.warning("Could not check for a pending portal resync request: %s", exc)
+        return None
+    if result.returncode != 0:
+        LOG.warning("Could not check for a pending portal resync request: %s", result.stderr.strip())
+        return None
+    return result.stdout.strip() or None
+
+
+def acknowledge_resync_request(portal_url: str, request_id: str) -> None:
+    try:
+        result = subprocess.run(
+            [sys.executable, str(ROOT / "scripts" / "sync_to_portal.py"), "--fulfill-resync", request_id, portal_url],
+            check=False, capture_output=True, text=True, timeout=15,
+        )
+        if result.returncode != 0:
+            LOG.warning("Could not acknowledge the portal resync request: %s", result.stderr.strip())
+    except (OSError, subprocess.SubprocessError) as exc:
+        LOG.warning("Could not acknowledge the portal resync request: %s", exc)
+
+
 def load_retry_state(as_of_date: str) -> tuple[set[str] | None, set[str] | None]:
     """Return failed targets from today's earlier attempt, if any.
 
@@ -294,7 +328,12 @@ def main() -> int:
                 existing_state = loaded
         except (OSError, ValueError):
             existing_state = {}
-    if not force_run and (not schedule.get("enabled", True) or not slot or existing_state.get("last_run_slot") == slot_key):
+    portal_url = os.environ.get("PORTAL_URL", "").strip()
+    # ポータルの「今すぐ再取得」ボタンが押されていれば、設定済みの時間枠外でも
+    # このティックで動く。Macが起きている間だけ60秒おきに回ってくる既存の
+    # launchdティックに便乗するので、新しい常時ポーリングは増やさない。
+    resync_request_id = check_pending_resync_request(portal_url) if portal_url else None
+    if not force_run and not resync_request_id and (not schedule.get("enabled", True) or not slot or existing_state.get("last_run_slot") == slot_key):
         LOG.info("Outside the scheduled run window; skipping")
         return 0
 
@@ -304,8 +343,10 @@ def main() -> int:
         return 0
     try:
         run_id = "run_" + uuid.uuid4().hex[:12]
-        retry_wallet_ids, retry_source_ids = load_retry_state(as_of_date)
-        attempt_label = "initial" if retry_wallet_ids is None else "retry"
+        # 手動の再取得依頼は、前回失敗分だけでなく全sourceを対象にする
+        # ("全体を一括再取得"として依頼されているため)。
+        retry_wallet_ids, retry_source_ids = (None, None) if resync_request_id else load_retry_state(as_of_date)
+        attempt_label = "manual_resync" if resync_request_id else ("initial" if retry_wallet_ids is None else "retry")
         wallet_success, wallet_failed, failed_wallet_ids, wallet_errors = update_wallets(
             run_id, as_of_date, retry_wallet_ids
         )
@@ -337,7 +378,6 @@ def main() -> int:
             exchange_success, exchange_success + exchange_failed,
             total_failed,
         )
-        portal_url = os.environ.get("PORTAL_URL", "").strip()
         portal_sync_failed = False
         if portal_url and not should_sync:
             LOG.info("Portal sync skipped: no new data since the last successful sync")
@@ -365,6 +405,10 @@ def main() -> int:
                     )
             except (OSError, subprocess.SubprocessError) as exc:
                 LOG.warning("Portal sync could not start: %s", exc)
+        if resync_request_id:
+            # 一度取り組んだら依頼を消す。全件成功したかどうかは問わない --
+            # 失敗したsourceは通常の失敗分として次のスケジュール枠で再試行される。
+            acknowledge_resync_request(portal_url, resync_request_id)
         return 1 if total_failed or portal_sync_failed else 0
     finally:
         fcntl.flock(lock.fileno(), fcntl.LOCK_UN)

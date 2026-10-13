@@ -82,7 +82,10 @@ test("tabs other than the currency tab never trigger its fetches", async () => {
   app();
   for (const name of ["保管場所", "データ更新", "設定", "資産概要"]) fireEvent.click(tab(name));
   await act(async () => {});
-  expect(urls()).toEqual([]);
+  // データ更新 polls /api/manage-asset/sync for the manual resync button's
+  // pending state while it is the active tab -- unrelated to the currency
+  // tab's own fetches, which is what this test guards against.
+  expect(urls().filter((u) => u.startsWith("/api/manage-asset/history") || u.startsWith("/api/lido-rewards") || u.startsWith("/api/usd-jpy-rates"))).toEqual([]);
 });
 
 test("while the currency data is coming there is a loading line, not a half-drawn chart", async () => {

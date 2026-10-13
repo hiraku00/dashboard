@@ -4,7 +4,7 @@ import { currentStorageBytes, putPortalObject } from "@/app/lib/r2-storage";
 import { clean } from "@/app/lib/text";
 import { normalizeSyncedPositions } from "@/app/lib/manage-asset-core";
 import { summarizeRun } from "@/app/lib/sync-summary";
-import { latestSyncRun } from "@/app/lib/queries/manage-asset";
+import { latestSyncRun, pendingResyncRequest } from "@/app/lib/queries/manage-asset";
 import { route } from "@/app/lib/route";
 
 // One request carries every source of a run, so cap it: the Workers Free plan
@@ -22,7 +22,7 @@ function containsCredential(value: unknown): boolean {
 }
 
 type Entry = { source?: Record<string, unknown>; snapshot?: Record<string, unknown>; positions?: unknown[] };
-type Body = Entry & { action?: string; clientRunId?: unknown; clientVersion?: unknown; sourceCount?: unknown; entries?: unknown[]; raw?: Record<string, unknown> };
+type Body = Entry & { action?: string; clientRunId?: unknown; clientVersion?: unknown; sourceCount?: unknown; entries?: unknown[]; raw?: Record<string, unknown>; requestId?: unknown };
 
 /** Rejected payload rather than a server fault: a 400 for a single source, one failed row inside a batch. */
 class SyncEntryError extends Error {}
@@ -108,16 +108,37 @@ async function storeEntry(runId: string, entry: Entry, now: string, knownUsedByt
   return { sourceId, snapshotId, rawStorageStatus: storageStatus, rawStorageError, usedBytes: usedBytesResult ?? knownUsedBytes };
 }
 
-export const GET = route(async () => Response.json({ ok: true, latest: await latestSyncRun() }));
+export const GET = route(async () => Response.json({ ok: true, latest: await latestSyncRun(), pendingResyncRequest: await pendingResyncRequest() }));
 
 export const POST = route(async (request: Request) => {
   // Cloudflare Access validates the Service Token at the edge. Its client-secret
   // headers are intentionally not forwarded to the Worker, so do not repeat the
   // header check here. This route must remain covered by the Access application.
+  //
+  // request_resync/fulfill_resync ride on this same path specifically because it
+  // is already reachable both by a logged-in browser session (the データ更新
+  // page's button) and by the Mac collector's service token (its launchd tick
+  // polling for a pending request) -- the same dual-credential coverage the
+  // GET above already relies on. A new path would need its own Access policy.
   await ensureSchema({ seed: false });
   const body = await request.json().catch(() => null) as Body | null;
-  if (!body || typeof body.action !== "string" || typeof body.clientRunId !== "string") return Response.json({ error: "actionとclientRunIdが必要です。" }, { status: 400 });
-  const clientRunId = clean(body.clientRunId, 200); const now = new Date().toISOString();
+  if (!body || typeof body.action !== "string") return Response.json({ error: "actionが必要です。" }, { status: 400 });
+  const now = new Date().toISOString();
+
+  if (body.action === "request_resync") {
+    const id = crypto.randomUUID();
+    await env.DB.prepare("INSERT INTO asset_resync_requests (id,requested_at) VALUES (?,?)").bind(id, now).run();
+    return Response.json({ ok: true, request: { id, requested_at: now } });
+  }
+  if (body.action === "fulfill_resync") {
+    const requestId = clean(body.requestId, 100);
+    if (!requestId) return Response.json({ error: "requestIdが必要です。" }, { status: 400 });
+    await env.DB.prepare("UPDATE asset_resync_requests SET fulfilled_at=? WHERE id=? AND fulfilled_at IS NULL").bind(now, requestId).run();
+    return Response.json({ ok: true });
+  }
+
+  if (typeof body.clientRunId !== "string") return Response.json({ error: "actionとclientRunIdが必要です。" }, { status: 400 });
+  const clientRunId = clean(body.clientRunId, 200);
 
   if (body.action === "start") {
     if ((await env.DB.prepare("SELECT id FROM asset_sync_runs WHERE client_run_id=?").bind(clientRunId).all()).results?.length) return Response.json({ error: "この同期はすでに開始されています。" }, { status: 409 });

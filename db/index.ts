@@ -28,7 +28,7 @@ let schemaReady = false;
  *  than reconciled, since the drizzle ORM was never actually used to query. */
 /** Bump whenever the DDL below changes, so existing databases re-run it once.
  *  A database whose schema_meta row already matches skips the whole batch. */
-const SCHEMA_VERSION = 11;
+const SCHEMA_VERSION = 12;
 
 /** Reads the recorded schema version. A database that predates schema_meta (or
  *  a brand new one) has no table, and the query fails rather than returning a
@@ -219,6 +219,13 @@ export async function ensureSchema({ seed = true }: { seed?: boolean } = {}) {
       started_at TEXT NOT NULL, completed_at TEXT, status TEXT NOT NULL,
       source_count INTEGER NOT NULL DEFAULT 0, success_count INTEGER NOT NULL DEFAULT 0,
       error_count INTEGER NOT NULL DEFAULT 0, received_at TEXT NOT NULL
+    )`),
+    // ポータルの「データ更新」画面から押す「今すぐ再取得」依頼。Mac側collectorが
+    // 自身の60秒ごとのlaunchdティックでこの未処理行の有無を確認し、見つけたら
+    // 全sourceを再取得してfulfilled_atを立てる。ポータル自身はAPIキーを持たない
+    // ため、ここに書けるのは「依頼した事実」だけ。
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS asset_resync_requests (
+      id TEXT PRIMARY KEY, requested_at TEXT NOT NULL, fulfilled_at TEXT
     )`),
     env.DB.prepare(`CREATE TABLE IF NOT EXISTS asset_snapshots (
       id TEXT PRIMARY KEY, run_id TEXT NOT NULL, source_id TEXT NOT NULL,
