@@ -52,7 +52,7 @@ class Aborted(SessionError):
 
 @dataclass
 class Options:
-    scan_days: int = 21                 # これより古いノートが続いたら止める(初回は全件)
+    scan_days: int = 14                 # これより古いノートが続いたら止める(初回は全件)
     stop_after_unchanged: int = 5       # 上記に加えて、変化のないノートがこの件数続いたら止める
     first_run: bool = False
     max_notes: int | None = None

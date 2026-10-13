@@ -38,7 +38,7 @@ class SyncConfig:
     portal_url: str = ""
     dry_run: bool = False
     first_run: bool = False
-    scan_days: int = 21
+    scan_days: int = 14
     max_notes: int | None = None
     ledger_path: Path | None = None
     room: str = DEFAULT_ROOM
