@@ -392,8 +392,9 @@ test("同期コマンド popup shows the sync command with a copy button, and co
   expect(screen.queryByRole("dialog")).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "同期コマンド" }));
   const dialog = screen.getByRole("dialog");
-  // 同期と全件読み直しの両方に、Portalへ送るための環境変数が付く(全件読み直しに無いと、送られずに終わっていた)
-  expect(within(dialog).getAllByText(/PORTAL_SYNC_CLIENT_ID/)).toHaveLength(2);
+  // 同期・日数指定・全件読み直しのすべてに、Portalへ送るための環境変数が付く(全件読み直しに無いと、送られずに終わっていた)
+  expect(within(dialog).getAllByText(/PORTAL_SYNC_CLIENT_ID/)).toHaveLength(3);
+  expect(within(dialog).getByText(/14日以内のノート/)).toBeTruthy();
   expect(within(dialog).getByText(/画面ロックを解除/)).toBeTruthy();
   const copyButtons = within(dialog).getAllByRole("button", { name: "コピー" });
   fireEvent.click(copyButtons[0]);

@@ -29,7 +29,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--first-run", action="store_true",
                     help="一覧の最後まで全件を読む。ローカル台帳が無く、Portalからの復元もできないときは、"
                          "この指定が無いと(既存データとの重複を避けるため)実行を中断する")
-    ap.add_argument("--scan-days", type=int, default=21)
+    ap.add_argument("--scan-days", type=int, default=14)
     ap.add_argument("--max-notes", type=int, default=None)
     ap.add_argument("--ledger", type=Path, default=None)
     ap.add_argument("--room", default=DEFAULT_ROOM)

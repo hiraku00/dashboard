@@ -85,13 +85,20 @@ const SYNC_ENV = `PYTHONPATH=collector PORTAL_URL=https://dashboard.hiraku00.wor
 // リポジトリの直下(dashboard)で、cd せずにそのまま打てる形。台帳などの保存先は collector/line_openchat の場所から決まるので、
 // どこで実行しても同じ(collector/data/line_openchat)
 const SYNC_COMMANDS = [
-  { label: "同期コマンド(リポジトリの直下で実行。数分かかる)", command: `${SYNC_ENV} python3 -m line_openchat.sync` },
-  { label: "初回だけ: 依存パッケージのインストール", command: "python3 -m pip install -r collector/line_openchat/requirements.txt" },
-  { label: "一覧の最後まで全件を読み直したいとき(台帳が無い場合など)", command: `${SYNC_ENV} python3 -m line_openchat.sync --first-run` },
+  { label: "普段の同期(数分かかる)",
+    note: "投稿から14日以内のノートを読み、新しいノートと、コメントが増えたノートだけコメント欄を開きます。14日より古いノートが続いたところで止まるので、それより古いノートのコメントが増えても取り込まれません。",
+    command: `${SYNC_ENV} python3 -m line_openchat.sync` },
+  { label: "古いノートまで読む(日数を指定)",
+    note: "14日より前のノートも読みたいときに、日数を変えます(下は60日)。日数を増やすほど時間がかかります。週1回など、たまに実行する用途です。",
+    command: `${SYNC_ENV} python3 -m line_openchat.sync --scan-days 60` },
+  { label: "一覧の最後まで全件を読む",
+    note: "日数で止まらず、一覧の一番下まで読みます。最初の1回や、台帳が無い場合に使います(台帳が無くPortalから復元もできないときは、これを付けないと中断します)。",
+    command: `${SYNC_ENV} python3 -m line_openchat.sync --first-run` },
+  { label: "初回だけ: 依存パッケージのインストール", note: "", command: "python3 -m pip install -r collector/line_openchat/requirements.txt" },
 ];
 
 /** コマンド1つ分の表示: コピー押下で navigator.clipboard へ、失敗したら選択状態にする。 */
-function CopyableCommand({ label, command }: { label: string; command: string }) {
+function CopyableCommand({ label, note, command }: { label: string; note: string; command: string }) {
   const [copied, setCopied] = useState(false);
   const preRef = useRef<HTMLPreElement>(null);
   const copy = async () => {
@@ -106,6 +113,7 @@ function CopyableCommand({ label, command }: { label: string; command: string })
   };
   return <div className="sync-command">
     <p>{label}</p>
+    {note && <p className="sync-command-note">{note}</p>}
     <div className="sync-command-row">
       <pre ref={preRef}>{command}</pre>
       <button type="button" onClick={copy}>{copied ? "コピーしました" : "コピー"}</button>
@@ -123,7 +131,7 @@ function SyncCommandHelp() {
       <section className="editor sync-command-editor" role="dialog" aria-modal="true" aria-labelledby="sync-command-title" onClick={(event) => event.stopPropagation()}>
         <div className="editor-heading"><h2 id="sync-command-title">ノートの同期コマンド</h2><button className="close-button" onClick={() => setOpen(false)} aria-label="閉じる">×</button></div>
         <p className="sync-command-prereq">前提: LINEを起動し、対象のオープンチャットの「ノート」を開いておく(自動では開けません)。画面ロックを解除しておく。実行中(数分間)はマウス・キーボードに触らない(触ると中断します)。</p>
-        {SYNC_COMMANDS.map((c) => <CopyableCommand key={c.label} label={c.label} command={c.command} />)}
+        {SYNC_COMMANDS.map((c) => <CopyableCommand key={c.label} label={c.label} note={c.note} command={c.command} />)}
         <p className="sync-command-doc">詳しくは <code>collector/README.md</code>「ちきりんオプチャ（LINE）」を参照。</p>
       </section>
     </div>}
