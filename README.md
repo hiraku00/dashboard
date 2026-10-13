@@ -33,7 +33,7 @@ Watch List、TextTube、Manage Asset、To Doを一つのCloudflare上で管理�
 | `/manage-asset` | Manage Assetホーム。総資産、資産推移、資産配分、保有資産 |
 | `/manage-asset/locations` | 保管場所ごとの資産内訳 |
 | `/manage-asset/currencies` | 通貨ごとの資産推移と履歴 |
-| `/manage-asset/sync` | データ取得・同期状況、古いデータ、手動同期状態 |
+| `/manage-asset/sync` | データ取得・同期状況、古いデータ、今すぐ再取得の依頼 |
 | `/manage-asset/settings` | Manage Asset表示・同期設定 |
 | `/todo` | 日別の看板、単発タスク、毎日／曜日指定の繰り返しタスク |
 | `/chikirin` | ちきりんオプチャ。番組ごとの一覧（表・ページ移動・検索・絞り込み・放送局や放送タイトル、リンクの編集） |

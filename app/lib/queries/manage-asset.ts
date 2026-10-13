@@ -204,6 +204,16 @@ export async function latestSyncRun(): Promise<Row | null> {
   return (await env.DB.prepare("SELECT * FROM asset_sync_runs ORDER BY received_at DESC LIMIT 1").all<Row>()).results?.[0] ?? null;
 }
 
+/** 未処理の「今すぐ再取得」依頼（あれば1件）。Mac側collectorのポーリングと、
+ *  データ更新ページの表示が両方これを読む。書き込み（依頼の作成・完了）は
+ *  route.ts側に置く（このファイルの冒頭の方針通り）。 */
+export async function pendingResyncRequest(): Promise<Row | null> {
+  await ensureSchema({ seed: false });
+  return (
+    (await env.DB.prepare("SELECT * FROM asset_resync_requests WHERE fulfilled_at IS NULL ORDER BY requested_at DESC LIMIT 1").all<Row>()).results?.[0] ?? null
+  );
+}
+
 /** The history the asset overview needs -- and nothing more.
  *
  *  The overview's trend line and its "前日保存比" read exactly these fields of a
