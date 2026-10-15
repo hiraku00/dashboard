@@ -328,7 +328,17 @@ export function TextTubeApp({
             </div>
             <div className="tt-video-info">
               <span className="tt-channel-avatar">
-                {(v.channel_name || "T").slice(0, 1)}
+                {v.channel_thumbnail_url ? (
+                  <Image
+                    src={v.channel_thumbnail_url}
+                    alt=""
+                    fill
+                    sizes="34px"
+                    unoptimized
+                  />
+                ) : (
+                  (v.channel_name || "T").slice(0, 1)
+                )}
               </span>
               <div>
                 <h3>{v.title}</h3>
