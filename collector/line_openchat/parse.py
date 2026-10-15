@@ -368,6 +368,14 @@ def drop_card_garbage(rest: list[Line], counts_cy: float | None) -> list[Line]:
     return [l for l in rest if l.x >= K.LINK_CARD_X_MIN or not (top <= l.cy < bottom) or TXT_MORE in l.text.replace(" ", "")]
 
 
+def beside_card_text(seg: list[Line], run: tuple[float, float]) -> bool:
+    """アバターらしい高さの画像の右に、リンクカードの文字(x>=100)が並んでいれば、アバターではなくカードの写真.
+    暗い写真は、画面端で切れた部分が丸いアバターと同じ高さ・背景色の見た目になる(実機: 2026-10-14、人物写真つきの
+    NHKカードの写真が作者になり、カードの説明文を作者名とする幽霊ノートが3件できた). 本物のアバターの行には、
+    x>=100から始まる文字は無い(作者名はx=45〜80から始まる. 右端のメニューは SIDE_X_MIN 以降)."""
+    return any(K.LINK_CARD_X_MIN <= l.x < K.SIDE_X_MIN and run[0] - 4 <= l.cy <= run[1] + 4 for l in seg)
+
+
 # ---------- ブロックへの分割 ----------
 def split_blocks(screen: Screen) -> list[Block]:
     all_lines = merge_fragments([ln for ln in screen.lines if ln.y > K.TOP_MARGIN])
@@ -407,7 +415,7 @@ def split_blocks(screen: Screen) -> list[Block]:
             continue
 
         kind = "note" if tl.x < K.NOTE_X_MAX else "comment"
-        cands = [r for r in runs if seg_top - 2 <= r[0] and r[1] <= tl.y]
+        cands = [r for r in runs if seg_top - 2 <= r[0] and r[1] <= tl.y and not beside_card_text(seg, r)]
 
         def named(r: tuple[float, float]) -> bool:
             return any(K.NAME_X_MIN < l.x < K.NAME_X_MAX and r[0] - 4 <= l.cy <= r[1] + 4 for l in seg)

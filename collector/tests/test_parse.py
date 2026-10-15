@@ -166,3 +166,18 @@ def test_reaction_faces_on_the_counts_row_are_not_taken_for_card_text():
     after = [(b.author, b.link_title, b.text) for b in P.split_blocks(screen) if b.kind == "note"]
     assert after == before
     assert before[0][1] == "" and "工場ニュース" in before[1][1]
+
+
+def test_link_card_photo_is_not_taken_for_an_avatar_when_the_notes_header_is_scrolled_off():
+    """暗い人物写真つきのリンクカードは、画面の端で切れた部分が、アバターと同じ高さ・背景色の見た目になる。以前は、その写真を
+    アバターと見て、カードの説明文を作者名とする幽霊ノートを作った(2026-10-14の実機: もーしのNHKの投稿から3件)。
+    アバターらしい画像の右にカードの文字(x>=100)が並ぶなら、アバターとしては扱わない."""
+    chat = make_chat()
+    chat.scroll_y = 255                         # ちきりんの作者名・アバターは画面の外、カードの題名は上端の少し下
+    screen = chat.screen()
+    card = next(l for l in screen.lines if l.x >= 100 and "工場ニュース" in l.text)
+    screen._rects = [r for r in screen._rects if r[0] != 14]                         # カードの灰色の枠(暗い写真は背景と見分けにくい)
+    screen._rects.append((16.0, card.y - 6, 40.0, card.y + 19, (200, 200, 200)))    # 写真の一部
+    assert any(r[0] <= card.y <= r[1] for r in P.avatar_runs(screen))   # 写真の一部が、アバターの大きさの画像として検出される
+    first = next(b for b in P.split_blocks(screen) if b.kind == "note")
+    assert first.author == "" and not first.complete
