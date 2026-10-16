@@ -13,7 +13,13 @@ export const ROOM = "atsumare-tv";
 
 /** all: 全スレッド(既定)。involved: ちきりんが関わる(旧仕様の一覧と同じ)。thread/comment: involved の内訳。none: 関わらないスレッドだけ。 */
 export type ProgramKind = "all" | "involved" | "thread" | "comment" | "none";
-export type ProgramsQuery = { q?: string | null; kind?: string | null; sort?: string | null; page?: number | string | null; limit?: number | null };
+export type ProgramsQuery = { q?: string | null; kind?: string | null; sort?: string | null; watch?: string | null; page?: number | string | null; limit?: number | null };
+
+/** 視聴列での絞り込み。unwatched: 「未視聴」か「—」(視聴済み・鑑賞中でないもの)だけ。 */
+export type ProgramWatch = "all" | "unwatched";
+export function parseWatch(value: unknown): ProgramWatch {
+  return value === "unwatched" ? "unwatched" : "all";
+}
 
 function clean(value: unknown, max = 200): string {
   return typeof value === "string" ? value.trim().slice(0, max) : "";
@@ -40,7 +46,7 @@ export function likePattern(term: string): string {
 }
 
 /** 一覧に載るノート: 既定(all)は全スレッド。kind で、ちきりんの関わり方に絞り込める。 */
-export function buildProgramsFilter(query: ProgramsQuery): { where: string; values: unknown[]; limit: number; offset: number; page: number; kind: ProgramKind; sort: ProgramSort } {
+export function buildProgramsFilter(query: ProgramsQuery): { where: string; values: unknown[]; limit: number; offset: number; page: number; kind: ProgramKind; sort: ProgramSort; watch: ProgramWatch } {
   const kind = parseKind(query.kind);
   const clauses = ["n.room = ?", "n.deleted_at IS NULL"];
   const values: unknown[] = [ROOM];
@@ -67,7 +73,7 @@ export function buildProgramsFilter(query: ProgramsQuery): { where: string; valu
   const limit = requested > 0 ? Math.min(50, requested) : PAGE_SIZE;
   const wantedPage = Math.floor(Number(query.page));
   const page = wantedPage >= 1 ? Math.min(wantedPage, MAX_PAGE) : 1;
-  return { where: `WHERE ${clauses.join(" AND ")}`, values, limit, offset: (page - 1) * limit, page, kind, sort: parseSort(query.sort) };
+  return { where: `WHERE ${clauses.join(" AND ")}`, values, limit, offset: (page - 1) * limit, page, kind, sort: parseSort(query.sort), watch: parseWatch(query.watch) };
 }
 
 /** ちきりんの最新の投稿の日時(一覧の「最新ちきりん」列、toProgram の latestAt と同じ): ちきりんのコメントのうち最新、なければちきりんが立てたスレッド自身。関わりが無ければ NULL。 */

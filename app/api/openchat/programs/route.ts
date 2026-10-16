@@ -8,6 +8,7 @@ export const GET = route(async (request: Request) => {
     q: searchParams.get("q"),
     kind: searchParams.get("kind"),
     sort: searchParams.get("sort"),
+    watch: searchParams.get("watch"),
     page: searchParams.get("page"),
     limit: Number(searchParams.get("limit")) || undefined,
   });

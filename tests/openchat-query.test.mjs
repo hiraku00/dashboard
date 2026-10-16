@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, test } from "vitest";
 import {
-  buildProgramsFilter, formatPostedAt, likePattern, parseKind, parseSort, programsOrderBy, resolveThumbnails, thumbnailSourceUrl, toProgram, MAX_PAGE, PAGE_SIZE,
+  buildProgramsFilter, formatPostedAt, likePattern, parseKind, parseSort, parseWatch, programsOrderBy, resolveThumbnails, thumbnailSourceUrl, toProgram, MAX_PAGE, PAGE_SIZE,
 } from "../app/lib/openchat-query.ts";
 
 // vinextの静的解析は searchParams の読み取りだけでは動的ページと判定しない(実機で確認:
@@ -170,5 +170,15 @@ describe("resolveThumbnails (一覧のサムネイル)", () => {
   test("探したリンクが今のリンクと違う保存(OCRの誤りを手で直した後など)は、古い画像なので使わない", () => {
     const cached = new Map([["n", { source_url: "https://example.com/misread", thumbnail_url: "https://img/old.jpg" }]]);
     expect(resolveThumbnails([{ noteId: "n", meta: meta([nhk]), linkUrl: "" }], cached).has("n")).toBe(false);
+  });
+});
+
+describe("視聴での絞り込み", () => {
+  test("watch は unwatched だけを受け付け、それ以外は all", () => {
+    expect(parseWatch("unwatched")).toBe("unwatched");
+    expect(parseWatch("weird")).toBe("all");
+    expect(parseWatch(undefined)).toBe("all");
+    expect(buildProgramsFilter({ watch: "unwatched" }).watch).toBe("unwatched");
+    expect(buildProgramsFilter({}).watch).toBe("all");
   });
 });
