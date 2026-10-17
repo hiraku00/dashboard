@@ -31,6 +31,9 @@ MISSED_RECENT_DAYS = 7      # 今回読めなかったノートを警告する�
 THREAD_ROOM_BELOW_FOOTER = 120  # ノートの時刻行の下に、この高さ(pt)以上が見えていれば、直下の「前のコメントを見る」の有無を判断できる
 HINT_TIME_TOLERANCE_MIN = 240   # 手がかりの近くの投稿時刻が、このノートの投稿時刻とこれ(分)を超えてズレていたら、
                                  # 本文が似ているだけの別の投稿とみなし、手がかりとして使わない
+TALL_NOTE_LINES = 66        # 本文がこの行数(1行26文字で数える)を超えるノートは、開くと画面に収まらない(見出しと時刻行が同時に見えない)
+TALL_WALK_STEP = 20         # 長いノートの見出しから末尾(時刻行)へ進む歩幅(行)。1画面より小さく、時刻行を飛ばさない
+TALL_TAIL_MATCH = 0.7       # 画面に見える本文の末尾が、台帳の本文にこの割合以上含まれていれば、そのノートの末尾とみなす
 
 
 class Driver(Protocol):
@@ -115,6 +118,7 @@ class Session:
         self._lost_position = False                             # 見出しを探して大きく動いた末に諦め、スクロール位置が分からなくなった
         self._left_open: dict | None = None                     # 開いた(開いているのを見つけた)まま、まだ閉じていないノート
         self._carry: tuple[Screen, list[Block]] | None = None   # _advance が撮った画面を、次の shot() で再利用する
+        self._tall_bodies: set[str] = set()                     # 開いたら画面に収まらなくなった(全文はコメント欄の撮影で取る)ノートのID
 
     # ---------- 画面 ----------
     def shot(self) -> tuple[Screen, list[Block]]:
@@ -223,17 +227,25 @@ class Session:
             screen, blocks = self.shot()
             opened = False
             for b in blocks:
-                if b.kind != "note" or not b.complete:
+                if b.kind != "note":
                     continue
-                obs = note_obs(b, self.now)
-                if obs is None:
-                    stats.warnings.append(f"時刻を読めないノートがあります: {b.time_raw!r}")
-                    continue
-                borrowed = self.ledger.borrowed_time(obs)
-                if borrowed:
-                    self._skip_borrowed(borrowed, obs, screen, blocks)
-                    continue
-                note, is_new = self.ledger.upsert_note(obs, self.now_iso)
+                if not b.complete:
+                    # 本文を開いたままの、画面より長いノートは、揃った見出しが一度も写らない。末尾(時刻行と数の行)で見分ける
+                    tall = self._tall_note_at(b, visited)
+                    if tall is None:
+                        continue
+                    note, obs, is_new = tall[0], tall[1], False
+                    note["last_checked_at"] = self.now_iso
+                else:
+                    obs = note_obs(b, self.now)
+                    if obs is None:
+                        stats.warnings.append(f"時刻を読めないノートがあります: {b.time_raw!r}")
+                        continue
+                    borrowed = self.ledger.borrowed_time(obs)
+                    if borrowed:
+                        self._skip_borrowed(borrowed, obs, screen, blocks)
+                        continue
+                    note, is_new = self.ledger.upsert_note(obs, self.now_iso)
                 if note["id"] in visited:
                     continue
                 warning = self.ledger.identity_warning(note)
@@ -273,7 +285,9 @@ class Session:
                 prev_sig = None
                 continue
             # 下へ進む
-            sig = self._signature(blocks)
+            # 区切りが一つも無い画面(画面より長いノートの本文の途中)は、どれもブロックの並びが「空」で同じに見え、
+            # 末尾に着いたと誤る。そのときだけ、写っている文字で比べる
+            sig = self._signature(blocks) or [(round(l.y / 6), l.text) for l in screen.lines]
             if sig == prev_sig:
                 end_hits += 1
                 if end_hits >= 2:
@@ -392,6 +406,12 @@ class Session:
                 self._collect_thread(note, expected, bool(reason))
                 moved = True
                 self.stats.notes_opened += 1
+        if note["id"] in self._tall_bodies and not note["body_complete"]:
+            # 画面より長いノートで、コメント欄を撮影しなかった(コメントが無い)・撮影で全文を取れなかった。
+            # 画面1枚ぶんの本文だけを残し、次の実行で毎回開き直さないよう、取れたものとして扱う
+            self.stats.warnings.append(f"{self._label(note)}: 本文が画面より長く、全文を取れませんでした(冒頭だけを記録しました)")
+            note["body_complete"] = True
+            note["pending_upload"] = True
         return moved
 
     def _full_expand_reason(self, note: dict, is_new: bool, expected: int | None) -> str | None:
@@ -446,6 +466,10 @@ class Session:
                 break
             # 本文が縦に長くなり、末尾(時刻行)が画面の下にはみ出した(実機で確認)。投稿の末尾が見えるまで少しずつ下へ進む
             self.scroll(8)
+        if b2 is None and self._reached_tall_tail(note):
+            # 開いたら画面より長くなった。全文は、コメント欄を撮影するとき(縦長の画像)に取る(_adopt_full_body)
+            self._tall_bodies.add(note["id"])
+            return True
         if b2 is None or b2.more_y is not None:
             self.stats.warnings.append(f"本文を開けませんでした: {self._label(note)}")
             self._lost_position = True
@@ -455,6 +479,15 @@ class Session:
             obs2.body_complete = True
             self.ledger.upsert_note(obs2, self.now_iso)
         return True
+
+    def _reached_tall_tail(self, note: dict) -> bool:
+        """本文を開いた後、投稿の末尾が見つからないとき: 画面より長いノートになったのなら、その末尾(時刻行)まで進めて True.
+        普通のノートでは呼ばれない(開いた後の末尾が、今までどおり見つかるため)。"""
+        try:
+            tail, _, _ = self._seek_header(note, want="tail")
+        except SessionError:
+            return False
+        return not tail.complete and tail.more_y is None
 
     # ---------- コメント欄 ----------
     def _collect_thread(self, note: dict, expected: int | None, full_expand: bool) -> None:
@@ -587,8 +620,8 @@ class Session:
 
     def _locate_thread(self, note: dict) -> tuple[Block, Screen, bool]:
         """見出しを画面に出し、コメント欄が開いているかを確かめる. 戻り値: (見出し, 画面, 開いているか).
-        見出しは、コメントアイコンを押せる状態(完全に見える)で返す。"""
-        header, screen, blocks = self._seek_header(note)
+        見出しは、コメントアイコンを押せる状態(完全に見える)で返す。画面より長いノートは、時刻行と数の行が見える末尾で返す。"""
+        header, screen, blocks = self._seek_header(note, want="tail")
         is_open = self._is_open(blocks, header)
         moved = 0
         stale = False                            # 最後に見つけた見出しが、画面の上に出て不完全(押す位置を測り直す必要がある)
@@ -621,6 +654,10 @@ class Session:
             self.scroll(-moved)
             screen, blocks = self.shot()
             fresh = self._find_block(blocks, note)
+            if fresh is None and not header.complete:
+                # 画面より長いノート: 揃った見出しは写らないので、末尾(時刻の表示が同じ不完全なノート)で測り直す
+                key = re.sub(r"\s", "", header.time_raw)
+                fresh = next((b for b in blocks if b.kind == "note" and not b.complete and re.sub(r"\s", "", b.time_raw) == key), None)
             if fresh is not None:
                 header = fresh                    # 見つからなければ、直前の画面の位置を使う(押す前に、画面で確認される)
         return header, screen, is_open
@@ -688,10 +725,17 @@ class Session:
                 return False
         return found_readable
 
-    def _seek_header(self, note: dict):
+    def _seek_header(self, note: dict, want: str = "head"):
         """ノートの見出し(作者〜時刻行がすべて見える位置)を画面に出す.
         1行目の文字が画面に写っていれば、その位置から上下どちらへ動くかを決める。写っていなければ、上下に順に探す。
-        手がかりはあるのに見出しが確認できない状態が続いたら、迷走とみなして早めに諦める(SEEK_STUCK_LIMIT)。"""
+        手がかりはあるのに見出しが確認できない状態が続いたら、迷走とみなして早めに諦める(SEEK_STUCK_LIMIT)。
+
+        画面より長いノート(本文を開くと画面数枚ぶん)は、作者行と時刻行が同じ画面に入らず、見出しが揃って見えることが無い。
+        見出しが画面の上の方に見えているのに、その下に時刻行が無いことで見分け、want に応じて返す
+        (実機で発生: 2026-10-17、seiさんの長い感想のノートで、見出しを探し続けて諦めた):
+        - "head": 見出しの作者行の位置だけを持つブロック(コメント欄の撮影を、ここから始める)
+        - "tail": 下へ進んで、時刻行と数の行(コメントアイコン)が見える末尾のブロック(開閉に使う)
+        どちらも complete=False で返す。普通のノートでは、今までどおり揃った見出しを返す。"""
         seen_up = seen_down = 0
         hint_without_match = 0
         for i in range(48):
@@ -699,11 +743,20 @@ class Session:
             h = self._find_block(blocks, note)
             if h is not None:
                 return h, screen, blocks
+            if want == "tail":
+                t = self._find_tail(blocks, note)
+                if t is not None:
+                    return t, screen, blocks
             if i and i % SEEK_LOG_EVERY == 0:
                 self.log(f"    見出しを探しています({i}回目。コメントの多い長いノートでは時間がかかることがあります)")
             y = self._hint_y(screen, blocks, note)
             self.debug("  seek#%d hint_y=%s notes=%s" % (i, y and round(y), [(b.author[:4], b.complete, round(identity.note_score(note, o.as_match_dict()), 2))
                                                               for b in blocks if b.kind == "note" and (o := note_obs(b, self.now))]))
+            if y is not None and self._runs_past_screen(screen, blocks, y):
+                self.debug("  seek#%d 画面より長いノート(見出しの下に時刻行が無い)" % i)
+                if want == "tail":
+                    return self._walk_to_tail(note)
+                return Block(kind="note", author=note["author_name"], y_top=y - 42.0, y_time=y), screen, blocks
             if y is not None:
                 hint_without_match += 1
                 if hint_without_match >= SEEK_STUCK_LIMIT:
@@ -717,6 +770,82 @@ class Session:
                 hint_without_match = 0
                 self.scroll(24)           # 上に無ければ下へ
         raise SessionError("ノートの見出しが見つかりません")
+
+    @staticmethod
+    def _runs_past_screen(screen: Screen, blocks: list[Block], hint_y: float) -> bool:
+        """1行目が画面の上の方(作者行まで見える位置)に写っているのに、その下に区切り(時刻行など)が一つも無い
+        = このノートは、見出しを画面の上端に寄せても時刻行が入らないほど長い。
+        普通のノートなら、この位置で時刻行まで見えるか、上へ少し動かせば見出しが揃う(今までどおり)。"""
+        if hint_y > screen.height * 0.45 or hint_y - 42.0 < K.TOP_MARGIN + 10:
+            return False                          # 下寄り(下へ進めば揃う)・作者行が画面の上で切れている(上へ戻せば揃う)
+        return not any(b.y_time > hint_y for b in blocks)
+
+    def _walk_to_tail(self, note: dict) -> tuple[Block, Screen, list[Block]]:
+        """長いノートの見出しが見えている所から下へ進み、そのノートの末尾(時刻行と数の行)を画面に出す.
+        見出しの下で最初に現れるノートの時刻行が、このノートのもの(その間には本文とリンクカードしか無い)。
+        歩幅は1画面より小さいので、時刻行は必ずどこかの画面の下半分に現れる。"""
+        for _ in range(40):
+            self.scroll(TALL_WALK_STEP)
+            screen, blocks = self.shot()
+            tail = next((b for b in blocks if b.kind != "end" and b.y_time > K.TOP_MARGIN), None)
+            if tail is None:
+                continue
+            if tail.kind != "note" or tail.complete or not self._time_matches(tail, note):
+                raise SessionError("長いノートの末尾(時刻行)が見つかりません")
+            for _ in range(3):
+                # 時刻行が画面の下端に寄っていると、その下(コメント欄が開いているか)が見えない。少し進めて上げる
+                if screen.height - tail.y_time >= THREAD_ROOM_BELOW_FOOTER:
+                    break
+                self.scroll(6)
+                screen, blocks = self.shot()
+                nxt = next((b for b in blocks if b.kind == "note" and not b.complete and self._time_matches(b, note)), None)
+                if nxt is None:
+                    break
+                tail = nxt
+            return tail, screen, blocks
+        raise SessionError("長いノートの末尾(時刻行)まで進めません")
+
+    def _time_matches(self, b: Block, note: dict) -> bool:
+        """ブロックの時刻の表示(または時刻そのもの)が、このノートの投稿時刻と合うか."""
+        if re.sub(r"\s", "", b.time_raw) == re.sub(r"\s", "", note.get("posted_at_raw", "")):
+            return True
+        obs = note_obs(b, self.now)
+        if obs is None:
+            return False
+        tol = tolerance_minutes(obs.posted_precision, note.get("posted_at_precision", EXACT))
+        return identity.minutes_between(note["posted_at"], obs.posted_at) <= tol
+
+    @staticmethod
+    def _is_tall(note: dict) -> bool:
+        """台帳の本文(全文)から見て、開くと画面に収まらない長いノートか(1行26文字で折り返して数える)."""
+        lines = sum(max(1, -(-len(p) // 26)) for p in note.get("body_text", "").splitlines())
+        return note.get("body_complete", False) and lines > TALL_NOTE_LINES
+
+    def _find_tail(self, blocks: list[Block], note: dict) -> Block | None:
+        """画面にある、長いノートの末尾(見出しが画面の上に出て、時刻行と数の行だけが見えるブロック).
+        台帳に全文があるノートだけが対象: 見えている本文の末尾が台帳の本文に含まれ、時刻も合うもの。"""
+        if not self._is_tall(note):
+            return None
+        for b in blocks:
+            if (b.kind == "note" and not b.complete and not b.author and self._time_matches(b, note)
+                    and identity.tail_in_body(b.text, note["body_text"]) >= TALL_TAIL_MATCH):
+                return b
+        return None
+
+    def _tall_note_at(self, b: Block, visited: set[str]) -> tuple[dict, NoteObs] | None:
+        """一覧の走査で見えた不完全なブロックが、まだ確認していない長いノートの末尾なら (台帳のノート, 観測).
+        普通のノートは、揃った見出しで確認するので対象外(台帳の本文から、画面に収まらない長さのものだけを見る)。"""
+        if b.author or b.comments is None:
+            return None
+        obs = note_obs(b, self.now)
+        if obs is None:
+            return None
+        for note in self.ledger.notes:
+            if note["id"] in visited or note.get("deleted_at"):
+                continue
+            if self._find_tail([b], note) is not None:
+                return note, obs
+        return None
 
     def _header_y(self, screen: Screen, blocks: list[Block], note: dict) -> float | None:
         """ノートの見出し(作者行)の上端y. 時刻行まで見えていればそのブロックから、本文が画面より長く時刻行が見えないときは、
