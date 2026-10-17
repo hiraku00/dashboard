@@ -46,6 +46,17 @@ def contain_sim(a: str, b: str) -> float:
     return m.size / min(len(na), len(nb))
 
 
+def tail_in_body(tail: str, body: str) -> float:
+    """画面に見えている本文の末尾(最後の60文字)が、台帳の本文の「どこか」にどれだけ含まれるか.
+    contain_sim は冒頭600文字しか比べないので、画面数枚ぶんある長いノートの末尾には使えない。"""
+    nt = _STRIP.sub("", unicodedata.normalize("NFKC", tail))[-60:]
+    nb = _STRIP.sub("", unicodedata.normalize("NFKC", body))
+    if len(nt) < 12 or not nb:
+        return 0.0
+    m = SequenceMatcher(None, nt, nb, autojunk=False).find_longest_match(0, len(nt), 0, len(nb))
+    return m.size / len(nt)
+
+
 def name_sim(a: str, b: str) -> float:
     na, nb = norm_name(a), norm_name(b)
     if not na or not nb:
