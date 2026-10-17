@@ -30,6 +30,8 @@ CUT_SAFETY_PT = 24                 # 帯の下端から、切れ目までの余�
 SCROLLBAR_PT = 20                  # 右端のスクロールバーの幅(比較・貼り付けの対象から除く)
 FIXED_MARGIN_PT = 12               # 固定見出しの下端からの余裕
 FAB_MARGIN_PT = 8
+FAB_NEAR_BOTTOM_PT = 60           # 右下の固定ボタンは、画面の下端からこれ以内まで届いている(実機: 下端の約20pt上まで)
+FAB_MAX_H_PT = 200                # 固定ボタンとみなす高さの上限。これより高い分は、上にある別のもの(リンクカードの無地など)
 SAME_RATIO = 0.8                   # 無地でない行のこの割合以上が同じなら「変わっていない」(時刻の文字の更新などは許す)
 MAX_FAILS = 6                      # 位置を測れない画像が、これだけ続いたら中止(歩幅が半分ずつになり、3行まで下がる)
 FAB_MASK_PT = 4                    # 最後の画像で、ボタンの矩形を塗りつぶすときの上への余裕(丸いボタンの縁の取りこぼし対策)
@@ -174,6 +176,7 @@ def calibrate(src: FrameSource, probe_lines: int = 6) -> Calibration:
     region_a, region_b = a[h // 2:, x_lo:x_hi], b[h // 2:, x_lo:x_hi]
     fixed_ink = (region_a == region_b).all(axis=2) & (np.abs(region_a.astype(np.int16) - BG).max(axis=2) > BLANK_TOL)
     rows_ok = np.where(fixed_ink.sum(axis=1) >= int(30 * scale))[0]
+    rows_ok = _bottom_run(rows_ok, h - h // 2, scale)
     if len(rows_ok) >= int(10 * scale):
         top = int(rows_ok.min())
         cols = np.where(fixed_ink[top:].sum(axis=0) >= int(10 * scale))[0]
@@ -187,6 +190,21 @@ def calibrate(src: FrameSource, probe_lines: int = 6) -> Calibration:
     if shift.kind != "ok":
         raise CaptureError(f"スクロール量を測れませんでした: {shift.reason or shift.kind}")
     return Calibration(scale, w, h, x1, band_top, band_bottom, fab, shift.d / probe_lines)
+
+
+def _bottom_run(rows: np.ndarray, region_h: int, scale: float) -> np.ndarray:
+    """2枚で同じ画素が残った行のうち、右下の固定ボタンにあたる「下端まで届く、ひと続きの行」だけを返す.
+    リンクカードの大きな無地(白)も、少しスクロールした2枚で同じ位置に同じ画素が残り、固定ボタンと見分けがつかない。
+    それを固定ボタンに含めると、帯の下端が画面の中ほどまで上がり「帯が狭すぎます」で止まる
+    (実機で発生: 2026-10-17、一覧の先頭のノートの、縦に大きいリンクカードの白い部分)。"""
+    if len(rows) == 0:
+        return rows
+    gap = max(1, int(4 * scale))
+    breaks = np.where(np.diff(rows) > gap)[0]
+    run = rows[breaks[-1] + 1:] if len(breaks) else rows
+    if region_h - 1 - int(run.max()) > int(FAB_NEAR_BOTTOM_PT * scale):
+        return rows[:0]                           # 下端まで届いていない: 固定ボタンではない
+    return run[run >= int(run.max()) - int(FAB_MAX_H_PT * scale)]
 
 
 # ---------------- つなぎ合わせ ----------------

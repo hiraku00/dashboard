@@ -37,6 +37,19 @@ def test_calibration_finds_scale_bands_fab_and_line_height(scale):
     assert cal.x1 < src.W
 
 
+@pytest.mark.parametrize("scale", [1.0, 2.0])
+def test_calibration_ignores_a_large_plain_link_card_in_the_middle(scale):
+    """一覧の先頭のノートに、縦に大きいリンクカード(無地の白い部分が右端近くまである)があると、少しスクロールした2枚で
+    同じ位置に同じ白が残り、固定の＋ボタンと誤認して帯の下端が画面の中ほどまで上がっていた(実機: 2026-10-17
+    「ウィンドウの高さが足りません(帯が狭すぎます)」)。固定ボタンは、下端まで届くひと続きの領域だけとみなす."""
+    doc, src = setup(scale, blocks=60)
+    y0, y1 = int(450 * scale), int(700 * scale)                  # 画面の y≈510〜760pt(先頭位置)にあたる文書の行
+    doc[y0:y1, int(14 * scale): int(412 * scale)] = 245         # カードの無地の白
+    cal = calibrate(src)
+    assert cal.fab is not None and abs(cal.fab[1] - (src.H - int(130 * scale))) <= 2
+    assert cal.band_bottom > src.H - int(150 * scale)
+
+
 def test_calibration_fails_clearly_when_the_screen_does_not_move():
     doc, src = setup(1.0, blocks=60)
     src.scroll = lambda lines: None
