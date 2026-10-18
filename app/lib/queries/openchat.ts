@@ -9,14 +9,11 @@ import { canonicalUrl } from "@/app/lib/text";
 import { autoFillFields, canAutoFill } from "@/app/lib/link-preview";
 import { fetchLinkPreview, fetchPageThumbnail } from "@/app/lib/thumbnail-fetch";
 import {
-  buildProgramsFilter, programsOrderBy, toProgram, ROOM, resolveThumbnails, thumbnailSourceUrl,
-  type CachedThumbnail, type Program, type ProgramsQuery,
+  buildProgramsFilter, matchWatched, programLinkUrls, programsOrderBy, toProgram, ROOM, resolveThumbnails, thumbnailSourceUrl,
+  type CachedThumbnail, type Program, type ProgramsQuery, type WatchedLinks, type WatchedRow,
 } from "@/app/lib/openchat-query";
 
-/** 一覧のリンクのうち、Watch List(items/item_links)にもあるもの。キーは一覧に出るURLそのまま、値はWatch Listでの保存URL・
- *  その項目のタイトル(「登録済」バッジの遷移先の検索語に使う。フルURLだと検索欄の48バイト制限で先頭から切り詰められ、
- *  同じシリーズの他の項目にもヒットしてしまうため。app/lib/text.ts の watchListSearchTerm 参照)と該当の項目数。 */
-export type WatchedLinks = Record<string, { url: string; title: string; count: number; status: string; watchedOn: string | null }>;
+export type { WatchedLinks };
 export type ProgramsPage = { programs: Program[]; total: number; page: number; pageSize: number; watched: WatchedLinks };
 
 /** 一覧: 既定(kind=all)は全スレッド。kind でちきりんの関わり方に絞り込める(buildProgramsFilter参照)。
@@ -167,32 +164,20 @@ export async function fillMetaForSynced(noteIds: string[] = []): Promise<void> {
   } catch { /* 放送情報は補助。入らなくても同期は成功させる。 */ }
 }
 
-const WATCH_STATUS_BY_RANK: Record<number, string> = { 3: "completed", 2: "in_progress", 1: "backlog" };
-
-/** 一覧に出るリンク(編集したリンク + ノートのリンクカード)が Watch List にも登録されているかを、正規化したURLで照合する。 */
+/** 一覧に出るリンク(編集したリンク + ノートのリンクカード)が Watch List にも登録されているかを照合する(判定は matchWatched)。 */
 async function watchedLinks(programs: Program[]): Promise<WatchedLinks> {
-  const byCanonical = new Map<string, string[]>();
-  for (const p of programs) {
-    for (const url of [...p.meta.links.map((l) => l.url), p.linkUrl]) {
-      const canonical = url ? canonicalUrl(url) : "";
-      if (canonical) byCanonical.set(canonical, [...new Set([...(byCanonical.get(canonical) ?? []), url])]);
-    }
-  }
-  const canonicals = [...byCanonical.keys()].slice(0, 90);
+  const canonicals = [...new Set(programs.flatMap((p) => programLinkUrls(p)).map((u) => canonicalUrl(u)).filter(Boolean))].slice(0, 90);
   if (!canonicals.length) return {};
   const rows = (await env.DB.prepare(
-    `SELECT l.canonical_url, MIN(l.url) AS url, MIN(i.title) AS title, COUNT(DISTINCT l.item_id) AS c,
-              MAX(CASE i.status WHEN 'completed' THEN 3 WHEN 'in_progress' THEN 2 WHEN 'backlog' THEN 1 ELSE 0 END) AS rank,
-              MAX(CASE WHEN i.status = 'completed' THEN i.watched_on END) AS watched_on
+    `SELECT l.canonical_url, l.url, i.id AS item_id, i.title, i.status, i.watched_on
        FROM item_links l JOIN items i ON i.id = l.item_id
-      WHERE i.deleted_at IS NULL AND l.canonical_url IN (${canonicals.map(() => "?").join(",")})
-      GROUP BY l.canonical_url`,
+      WHERE i.deleted_at IS NULL AND l.canonical_url IN (${canonicals.map(() => "?").join(",")})`,
   ).bind(...canonicals).all<Record<string, unknown>>()).results ?? [];
-  const watched: WatchedLinks = {};
-  for (const row of rows) {
-    for (const shown of byCanonical.get(String(row.canonical_url)) ?? []) watched[shown] = { url: String(row.url), title: String(row.title ?? ""), count: Number(row.c), status: WATCH_STATUS_BY_RANK[Number(row.rank)] ?? "dropped", watchedOn: row.watched_on ? String(row.watched_on) : null };
-  }
-  return watched;
+  const found: WatchedRow[] = rows.map((r) => ({
+    canonicalUrl: String(r.canonical_url), url: String(r.url), itemId: String(r.item_id), title: String(r.title ?? ""),
+    status: String(r.status ?? ""), watchedOn: r.watched_on ? String(r.watched_on) : null,
+  }));
+  return matchWatched(programs, found);
 }
 
 /** ノート行に、ちきりんのコメント(古い順)をつけて、画面・APIの形にする。ほかの人のコメントは読み込まない。 */

@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, test } from "vitest";
 import {
-  buildProgramsFilter, formatPostedAt, likePattern, parseKind, parseSort, parseWatch, programsOrderBy, resolveThumbnails, thumbnailSourceUrl, toProgram, MAX_PAGE, PAGE_SIZE,
+  buildProgramsFilter, formatPostedAt, matchWatched, watchedKey, likePattern, parseKind, parseSort, parseWatch, programsOrderBy, resolveThumbnails, thumbnailSourceUrl, toProgram, MAX_PAGE, PAGE_SIZE,
 } from "../app/lib/openchat-query.ts";
 
 // vinextの静的解析は searchParams の読み取りだけでは動的ページと判定しない(実機で確認:
@@ -180,5 +180,40 @@ describe("視聴での絞り込み", () => {
     expect(parseWatch(undefined)).toBe("all");
     expect(buildProgramsFilter({ watch: "unwatched" }).watch).toBe("unwatched");
     expect(buildProgramsFilter({}).watch).toBe("all");
+  });
+});
+
+describe("matchWatched", () => {
+  const program = (noteId, episodeTitle, links, linkUrl = "") => ({ noteId, linkUrl, meta: { broadcaster: "", programName: "", episodeTitle, links: links.map((url) => ({ url, label: "" })) } });
+  const row = (canonicalUrl, itemId, title, status = "backlog", watchedOn = null) => ({ canonicalUrl, url: canonicalUrl, itemId, title, status, watchedOn });
+  const INDEX = "https://bs.tbs.co.jp/houdou1930/archives/index.html";
+
+  test("a URL held by one item matches by URL alone, whatever the episode title says", () => {
+    const watched = matchWatched([program("n1", "", ["https://example.com/ep1"])], [row("https://example.com/ep1", "i1", "別の題名", "completed", "2026-01-02")]);
+    expect(watched[watchedKey("n1", "https://example.com/ep1")]).toMatchObject({ count: 1, status: "completed", watchedOn: "2026-01-02", title: "別の題名" });
+  });
+
+  test("a URL shared by many items (a program index page) matches only the item with the same episode title", () => {
+    const rows = [row(INDEX, "i1", "サイバー攻撃急増の裏側 先端ＡＩが日本を狙う？"), row(INDEX, "i2", "別の回"), row(INDEX, "i3", "さらに別の回")];
+    const watched = matchWatched([program("n1", "サイバー攻撃急増の裏側先端AIが日本を狙う?", [INDEX])], rows);
+    expect(watched[watchedKey("n1", INDEX)]).toMatchObject({ count: 1, title: "サイバー攻撃急増の裏側 先端ＡＩが日本を狙う？" });
+  });
+
+  test("a shared URL with no matching title, or no episode title, is not registered", () => {
+    const rows = [row(INDEX, "i1", "回A"), row(INDEX, "i2", "回B")];
+    expect(matchWatched([program("n1", "回C", [INDEX])], rows)).toEqual({});
+    expect(matchWatched([program("n2", "", [INDEX])], rows)).toEqual({});
+  });
+
+  test("two notes sharing one URL are matched separately", () => {
+    const rows = [row(INDEX, "i1", "回A"), row(INDEX, "i2", "回B", "completed", "2026-03-04")];
+    const watched = matchWatched([program("n1", "回A", [INDEX]), program("n2", "回B", [INDEX])], rows);
+    expect(watched[watchedKey("n1", INDEX)].status).toBe("backlog");
+    expect(watched[watchedKey("n2", INDEX)].status).toBe("completed");
+  });
+
+  test("the note's link-card URL is matched too, ignoring utm_ parameters", () => {
+    const watched = matchWatched([program("n1", "", [], "https://example.com/ep1?utm_source=x")], [row("https://example.com/ep1", "i1", "題")]);
+    expect(Object.keys(watched)).toEqual([watchedKey("n1", "https://example.com/ep1?utm_source=x")]);
   });
 });

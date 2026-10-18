@@ -6,6 +6,7 @@
 import { MAX_LIKE_TERM_BYTES, truncateUtf8Bytes } from "./sql-text.ts";
 import { metaFromRow, type Meta } from "./openchat-meta.ts";
 import { youTubeThumbnailFromLinks } from "./thumbnail.ts";
+import { canonicalUrl } from "./text.ts";
 
 export const PAGE_SIZE = 10;
 export const MAX_PAGE = 10000;
@@ -190,4 +191,52 @@ export function formatPostedAt(postedAt: string, precision: string): string {
   const pad = (n: number) => String(n).padStart(2, "0");
   const text = `${pad(jst.getUTCMonth() + 1)}.${pad(jst.getUTCDate())} ${pad(jst.getUTCHours())}:${pad(jst.getUTCMinutes())}`;
   return text;
+}
+
+/** Watch List での登録状況: url=保存URL、title=項目名、count=項目数、status=同じリンクの項目のうち最も進んだ状態(完了 > 鑑賞中 > 未着手 > 見送り)、watchedOn=完了日。 */
+export type WatchedInfo = { url: string; title: string; count: number; status: string; watchedOn: string | null };
+/** キーは watchedKey(ノートID, 一覧に出るURL)。同じURLでもノートごとに照合結果が違いうるため、ノートごとに持つ。 */
+export type WatchedLinks = Record<string, WatchedInfo>;
+export function watchedKey(noteId: string, url: string): string {
+  return `${noteId}\n${url}`;
+}
+
+/** Watch List の「リンク×項目」1行。canonical_url は正規化したURL。 */
+export type WatchedRow = { canonicalUrl: string; url: string; itemId: string; title: string; status: string; watchedOn: string | null };
+
+const WATCH_RANK: Record<string, number> = { completed: 3, in_progress: 2, backlog: 1 };
+const WATCH_STATUS_BY_RANK: Record<number, string> = { 3: "completed", 2: "in_progress", 1: "backlog" };
+
+/** 回のタイトルを比べるための形。空白・記号を除き、全角半角などをそろえる。 */
+export function normalizeEpisodeTitle(value: string): string {
+  return value.normalize("NFKC").replace(/[\s\p{P}\p{S}_]+/gu, "").toLowerCase();
+}
+
+/** 一覧に出るリンクのURL(編集したリンク + ノートのリンクカード)を正規化して返す。 */
+export function programLinkUrls(p: Program): string[] {
+  return [...new Set([...p.meta.links.map((l) => l.url), p.linkUrl].filter(Boolean))];
+}
+
+/** 一覧のリンクが Watch List にも登録されているかを、正規化したURLで照合する。
+ *  番組の一覧ページのように複数の項目が同じURLを共有しているときは、URLだけでは回を決められないので、
+ *  ノートの「その日の放送タイトル」と項目のタイトルが一致する項目だけを登録済とする(一致しなければ登録済にしない)。 */
+export function matchWatched(programs: Program[], rows: WatchedRow[]): WatchedLinks {
+  const byCanonical = new Map<string, WatchedRow[]>();
+  for (const r of rows) byCanonical.set(r.canonicalUrl, [...(byCanonical.get(r.canonicalUrl) ?? []), r]);
+  const watched: WatchedLinks = {};
+  for (const p of programs) {
+    const episode = normalizeEpisodeTitle(p.meta.episodeTitle);
+    for (const shown of programLinkUrls(p)) {
+      let items = byCanonical.get(canonicalUrl(shown)) ?? [];
+      if (new Set(items.map((r) => r.itemId)).size > 1) items = episode ? items.filter((r) => normalizeEpisodeTitle(r.title) === episode) : [];
+      if (!items.length) continue;
+      const rank = Math.max(...items.map((r) => WATCH_RANK[r.status] ?? 0));
+      const completed = items.filter((r) => r.status === "completed" && r.watchedOn).map((r) => r.watchedOn as string).sort().at(-1);
+      watched[watchedKey(p.noteId, shown)] = {
+        url: items.map((r) => r.url).sort()[0], title: items.map((r) => r.title).sort()[0] ?? "",
+        count: new Set(items.map((r) => r.itemId)).size, status: WATCH_STATUS_BY_RANK[rank] ?? "dropped", watchedOn: completed ?? null,
+      };
+    }
+  }
+  return watched;
 }
