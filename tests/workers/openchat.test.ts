@@ -6,6 +6,7 @@ import { GET as programsGet } from "@/app/api/openchat/programs/route";
 import { GET as ledgerGet } from "@/app/api/openchat/ledger/route";
 import { GET as programGet, PATCH as programPatch, PUT as programPut } from "@/app/api/openchat/programs/[id]/route";
 import { getProgram, latestOpenchatRun, listPrograms, saveProgramMeta, saveProgramText } from "@/app/lib/queries/openchat";
+import { watchedKey } from "@/app/lib/openchat-query";
 
 // ちきりんオプチャ: 同期API(start → notes → complete)と、画面用の一覧・台帳の復元。
 // 実際の(ephemeralな)D1に対して行う。ちきりん以外のコメント本文が一覧に出ないことも確かめる。
@@ -178,7 +179,7 @@ describe("programs list", () => {
     ]);
     await saveProgramMeta(p.noteId, { links: [{ url: "https://watched.example.test/v#frag", label: "" }, { url: "https://gone.example.test/v", label: "" }, { url: "https://none.example.test/", label: "" }] });
     const page = await listPrograms({ q: "スレッド主の番組情報" });
-    expect(page.watched).toEqual({ "https://watched.example.test/v#frag": { url: "https://watched.example.test/v?utm_source=x#t", title: "oc watched", count: 1, status: "completed", watchedOn: "2026-09-30" } });   // 視聴済(完了した日も返す)
+    expect(page.watched).toEqual({ [watchedKey(p.noteId, "https://watched.example.test/v#frag")]: { url: "https://watched.example.test/v?utm_source=x#t", title: "oc watched", count: 1, status: "completed", watchedOn: "2026-09-30" } });   // 視聴済(完了した日も返す)
     await saveProgramMeta(p.noteId, { links: [] });
     await env.DB.batch([env.DB.prepare("DELETE FROM items WHERE id IN ('oc-w1','oc-w2')"), env.DB.prepare("DELETE FROM item_links WHERE item_id IN ('oc-w1','oc-w2')")]);
   });

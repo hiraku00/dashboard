@@ -6,15 +6,14 @@ import Link from "next/link";
 import { PortalHeader } from "./portal-nav";
 import { readErrorMessage, readJson } from "./lib/json";
 import { inferBroadcaster, siteOf } from "./lib/openchat-meta.ts";
-import { formatPostedAt, type Program, type ProgramKind, type ProgramSort, type ProgramWatch } from "./lib/openchat-query.ts";
+import { formatPostedAt, watchedKey, type Program, type ProgramKind, type ProgramSort, type ProgramWatch, type WatchedInfo, type WatchedLinks } from "./lib/openchat-query.ts";
 import { MAX_LIKE_TERM_BYTES, truncateUtf8Bytes, utf8ByteLength } from "./lib/sql-text.ts";
 import { watchListSearchTerm } from "./lib/text.ts";
 import { useLatestRequest } from "./lib/use-latest-request";
 import { useSearchReload } from "./lib/use-search-reload";
 
-/** Watch List での登録状況: url=保存URL、title=項目名、count=項目数、status=同じリンクの項目のうち最も進んだ状態(完了 > 鑑賞中 > 未着手 > 見送り)、watchedOn=完了日。 */
-export type WatchedInfo = { url: string; title: string; count: number; status?: string; watchedOn?: string | null };
-export type ProgramsPage = { programs: Program[]; total: number; page: number; pageSize: number; watched?: Record<string, WatchedInfo> };
+export type { WatchedInfo } from "./lib/openchat-query.ts";
+export type ProgramsPage = { programs: Program[]; total: number; page: number; pageSize: number; watched?: WatchedLinks };
 export type RunSummary = {
   status: string; startedAt: string; completedAt: string | null; notesScanned: number; notesOpened: number;
   commentsNew: number; targetCommentsNew: number; warningCount: number; warnings?: string[]; newPrograms?: number; newSince?: string;
@@ -237,7 +236,7 @@ export function ChikirinApp({ initialPage = null, initialRun = null, initialQuer
           </tr></thead>
           <tbody>{programs.map((program) => {
             const links = displayLinks(program);
-            const watchedLinks = links.filter((l) => watched[l.url]);
+            const watchedLinks = links.filter((l) => watched[watchedKey(program.noteId, l.url)]);
             return <tr key={program.noteId}>
               <td className="program-cell is-broadcaster">
                 <strong className="program-broadcaster" title={displayBroadcaster(program) || undefined}>{displayBroadcaster(program) || "—"}</strong>
@@ -256,9 +255,9 @@ export function ChikirinApp({ initialPage = null, initialRun = null, initialQuer
               <td className={program.targetComments.length > 0 ? "num-cell is-target-count is-hit" : "num-cell is-target-count"}>{program.involvement === "none" ? <span className="empty-cell">—</span> : program.targetComments.length}</td>
               <td className="status-cell center">{program.issues.length > 0 ? <span className="chikirin-issue" title={program.issues.join("\n")}>要確認</span> : <span className="empty-cell" title="取得に問題はありません">OK</span>}</td>
               <td className="links-cell">{links.length > 0 ? <ProgramLinks links={links} label={`${program.programTitle} のリンク`} /> : <span className="empty-cell">—</span>}</td>
-              <td className="texttube-cell is-watchlist">{watchedLinks.length > 0 ? watchedLinks.map((l) => <a key={l.url} className="texttube-badge texttube-reflected" href={`/watch-list?q=${encodeURIComponent(watched[l.url].title || watchListSearchTerm(watched[l.url].url))}`} target="_blank" rel="noreferrer" title={`${l.text} は Watch List に登録済み(「${watched[l.url].title}」)。開くとその項目を表示します`}>登録済{watched[l.url].count > 1 ? ` ${watched[l.url].count}件` : ""}</a>) : <span className="empty-cell">—</span>}</td>
+              <td className="texttube-cell is-watchlist">{watchedLinks.length > 0 ? watchedLinks.map((l) => <a key={l.url} className="texttube-badge texttube-reflected" href={`/watch-list?q=${encodeURIComponent(watched[watchedKey(program.noteId, l.url)].title || watchListSearchTerm(watched[watchedKey(program.noteId, l.url)].url))}`} target="_blank" rel="noreferrer" title={`${l.text} は Watch List に登録済み(「${watched[watchedKey(program.noteId, l.url)].title}」)。開くとその項目を表示します`}>登録済{watched[watchedKey(program.noteId, l.url)].count > 1 ? ` ${watched[watchedKey(program.noteId, l.url)].count}件` : ""}</a>) : <span className="empty-cell">—</span>}</td>
               <td className="texttube-cell is-watched">{(() => {
-                const best = watchedLinks.map((l) => watched[l.url]).sort((x, y) => watchRank(y.status) - watchRank(x.status))[0];
+                const best = watchedLinks.map((l) => watched[watchedKey(program.noteId, l.url)]).sort((x, y) => watchRank(y.status) - watchRank(x.status))[0];
                 if (!best) return <span className="empty-cell">—</span>;
                 const done = best.status === "completed";
                 return <span className={done ? "texttube-badge texttube-reflected" : "texttube-badge texttube-none"} title={done ? `Watch List で視聴済${best.watchedOn ? `(${best.watchedOn})` : ""}` : "Watch List に登録済ですが、まだ視聴済ではありません"}>{done ? "視聴" : best.status === "in_progress" ? "鑑賞中" : "未視聴"}</span>;

@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { afterEach, beforeAll, expect, test, vi } from "vitest";
 import { ChikirinApp, type ProgramsPage } from "@/app/chikirin-app";
 import { ChikirinDetail } from "@/app/chikirin-detail";
+import { watchedKey } from "@/app/lib/openchat-query";
 
 const nav = vi.hoisted(() => ({ push: vi.fn(), refresh: vi.fn() }));
 vi.mock("next/navigation", () => ({ usePathname: () => "/chikirin", useRouter: () => ({ push: nav.push, refresh: nav.refresh }) }));
@@ -194,7 +195,8 @@ test("a thread the target has nothing to do with shows — for the comment count
 
 test("登録済 badge links to Watch List by the saved item's title, not the URL (readable, and avoids matching other episodes of the same series)", () => {
   const url = "https://www.web.nhk/tv/pl/series-tep-P1124VMJ6R/ep/4N6PM42X7K";
-  const withWatched = { ...page([program({ linkUrl: url, meta: { broadcaster: "", programName: "", episodeTitle: "", links: [] } })]), watched: { [url]: { url, title: "人は誰でも主役になれる〜徳島 町を変えた葉っぱの奇跡〜", count: 1 } } };
+  const shown = program({ linkUrl: url, meta: { broadcaster: "", programName: "", episodeTitle: "", links: [] } });
+  const withWatched = { ...page([shown]), watched: { [watchedKey(shown.noteId, url)]: { url, title: "人は誰でも主役になれる〜徳島 町を変えた葉っぱの奇跡〜", count: 1 } } };
   render(<ChikirinApp initialPage={withWatched as never} initialRun={null} />);
   const badge = screen.getByRole("link", { name: /登録済/ });
   const href = badge.getAttribute("href")!;
@@ -204,7 +206,8 @@ test("登録済 badge links to Watch List by the saved item's title, not the URL
 
 test("登録済 badge falls back to a short URL fragment when the saved item somehow has no title", () => {
   const url = "https://www.web.nhk/tv/pl/series-tep-P1124VMJ6R/ep/4N6PM42X7K";
-  const withWatched = { ...page([program({ linkUrl: url, meta: { broadcaster: "", programName: "", episodeTitle: "", links: [] } })]), watched: { [url]: { url, title: "", count: 1 } } };
+  const shown = program({ linkUrl: url, meta: { broadcaster: "", programName: "", episodeTitle: "", links: [] } });
+  const withWatched = { ...page([shown]), watched: { [watchedKey(shown.noteId, url)]: { url, title: "", count: 1 } } };
   render(<ChikirinApp initialPage={withWatched as never} initialRun={null} />);
   const href = screen.getByRole("link", { name: /登録済/ }).getAttribute("href")!;
   expect(href).toBe(`/watch-list?q=${encodeURIComponent("4N6PM42X7K")}`);
@@ -446,8 +449,8 @@ test("視聴済 column: a link registered in Watch List shows its status; comple
     unmount();
     return text;
   };
-  expect(cellOf({ [url]: { url, title: "t", count: 1, status: "completed", watchedOn: "2026-09-30" } })).toBe("視聴");
-  expect(cellOf({ [url]: { url, title: "t", count: 1, status: "backlog", watchedOn: null } })).toBe("未視聴");
+  expect(cellOf({ [watchedKey(base.noteId, url)]: { url, title: "t", count: 1, status: "completed", watchedOn: "2026-09-30" } })).toBe("視聴");
+  expect(cellOf({ [watchedKey(base.noteId, url)]: { url, title: "t", count: 1, status: "backlog", watchedOn: null } })).toBe("未視聴");
   expect(cellOf({})).toBe("—");
 });
 
