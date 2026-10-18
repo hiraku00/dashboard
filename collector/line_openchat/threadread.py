@@ -118,6 +118,10 @@ class TallThreadReader:
     def band_top_pt(self) -> float:
         return self.cal.band_top / self.cal.scale if self.cal else 0.0
 
+    @property
+    def at_top(self) -> bool:
+        return bool(self.cal and self.cal.at_top)
+
     def prepare(self) -> None:
         """倍率・固定表示の範囲・1行あたりの移動量を測る(一覧の先頭へ戻るので、走査の前に1回だけ呼ぶ)."""
         self.cal = capture.calibrate(self.src)

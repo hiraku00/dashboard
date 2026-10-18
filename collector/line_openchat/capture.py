@@ -123,6 +123,7 @@ class Calibration:
     band_bottom: int
     fab: tuple[int, int, int, int] | None      # 右下の固定ボタンの矩形 (x0, y0, x1, y1). 無ければ None
     px_per_line: float
+    at_top: bool = False    # 調整のあと、一覧が先頭に戻った状態か(戻っていれば、走査の前にもう一度先頭へ戻る必要は無い)
 
     @property
     def band_h(self) -> int:
@@ -141,13 +142,15 @@ def scroll_to_top(src: FrameSource, max_steps: int = 60) -> np.ndarray:
     x1 = _x_limit(prev.shape[1], src.scale)
     fp_prev, bl_prev = row_fingerprints(prev, x1), blank_mask(prev, x1)
     same = 0
-    for _ in range(max_steps):
+    for step in range(max_steps):
         cur = _grab_scroll(src, -60)
         fp = row_fingerprints(cur, x1)
         nb = ~bl_prev
         if nb.sum() >= 5 and float(((fp == fp_prev) & nb).sum() / nb.sum()) >= SAME_RATIO:
             same += 1
-            if same >= 2:
+            # 最初の1回で変わらなければ、すでに先頭にいた(最初の画像は落ち着いてから撮っている)。ノートを開き直した直後は
+            # ほぼこれなので、もう1回確かめずに済ませる
+            if same >= 2 or step == 0:
                 return cur
         else:
             same = 0
@@ -189,7 +192,11 @@ def calibrate(src: FrameSource, probe_lines: int = 6) -> Calibration:
     shift = measure_shift(fa, fb, ba, band_top, band_bottom, scale)
     if shift.kind != "ok":
         raise CaptureError(f"スクロール量を測れませんでした: {shift.reason or shift.kind}")
-    return Calibration(scale, w, h, x1, band_top, band_bottom, fab, shift.d / probe_lines)
+    # 測るために下へ進んだ分を戻す。先頭に戻れていれば、走査の前に、もう一度先頭へ戻らなくてよい
+    back = _grab_scroll(src, -probe_lines)
+    nb = ~ba
+    at_top = bool(nb.sum() >= 5 and float(((row_fingerprints(back, x1) == fa) & nb).sum() / nb.sum()) >= SAME_RATIO)
+    return Calibration(scale, w, h, x1, band_top, band_bottom, fab, shift.d / probe_lines, at_top)
 
 
 def _bottom_run(rows: np.ndarray, region_h: int, scale: float) -> np.ndarray:
