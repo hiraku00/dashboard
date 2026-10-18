@@ -117,6 +117,7 @@ class Session:
         self._borrowed: set[tuple[str, str]] = set()           # 隣の投稿の時刻を取り込んだと警告した(本物のノートのID, 時刻の表示)
         self._lost_position = False                             # 見出しを探して大きく動いた末に諦め、スクロール位置が分からなくなった
         self._left_open: dict | None = None                     # 開いた(開いているのを見つけた)まま、まだ閉じていないノート
+        self._first_shot_logged = False
         self._carry: tuple[Screen, list[Block]] | None = None   # _advance が撮った画面を、次の shot() で再利用する
         self._tall_bodies: set[str] = set()                     # 開いたら画面に収まらなくなった(全文はコメント欄の撮影で取る)ノートのID
 
@@ -151,7 +152,10 @@ class Session:
         for _ in range(60):
             self.scroll(-60)
             screen, _ = self.shot()
-            sig = [(round(l.y), l.text) for l in screen.lines[:8]]
+            # OCRは同じ行でも、空白の有無や1pxほどの位置がゆれる(実機: 先頭にいるのに「10月18日 NHK…」と「10月18日NHK…」で
+            # 毎回違って見え、4回も繰り返して10秒以上かかった)。空白を除き、位置は見ない(1pxのゆれが丸めの境目をまたぐ。
+            # スクロールすれば写る文字の並びが変わるので、文字だけで動いたかは分かる)
+            sig = ["".join(l.text.split()) for l in screen.lines[:8]]
             if sig == prev:
                 return
             prev = sig
@@ -167,7 +171,9 @@ class Session:
         timing.reset()
         try:
             self.log("一覧を走査します(変わったノートは、その場で読み取って閉じます)")
+            t0 = time.perf_counter()
             self.reader.prepare()                 # 撮影の調整(倍率などを測る。一覧の先頭へ戻る)
+            self.log(f"  撮影の調整: {time.perf_counter() - t0:.0f}秒")
             self._scan()
             self._warn_missed()
         except Aborted as exc:
@@ -217,14 +223,21 @@ class Session:
 
     def _scan(self) -> None:
         o, stats = self.opts, self.stats
-        self.to_top()
+        t0 = time.perf_counter()
+        if not getattr(self.reader, "at_top", False):     # 撮影の調整のあと、すでに先頭にいれば戻らない
+            self.to_top()
+        self.log(f"  先頭へ戻る: {time.perf_counter() - t0:.0f}秒")
         visited = self._visited
         unchanged = 0
         step = o.start_step
         prev_sig: list | None = None
         end_hits = 0
         for _ in range(o.max_scroll_steps):
+            t0 = time.perf_counter()
             screen, blocks = self.shot()
+            if not self._first_shot_logged:
+                self._first_shot_logged = True
+                self.log(f"  最初の画面の撮影と区切り: {time.perf_counter() - t0:.0f}秒")
             opened = False
             for b in blocks:
                 if b.kind != "note":
