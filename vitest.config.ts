@@ -41,9 +41,8 @@ export default defineConfig({
           cloudflareTest({
             wrangler: { configPath: "./wrangler.jsonc" },
             miniflare: {
-              // Test-only keys so app/api/watch-list/youtube-preview and
-              // app/api/text-tube/youtube-preview's own `if (!key) return
-              // ...not configured...` guards don't short-circuit before
+              // Test-only keys so app/api/text-tube/youtube-preview's own
+              // `if (!key) return ...not configured...` guard don't short-circuit before
               // reaching the outboundService mock below. Not real secrets --
               // this project has no .dev.vars checked in and these routes
               // never see real credentials outside of production.
@@ -96,7 +95,7 @@ export default defineConfig({
             "tests/todo-task-input.test.mjs",
             "tests/usage-window.test.mjs",
             "tests/watch-list-item-input.test.mjs",
-            "tests/watch-list-youtube-import.test.mjs",
+            "tests/watch-list-link-import.test.mjs",
             "tests/watch-list-query.test.mjs",
           ],
         },
