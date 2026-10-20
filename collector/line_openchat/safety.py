@@ -39,6 +39,22 @@ class ClickTarget:
     counts_y: float | None = None                  # 数の行の中心(toggle_comments)
 
 
+# 右下の「投稿(+)」ボタンの付近: x ≥ POST_BUTTON_X かつ 下端から POST_BUTTON_ROOM 以内
+POST_BUTTON_X = 340.0
+POST_BUTTON_ROOM = 130.0
+# 各投稿の右上の「︙」メニュー(削除・通報などが出る)は x≈400. これより右は押さない
+MENU_X = 380.0
+
+
+def forbidden_zone(x: float, y: float, screen) -> str | None:
+    """押してはいけない領域(位置だけで決まるもの)にかかっていれば、その理由. 押す側は、これを避けた位置を選ぶのに使う."""
+    if x >= POST_BUTTON_X and y >= screen.height - POST_BUTTON_ROOM:
+        return "投稿ボタンの付近は押せません"
+    if x >= MENU_X:
+        return "右端(︙メニューなど)は押せません"
+    return None
+
+
 def guard_click(target: ClickTarget, screen) -> None:
     """押してよい場所かを画面で確認する. だめなら ReadOnlyViolation."""
     if target.kind not in ALLOWED_CLICK_KINDS:
@@ -48,12 +64,9 @@ def guard_click(target: ClickTarget, screen) -> None:
         raise ReadOnlyViolation(f"ウィンドウの外です: ({x:.0f},{y:.0f})")
     if y < layout.TOP_MARGIN:
         raise ReadOnlyViolation("タイトルバー付近は押せません")
-    # 右下の「投稿(+)」ボタン
-    if x >= 340 and y >= screen.height - 130:
-        raise ReadOnlyViolation("投稿ボタンの付近は押せません")
-    # 各投稿の右上の「︙」メニュー(削除・通報などが出る)は x≈400. 押す対象は x≤380 にしかない
-    if x >= 380:
-        raise ReadOnlyViolation("右端(︙メニューなど)は押せません")
+    reason = forbidden_zone(x, y, screen)
+    if reason:
+        raise ReadOnlyViolation(reason)
 
     if target.kind == "toggle_comments":
         _guard_toggle(target, screen)

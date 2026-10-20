@@ -1,4 +1,6 @@
 """「もっと見る」で本文を開いたら投稿が縦に長くなり、末尾(時刻行)が画面の下にはみ出す(実機で確認した形)."""
+import pytest
+
 from line_openchat.ledger import Ledger
 from line_openchat.parse import split_blocks
 from line_openchat.session import Options, Session, note_obs
@@ -68,3 +70,46 @@ def test_seek_header_moves_toward_a_partly_visible_note_instead_of_searching_upw
     header, _, _ = session._seek_header(note)
     assert header.author == "ちきりん"
     assert chat.shots - shots_before <= 6, f"{chat.shots - shots_before}回撮影: 遠回りした"
+
+
+def bottom_chat():
+    """実機(2026-10-20)の形: 画面の最下段のノートで、本文の最終行が端まで詰まり、行末の「もっと見る」が
+    右下の投稿(+)ボタンの高さ・右端(x≈384)に出る."""
+    notes = [SimNote(f"参加者{i}", f"短い投稿{i}の本文です。", "昨日 午前 9:45", reactions=3) for i in range(4)]
+    notes.append(SimNote("もーし", BODY, "昨日 午後 9:46", long_body=True, more_inline=True, reactions=3))
+    notes += [SimNote(f"後の人{i}", f"後の短い投稿{i}です。", "9.21 午後 7:57", reactions=3) for i in range(4)]
+    return SimChat(notes, jitter=False)
+
+
+def test_more_button_at_the_post_button_height_and_right_edge_is_pressed_safely():
+    from line_openchat.safety import ClickTarget, ReadOnlyViolation, guard_click
+    chat = bottom_chat()
+    scroll_to_more_button(chat, 1028)                       # 実機で止まった位置(高さ1130のウィンドウで y≈1028)
+    session, ledger = make(chat)
+    screen, blocks = session.shot()
+    block = next(b for b in blocks if b.kind == "note" and b.author == "もーし")
+    assert block.complete and block.more_y > screen.height - 130 and block.more_x >= 380     # 前提: 両方の禁止領域にかかる
+    with pytest.raises(ReadOnlyViolation):                  # 今までどおり中心を押そうとすると止められる
+        guard_click(ClickTarget("expand_body", block.more_x, block.more_y, expect_text="もっと見る"), screen)
+    note, _ = ledger.upsert_note(note_obs(block, NOW), session.now_iso)
+    before = len(note["body_text"])
+    session._expand_body(note, block, screen)
+    assert session.stats.warnings == []
+    assert chat.forbidden_clicks == []
+    (_, x, y), = chat.clicks
+    assert 352 <= x < 380 and y < screen.height - 130             # ノートを上へ送ってから、行末の文字の左寄りを押した
+    assert note["body_complete"] and len(note["body_text"]) > before * 2
+
+
+def test_more_button_on_the_right_edge_is_pressed_on_its_left_part_without_scrolling():
+    chat = bottom_chat()
+    scroll_to_more_button(chat, 600)
+    session, ledger = make(chat)
+    screen, blocks = session.shot()
+    block = next(b for b in blocks if b.kind == "note" and b.author == "もーし")
+    assert block.more_x >= 380
+    note, _ = ledger.upsert_note(note_obs(block, NOW), session.now_iso)
+    session._expand_body(note, block, screen)
+    (_, x, y), = chat.clicks
+    assert 352 <= x < 380 and abs(y - block.more_y) < 1           # 撮り直さずに、同じ行の左寄りを押す
+    assert note["body_complete"] and session.stats.warnings == []

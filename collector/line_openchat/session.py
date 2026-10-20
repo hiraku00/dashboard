@@ -6,6 +6,7 @@ Driver への「押す」操作は Session._click だけが行い、必ず safet
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 import shutil
@@ -19,7 +20,7 @@ from typing import Callable, Protocol
 from . import digits, identity, layout as K, timing
 from .ledger import CollectionResult, CommentObs, Ledger, NoteObs
 from .parse import Block, TXT_CUT, TXT_MORE, split_blocks
-from .safety import ClickTarget, guard_click
+from .safety import MENU_X, POST_BUTTON_ROOM, ClickTarget, forbidden_zone, guard_click
 from .screen import Screen
 from .timeparse import EXACT, parse_display_time, tolerance_minutes
 
@@ -31,6 +32,9 @@ MISSED_RECENT_DAYS = 7      # 今回読めなかったノートを警告する�
 THREAD_ROOM_BELOW_FOOTER = 120  # ノートの時刻行の下に、この高さ(pt)以上が見えていれば、直下の「前のコメントを見る」の有無を判断できる
 HINT_TIME_TOLERANCE_MIN = 240   # 手がかりの近くの投稿時刻が、このノートの投稿時刻とこれ(分)を超えてズレていたら、
                                  # 本文が似ているだけの別の投稿とみなし、手がかりとして使わない
+MORE_X_MAX = MENU_X - 8         # 行末の「もっと見る」(中心 x≈384)は、右端の禁止領域にかからないよう、文字の左寄りのここを押す
+MORE_LIFT_TRIES = 3             # 「もっと見る」が右下の投稿(+)ボタンの高さにあるとき、ノートを上へ送って撮り直す回数の上限
+PT_PER_SCROLL_LINE = 18.0       # スクロール1行で動くおおよその高さ(pt)。上へ送る行数の見積もりに使う
 TALL_NOTE_LINES = 66        # 本文がこの行数(1行26文字で数える)を超えるノートは、開くと画面に収まらない(見出しと時刻行が同時に見えない)
 TALL_WALK_STEP = 20         # 長いノートの見出しから末尾(時刻行)へ進む歩幅(行)。1画面より小さく、時刻行を飛ばさない
 TALL_TAIL_MATCH = 0.7       # 画面に見える本文の末尾が、台帳の本文にこの割合以上含まれていれば、そのノートの末尾とみなす
@@ -470,7 +474,12 @@ class Session:
             note["body_complete"] = True
             note["pending_upload"] = True
             return False
-        self._click(ClickTarget("expand_body", block.more_x or 24, block.more_y, expect_text=TXT_MORE), screen)
+        placed = self._place_more_button(note, block, screen)
+        if placed is None:
+            self.stats.warnings.append(f"本文を開けませんでした(「もっと見る」を押せる位置に出せませんでした): {self._label(note)}")
+            return True                          # 画面は少し下へ進んだだけ。走査はこの画面を撮り直して続ける
+        target, screen = placed
+        self._click(target, screen)
         b2 = None
         for _ in range(8):
             screen2, blocks2 = self.shot()
@@ -492,6 +501,26 @@ class Session:
             obs2.body_complete = True
             self.ledger.upsert_note(obs2, self.now_iso)
         return True
+
+    def _place_more_button(self, note: dict, block: Block, screen: Screen) -> tuple[ClickTarget, Screen] | None:
+        """「もっと見る」を押す位置を、押してはいけない領域(右下の投稿(+)ボタン・右端の︙メニュー)の外に決める.
+        本文の最終行が端まで詰まっていると、行末の「もっと見る」は右端(中心 x≈384)に出る。文字の左寄りを押す。
+        そのノートが画面の最下段にあると、「もっと見る」が投稿(+)ボタンの高さに来る。ノートを上へ送って撮り直す
+        (実機で、両方が重なって guard_click に止められ、同期が中断した)。
+        戻り値: (押す場所, その画面)。出せなければ(押さずに) None。"""
+        for _ in range(MORE_LIFT_TRIES + 1):
+            x, y = min(block.more_x or 24, MORE_X_MAX), block.more_y
+            if forbidden_zone(x, y, screen) is None:
+                return ClickTarget("expand_body", x, y, expect_text=TXT_MORE), screen
+            over = y - (screen.height - POST_BUTTON_ROOM) + 24          # 禁止領域の上端より、少し上まで送る
+            lines = min(12, 3 * max(1, math.ceil(over / (3 * PT_PER_SCROLL_LINE))))   # 実機のスクロールは3行単位
+            self.scroll(lines)
+            screen, blocks = self.shot()
+            found = self._find_block(blocks, note)
+            if found is None or found.more_y is None:
+                return None
+            block = found
+        return None
 
     def _reached_tall_tail(self, note: dict) -> bool:
         """本文を開いた後、投稿の末尾が見つからないとき: 画面より長いノートになったのなら、その末尾(時刻行)まで進めて True.

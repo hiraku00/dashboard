@@ -36,6 +36,7 @@ class SimNote:
     comments: list[SimComment] = field(default_factory=list)
     card: str = ""                  # リンクカードの題名
     long_body: bool = False         # 「もっと見る」で開く必要がある
+    more_inline: bool = False       # 「もっと見る」が本文の最終行の行末(右端)に続く(実機: 最終行が端まで詰まっているとき)
     open: bool = False              # コメント欄が開いている
     expanded: bool = False          # 「もっと見る」を押した
     earlier_loaded: int = 0        # 「前のコメントを見る」を押した回数(実機: 開いた直後10件、1回ごとに+10件)
@@ -155,7 +156,13 @@ class SimChat:
                 w = 396 if cont else max(20, 14.5 * len(text))
                 lines.append(Line(text, 14.8, y, min(w, 396), 15))
                 y += 15.5
-            if n.long_body and not n.expanded:
+            if n.long_body and not n.expanded and n.more_inline:
+                last = lines.pop()                                  # 実機: 「…本文の続き。... もっと見る」が1行に読まれ、行末は x≈410
+                y -= 15.5
+                lines.append(Line(last.text + "...もっと見る", 14.8, y, 395, 15))
+                zones.append(("more", 352, y, 410, y + 15, n))
+                y += 15.5 + 26
+            elif n.long_body and not n.expanded:
                 lines.append(Line("…もっと見る", 16, y, 80, 12))
                 zones.append(("more", 14, y, 100, y + 12, n))
                 y += 26
