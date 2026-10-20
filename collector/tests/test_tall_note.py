@@ -114,3 +114,25 @@ def test_tall_note_without_comments_keeps_the_first_part_and_does_not_retry():
     _, stats2 = run(chat, ledger, first_run=False)
     assert real_warnings(stats2) == [], stats2.warnings
     assert stats2.notes_opened == 0
+
+
+def test_hint_is_found_when_ocr_splits_the_first_line_in_two():
+    """実機(2026-10-20、こやまぐ): 1行目「10月20日 国際報道パキスタン…」がOCRで「10月20日」と「国際報道パキスタン…」の
+    2行に分かれて読まれた。分かれたままでは頭16文字に一致せず、手がかりが無いまま一覧の先頭まで探しに行った."""
+    from line_openchat.ledger import Ledger
+    from line_openchat.screen import Line
+    from line_openchat.session import Options, Session
+    from sim import SimChat, SimDriver, SimScreen
+    from test_session import NOW
+    # 実機の画面(高さ1130)のOCRの行を並べたもの: 作者行の下に1行目、本文が続き、時刻行は画面の下の外
+    rows = [(409, 15, 45, "2時間前"), (460, 49, 60, "こやまぐ"), (494, 15, 56, "10月20日"),
+            (494, 77, 290, "国際報道パキスタン ガソリン高騰で電動バイク人気"),
+            (524, 15, 396, "ガソリン価格が5割以上高騰しているパキスタンで、電動バイクの需要が"),
+            (540, 15, 140, "急上昇というニュース。")] + [(570 + 30 * i, 15, 396, f"本文の続きの行です{i}。電動バイクが普及していく話。") for i in range(15)]
+    screen = SimScreen([Line(t, x, y, w, 15) for (y, x, w, t) in rows], [])
+    session = Session(SimDriver(SimChat([], jitter=False)), Ledger(), NOW, Options())
+    note = {"body_text": "10月20日 国際報道パキスタンガソリン高騰で電動バイク人気\n\nガソリン価格が5割以上高騰しているパキスタンで",
+            "posted_at": "2026-09-24T01:00:00Z"}
+    hint = session._hint_y(screen, [], note)
+    assert hint is not None and abs(hint - 494) < 1
+    assert session._runs_past_screen(screen, [], hint)          # 見出しの下に時刻行が無い = 画面より長いノートとして扱える
