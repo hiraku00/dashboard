@@ -1,8 +1,8 @@
 import { expect, test } from "vitest";
-import { POST as youtubePreviewPost } from "@/app/api/watch-list/youtube-preview/route";
+import { POST as linkPreviewPost } from "@/app/api/watch-list/link-preview/route";
 import { BOT_CHECKED_VIDEO_ID, UNAVAILABLE_VIDEO_ID } from "./fixtures/outbound-mocks";
 
-// Replaces tests/rendered-html.test.mjs's "imports public YouTube page
+// The YouTube branch of the shared link preview route. Replaces tests/rendered-html.test.mjs's "imports public YouTube page
 // metadata into the Watch List editor" (Issue #94). That test only grepped
 // the route's source for the scraped page's URL and field names -- it never
 // actually called the route. This does, with the outbound fetches to
@@ -12,42 +12,39 @@ import { BOT_CHECKED_VIDEO_ID, UNAVAILABLE_VIDEO_ID } from "./fixtures/outbound-
 // need a credential. It scrapes the watch page first and falls back to oEmbed
 // when YouTube answers Cloudflare's egress IP with a bot-check page.
 
+type PreviewBody = { preview: { creatorName: string; title: string; seriesTitle: string }; url: string; error?: string };
+
 test("scrapes the title and channel name from the public YouTube watch page", async () => {
-  const response = await youtubePreviewPost(
-    new Request("http://x/api/watch-list/youtube-preview", {
+  const response = await linkPreviewPost(
+    new Request("http://x/api/watch-list/link-preview", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ" }),
     }),
   );
   expect(response.status).toBe(200);
-  const body = (await response.json()) as { item: { title: string; seriesTitle: string; links: Array<{ label: string; url: string }> } };
-  // Only what the page told us: the route must not send placeholders (creatorName "",
-  // contentType "movie") that the editor would then write over the user's own values.
-  expect(Object.keys(body.item).sort()).toEqual(["links", "seriesTitle", "title"]);
-  expect(body.item.title).toBe("Sample Video Title");
-  expect(body.item.seriesTitle).toBe("Sample Channel");
-  expect(body.item.links).toEqual([{ label: "YouTube", url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ", linkType: "reference" }]);
+  const body = (await response.json()) as PreviewBody;
+  // A video has no broadcaster: creatorName stays "" (the editor only fills 人物・媒体 while it is blank).
+  expect(body.preview).toEqual({ creatorName: "", seriesTitle: "Sample Channel", title: "Sample Video Title" });
+  expect(body.url).toBe("https://www.youtube.com/watch?v=dQw4w9WgXcQ");
 });
 
-test("rejects a non-YouTube URL before making any outbound request", async () => {
-  const response = await youtubePreviewPost(
-    new Request("http://x/api/watch-list/youtube-preview", {
+test("rejects a non-http URL before making any outbound request", async () => {
+  const response = await linkPreviewPost(
+    new Request("http://x/api/watch-list/link-preview", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ url: "https://example.com/not-youtube" }),
+      body: JSON.stringify({ url: "ftp://example.com/video" }),
     }),
   );
   expect(response.status).toBe(400);
   const body = (await response.json()) as { error: string };
-  expect(body.error).toBe("YouTube動画のURLを入力してください。");
+  expect(body.error).toBe("http:// または https:// で始まるURLを入力してください。");
 });
 
-type PreviewBody = { item: { title: string; seriesTitle: string; links: Array<{ url: string }> }; error?: string };
-
 test("falls back to oEmbed when the watch page is a bot-check page without metadata", async () => {
-  const response = await youtubePreviewPost(
-    new Request("http://x/api/watch-list/youtube-preview", {
+  const response = await linkPreviewPost(
+    new Request("http://x/api/watch-list/link-preview", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ url: `https://www.youtube.com/watch?v=${BOT_CHECKED_VIDEO_ID}` }),
@@ -55,14 +52,14 @@ test("falls back to oEmbed when the watch page is a bot-check page without metad
   );
   expect(response.status).toBe(200);
   const body = (await response.json()) as PreviewBody;
-  expect(body.item.title).toBe("Fallback Video Title");
-  expect(body.item.seriesTitle).toBe("Fallback Channel");
-  expect(body.item.links[0].url).toBe(`https://www.youtube.com/watch?v=${BOT_CHECKED_VIDEO_ID}`);
+  expect(body.preview.title).toBe("Fallback Video Title");
+  expect(body.preview.seriesTitle).toBe("Fallback Channel");
+  expect(body.url).toBe(`https://www.youtube.com/watch?v=${BOT_CHECKED_VIDEO_ID}`);
 });
 
 test("reports the watch-page error when oEmbed cannot resolve the video either", async () => {
-  const response = await youtubePreviewPost(
-    new Request("http://x/api/watch-list/youtube-preview", {
+  const response = await linkPreviewPost(
+    new Request("http://x/api/watch-list/link-preview", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ url: `https://www.youtube.com/watch?v=${UNAVAILABLE_VIDEO_ID}` }),

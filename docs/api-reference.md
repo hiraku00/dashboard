@@ -8,7 +8,7 @@
 | -------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
 | `GET /api/items`                       | 検索（`q`はタイトル・内容・人物・番組名・リンクのURL/表示名に部分一致。48バイトを超える検索語はD1のLIKE制限を避けるため切り詰める）、絞り込み、ページング付き一覧。各項目に`thumbnailUrl`（サムネイル画像のURL、なければ空文字）を含む。                         |
 | `POST /api/items`                      | 項目作成。レスポンスの`textTubeCandidates`に、リンク中のYouTube動画ID（重複除く）を返す。画面がこれを1件ずつ`POST /api/text-tube/imports/run`へ渡してTextTubeへ自動登録する。各項目のYouTubeリンクには`textTube`（`reflected`/`running`/`failed`/`none`）が付く。 |
-| `POST /api/watch-list/youtube-preview` | 公開YouTube動画URLから、チャンネル名・タイトル・正規化リンクを取得して入力用データを返す。返す項目は`seriesTitle`・`title`・`links`のみ。動画ページを読み取り、YouTubeにbot判定されて取れない場合はoEmbedで補う。YouTube Data APIやAPIキーは使用しない。 |
+| `POST /api/watch-list/link-preview` | リンク先のページから番組情報（`preview`: `creatorName`=放送局、`seriesTitle`=番組名/チャンネル名、`title`）と、転送を辿った後のURL（`url`）を返す。Watch Listの「リンクから入力」とちきりんオプチャ詳細の「リンクから番組情報を取得」が共用する。YouTubeは動画ページを読み取り（bot判定されたらoEmbedで補う。APIキーは使用しない）、TVerは公開JSON、NHK ONE・テレ東BIZなどはページのHTMLから読む。 |
 | `GET /api/items/:id`                   | 項目詳細                                                                                                                          |
 | `PATCH /api/items/:id`                 | 項目更新。`textTubeCandidates`は、この保存で**新しく追加された**YouTubeリンクの動画IDのみ。                                                                                                                          |
 | `DELETE /api/items/:id`                | 論理削除                                                                                                                          |

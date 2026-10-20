@@ -4,7 +4,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import { PortalHeader } from "./portal-nav";
 import { readErrorMessage, readJson } from "./lib/json";
-import { applyYouTubePreview, type YouTubePreviewItem } from "./lib/watch-list-youtube-import.ts";
+import { applyLinkPreview, type LinkPreviewFields } from "./lib/watch-list-link-import.ts";
 import { MAX_LIKE_TERM_BYTES, truncateUtf8Bytes, utf8ByteLength } from "./lib/sql-text.ts";
 import { useSearchReload } from "./lib/use-search-reload";
 import { useLatestRequest } from "./lib/use-latest-request";
@@ -154,15 +154,15 @@ export function WatchListApp({
   function closeEditor() { setEditing(null); setIsNew(false); }
   function patchDraft(patch: Partial<Draft>) { setDraft((current) => ({ ...current, ...patch })); }
 
-  async function importYouTube() {
+  async function importFromLink() {
     setYouTubeLoading(true); setYouTubeNotice("");
     try {
-      const response = await fetch("/api/watch-list/youtube-preview", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ url: youTubeUrl }) });
-      if (!response.ok) throw new Error(await readErrorMessage(response, "YouTubeから情報を取得できませんでした。"));
-      const data = await readJson<{ item: YouTubePreviewItem }>(response);
-      setDraft((current) => applyYouTubePreview(current, data.item));
-      setYouTubeNotice("チャンネル名・タイトル・リンクを入力しました。内容を確認して保存してください。");
-    } catch (error) { setYouTubeNotice(error instanceof Error ? error.message : "YouTubeから情報を取得できませんでした。"); }
+      const response = await fetch("/api/watch-list/link-preview", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ url: youTubeUrl }) });
+      if (!response.ok) throw new Error(await readErrorMessage(response, "リンク先から情報を取得できませんでした。"));
+      const data = await readJson<{ preview: LinkPreviewFields; url?: string }>(response);
+      setDraft((current) => applyLinkPreview(current, data.preview, data.url || youTubeUrl.trim()));
+      setYouTubeNotice("放送局・番組名（チャンネル名）・タイトル・リンクを入力しました。内容を確認して保存してください。");
+    } catch (error) { setYouTubeNotice(error instanceof Error ? error.message : "リンク先から情報を取得できませんでした。"); }
     finally { setYouTubeLoading(false); }
   }
 
@@ -309,7 +309,7 @@ export function WatchListApp({
     </section>
 
     {activeEditor && <div className="modal-backdrop" role="presentation" onClick={closeEditor}><section className="editor" role="dialog" aria-modal="true" aria-labelledby="editor-title" onClick={(event) => event.stopPropagation()}><div className="editor-heading"><div><p className="app-kicker">{editing ? "EDIT CONTENT" : "NEW CONTENT"}</p><h2 id="editor-title">{editing ? "コンテンツを編集" : "コンテンツを追加"}</h2></div><button className="close-button" onClick={closeEditor} aria-label="閉じる">×</button></div><form className="editor-form" onSubmit={save}>
-      <section className="youtube-import" aria-labelledby="youtube-import-title"><div><strong id="youtube-import-title">YouTubeから入力</strong><p>動画URLからチャンネル名、タイトル、リンクを入力します。</p></div><div className="youtube-import-controls"><input type="url" value={youTubeUrl} onChange={(event) => setYouTubeUrl(event.target.value)} placeholder="https://www.youtube.com/watch?v=..." aria-label="YouTube動画URL" /><button type="button" onClick={importYouTube} disabled={youTubeLoading || !youTubeUrl.trim()}>{youTubeLoading ? "取得中…" : "情報を取得"}</button></div>{youTubeNotice && <p className="youtube-import-notice" role="status">{youTubeNotice}</p>}</section>
+      <section className="youtube-import" aria-labelledby="youtube-import-title"><div><strong id="youtube-import-title">リンクから入力</strong><p>YouTube・NHK ONE・テレ東BIZ・TVerなどのURLから、放送局（チャンネル名）、番組名、タイトル、リンクを入力します。</p></div><div className="youtube-import-controls"><input type="url" value={youTubeUrl} onChange={(event) => setYouTubeUrl(event.target.value)} placeholder="https://www.youtube.com/watch?v=… / https://www.web.nhk/…" aria-label="取得するリンクのURL" /><button type="button" onClick={importFromLink} disabled={youTubeLoading || !youTubeUrl.trim()}>{youTubeLoading ? "取得中…" : "情報を取得"}</button></div>{youTubeNotice && <p className="youtube-import-notice" role="status">{youTubeNotice}</p>}</section>
       {editing && youtubeLinksWithStatus.length > 0 && <section className="texttube-panel" aria-labelledby="texttube-panel-title">
         <strong id="texttube-panel-title">TextTube</strong>
         <p>保存すると、YouTubeリンクの動画はTextTubeにも自動で登録されます（動画情報と字幕。要約は含みません）。登録に失敗したときや、登録中に画面を閉じたときは、下のボタンで手動で登録できます。</p>
