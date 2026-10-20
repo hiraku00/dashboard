@@ -19,7 +19,7 @@ from typing import Callable, Protocol
 
 from . import digits, identity, layout as K, timing
 from .ledger import CollectionResult, CommentObs, Ledger, NoteObs
-from .parse import Block, TXT_CUT, TXT_MORE, split_blocks
+from .parse import Block, TXT_CUT, TXT_MORE, merge_fragments, split_blocks
 from .safety import MENU_X, POST_BUTTON_ROOM, ClickTarget, forbidden_zone, guard_click
 from .screen import Screen
 from .timeparse import EXACT, parse_display_time, tolerance_minutes
@@ -745,7 +745,9 @@ class Session:
         head = identity.norm_text(text)[:16]
         if len(head) < 12:
             return None
-        for line in screen.lines:
+        # OCRは1行目を「10月20日」と「国際報道パキスタン…」のように2つに分けて返すことがある。分かれたままでは
+        # どちらも頭16文字に一致せず、手がかりが無いまま一覧の先頭まで探しに行った(実機: 2026-10-20、こやまぐ)。同じ高さの断片は1行に戻す
+        for line in merge_fragments(screen.lines):
             if line.y > K.TOP_MARGIN and identity.contain_sim(head, line.text) >= 0.85 and len(identity.norm_text(line.text)) >= 6:
                 if self._hint_time_mismatch(line.y, blocks, note):
                     continue
