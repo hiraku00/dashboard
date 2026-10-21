@@ -9,7 +9,7 @@ import { canonicalUrl } from "@/app/lib/text";
 import { autoFillFields, canAutoFill } from "@/app/lib/link-preview";
 import { fetchLinkPreview, fetchPageThumbnail } from "@/app/lib/thumbnail-fetch";
 import {
-  buildProgramsFilter, matchWatched, programCountsSql, programLinkUrls, programsOrderBy, toProgram, ROOM, resolveThumbnails, thumbnailSourceUrl,
+  buildProgramsFilter, isWatchCompleted, matchWatched, programCountsSql, programLinkUrls, programsOrderBy, toProgram, ROOM, resolveThumbnails, thumbnailSourceUrl,
   type CachedThumbnail, type Program, type ProgramCounts, type ProgramsQuery, type WatchedLinks, type WatchedRow,
 } from "@/app/lib/openchat-query";
 
@@ -26,8 +26,8 @@ export async function listPrograms(query: ProgramsQuery = {}): Promise<ProgramsP
   let notes: Record<string, unknown>[];
   let total: number;
   if (watch === "unwatched") {
-    // 視聴状態はURLの正規化(JS)が要るのでSQLでは絞れない。条件に合う全ノートのリンクを読み、視聴済み・鑑賞中のリンクを持つものを除いてからページに切る。
-    const ids = await unwatchedNoteIds(where, values, sort);
+    // 視聴状態はURLの正規化と回のタイトルの照合(JS)が要るのでSQLでは絞れない。条件に合う全ノートのリンクを読み、視聴列が「視聴」になるものを除いてからページに切る。
+    const ids = await notCompletedNoteIds(where, values, sort);
     total = ids.length;
     const pageIds = ids.slice(offset, offset + limit);
     const found = pageIds.length
@@ -59,25 +59,23 @@ export async function programCounts(): Promise<ProgramCounts> {
   return { all: n("all_count"), involved: n("involved"), thread: n("thread"), comment: n("comment"), none: n("none") };
 }
 
-/** 視聴列が「未視聴」か「—」になるノートのid(並び順どおり)。リンクのどれかが Watch List で視聴済み・鑑賞中なら除く。 */
-async function unwatchedNoteIds(where: string, values: unknown[], sort: Parameters<typeof programsOrderBy>[0]): Promise<string[]> {
-  const [notes, seen] = await Promise.all([
+/** 視聴列が「視聴」にならない(未視聴・鑑賞中・—)ノートのid(並び順どおり)。判定は視聴列と同じ matchWatched() と isWatchCompleted()
+ *  (共有URLでは回のタイトルで絞る)。Watch List のリンクは、完了した項目が持つURLのものだけ読む(共有URLの項目数を数えるため、そのURLを持つ項目はすべて)。 */
+async function notCompletedNoteIds(where: string, values: unknown[], sort: Parameters<typeof programsOrderBy>[0]): Promise<string[]> {
+  const [notes, links] = await Promise.all([
     env.DB.prepare(
-      `SELECT n.id, n.link_url, m.links_json FROM openchat_notes n LEFT JOIN openchat_note_meta m ON m.note_id = n.id ${where} ${programsOrderBy(sort)}`,
-    ).bind(...values).all<{ id: string; link_url: string; links_json: string | null }>(),
+      `SELECT n.id, n.link_url, m.episode_title, m.links_json FROM openchat_notes n LEFT JOIN openchat_note_meta m ON m.note_id = n.id ${where} ${programsOrderBy(sort)}`,
+    ).bind(...values).all<Record<string, unknown>>(),
     env.DB.prepare(
-      `SELECT DISTINCT l.canonical_url AS u FROM item_links l JOIN items i ON i.id = l.item_id
-        WHERE i.deleted_at IS NULL AND i.status IN ('completed', 'in_progress')`,
-    ).all<{ u: string }>(),
+      `SELECT l.canonical_url, l.url, i.id AS item_id, i.title, i.status, i.watched_on
+         FROM item_links l JOIN items i ON i.id = l.item_id
+        WHERE i.deleted_at IS NULL AND l.canonical_url IN (
+          SELECT c.canonical_url FROM item_links c JOIN items ci ON ci.id = c.item_id WHERE ci.deleted_at IS NULL AND ci.status = 'completed')`,
+    ).all<Record<string, unknown>>(),
   ]);
-  const done = new Set((seen.results ?? []).map((r) => r.u));
-  return (notes.results ?? []).filter((n) => {
-    let edited: Array<{ url?: string }> = [];
-    try { const parsed = JSON.parse(n.links_json ?? "[]"); if (Array.isArray(parsed)) edited = parsed; } catch { /* 壊れたJSONはリンク無し扱い */ }
-    // 一覧の表示と同じ: 編集したリンクがあればそれ、無ければノートの生リンク
-    const urls = edited.length > 0 ? edited.map((l) => l.url ?? "") : [n.link_url];
-    return !urls.some((u) => { const c = u ? canonicalUrl(u) : ""; return c !== "" && done.has(c); });
-  }).map((n) => n.id);
+  const programs = (notes.results ?? []).map((row) => ({ noteId: String(row.id), linkUrl: String(row.link_url ?? ""), meta: metaFromRow(row) }));
+  const watched = matchWatched(programs, (links.results ?? []).map(toWatchedRow));
+  return programs.filter((p) => !isWatchCompleted(p, watched)).map((p) => p.noteId);
 }
 
 /** 一覧のサムネイル: 保存済みのものを読むだけ(取得は放送情報の保存時。saveProgramMeta 参照)。判定は resolveThumbnails()。 */
@@ -182,11 +180,14 @@ async function watchedLinks(programs: Program[]): Promise<WatchedLinks> {
        FROM item_links l JOIN items i ON i.id = l.item_id
       WHERE i.deleted_at IS NULL AND l.canonical_url IN (${canonicals.map(() => "?").join(",")})`,
   ).bind(...canonicals).all<Record<string, unknown>>()).results ?? [];
-  const found: WatchedRow[] = rows.map((r) => ({
+  return matchWatched(programs, rows.map(toWatchedRow));
+}
+
+function toWatchedRow(r: Record<string, unknown>): WatchedRow {
+  return {
     canonicalUrl: String(r.canonical_url), url: String(r.url), itemId: String(r.item_id), title: String(r.title ?? ""),
     status: String(r.status ?? ""), watchedOn: r.watched_on ? String(r.watched_on) : null,
-  }));
-  return matchWatched(programs, found);
+  };
 }
 
 /** ノート行に、ちきりんのコメント(古い順)をつけて、画面・APIの形にする。ほかの人のコメントは読み込まない。 */

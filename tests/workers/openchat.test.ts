@@ -6,7 +6,7 @@ import { GET as programsGet } from "@/app/api/openchat/programs/route";
 import { GET as ledgerGet } from "@/app/api/openchat/ledger/route";
 import { GET as programGet, PATCH as programPatch, PUT as programPut } from "@/app/api/openchat/programs/[id]/route";
 import { getProgram, latestOpenchatRun, listPrograms, programCounts, saveProgramMeta, saveProgramText } from "@/app/lib/queries/openchat";
-import { watchedKey } from "@/app/lib/openchat-query";
+import { ROOM, watchedKey } from "@/app/lib/openchat-query";
 
 // ちきりんオプチャ: 同期API(start → notes → complete)と、画面用の一覧・台帳の復元。
 // 実際の(ephemeralな)D1に対して行う。ちきりん以外のコメント本文が一覧に出ないことも確かめる。
@@ -506,5 +506,38 @@ describe("thumbnails", () => {
     expect("error" in (saved ?? {})).toBe(false);
     expect(await thumbOf(n.id)).toBe("https://blog.example.org/img/cover.png");
     expect((await row(n.id))?.source_url).toBe("https://blog.example.org/fixed");
+  });
+});
+
+describe("視聴の絞り込み(watch=unwatched)", () => {
+  // 視聴列が「視聴」(Watch List で完了)のノートだけを除く。鑑賞中・未視聴・—は残す。判定は視聴列と同じ(共有URLは回のタイトルで絞る)。
+  const at = "2026-10-01T00:00:00.000Z";
+  const SHARED = "https://bs.tbs.co.jp/watchfilter-test/archives/index.html";
+  beforeAll(async () => {
+    const noteRow = (id: string, linkUrl: string, episodeTitle: string) => [
+      env.DB.prepare("INSERT INTO openchat_notes (id, room, author_name, body_text, link_url, posted_at, posted_at_precision, first_seen_at, last_checked_at) VALUES (?, ?, 'x', '視聴絞り込みテスト', ?, ?, 'exact', ?, ?)").bind(id, ROOM, linkUrl, at, at, at),
+      env.DB.prepare("INSERT INTO openchat_note_meta (note_id, episode_title, updated_at) VALUES (?, ?, ?)").bind(id, episodeTitle, at),
+    ];
+    const item = (id: string, title: string, status: string, url: string) => [
+      env.DB.prepare("INSERT INTO items (id, content_type, title, status, created_at, updated_at) VALUES (?, 'movie', ?, ?, ?, ?)").bind(id, title, status, at, at),
+      env.DB.prepare("INSERT INTO item_links (id, item_id, url, canonical_url) VALUES (?, ?, ?, ?)").bind(`${id}-l`, id, url, url),
+    ];
+    await env.DB.batch([
+      ...noteRow("wf-done", "https://wf.example.test/done", "完了した回"), ...item("wf-i-done", "完了した回", "completed", "https://wf.example.test/done"),
+      ...noteRow("wf-doing", "https://wf.example.test/doing", "鑑賞中の回"), ...item("wf-i-doing", "鑑賞中の回", "in_progress", "https://wf.example.test/doing"),
+      ...noteRow("wf-todo", "https://wf.example.test/todo", "未視聴の回"), ...item("wf-i-todo", "未視聴の回", "backlog", "https://wf.example.test/todo"),
+      ...noteRow("wf-none", "https://wf.example.test/none", "登録なしの回"),
+      // 共有URL: 回Aは完了、回Bは未着手。回Bのノートは、回Aが完了していても残る。
+      ...noteRow("wf-shared-a", SHARED, "共有の回A"), ...item("wf-i-shared-a", "共有の回A", "completed", SHARED),
+      ...noteRow("wf-shared-b", SHARED, "共有の回B"), ...item("wf-i-shared-b", "共有の回B", "backlog", SHARED),
+    ]);
+  });
+
+  test("excludes only notes whose 視聴 column is 視聴; 鑑賞中, 未視聴 and — stay, and a shared URL is judged per episode", async () => {
+    const all = await listPrograms({ q: "視聴絞り込みテスト", limit: 50 });
+    const filtered = await listPrograms({ q: "視聴絞り込みテスト", watch: "unwatched", limit: 50 });
+    expect(all.total).toBe(6);
+    expect(filtered.programs.map((p) => p.noteId).sort()).toEqual(["wf-doing", "wf-none", "wf-shared-b", "wf-todo"]);
+    expect(filtered.total).toBe(4);
   });
 });

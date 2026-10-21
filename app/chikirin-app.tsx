@@ -22,7 +22,7 @@ export type RunSummary = {
 
 const kindLabel: Record<ProgramKind, string> = { all: "すべて", involved: "ちきりんあり", thread: "ちきりんのスレッド", comment: "ちきりんのコメント", none: "ちきりんなし" };
 const sortLabel: Record<ProgramSort, string> = { posted: "スレッド起票日時", latest: "最新ちきりん" };
-const watchLabel: Record<ProgramWatch, string> = { all: "すべて", unwatched: "未視聴・—" };
+const watchLabel: Record<ProgramWatch, string> = { all: "すべて", unwatched: "視聴以外" };
 const runStatusLabel: Record<string, string> = { success: "成功", partial: "一部に警告あり", failed: "失敗", aborted: "中断", started: "実行中" };
 
 /** 最後の取得: collector が読み取りを始めた時刻(送信が遅れても、取得の時刻)。日時はすべて日本時間(JST)。 */
@@ -214,7 +214,7 @@ export function ChikirinApp({ initialPage = null, initialRun = null, initialCoun
             placeholder="番組名、ちきりんの投稿を検索" aria-label="検索"
             title={`検索語は${MAX_LIKE_TERM_BYTES}バイトまで（今 ${utf8ByteLength(query)} バイト）`} />
         </label>
-        <ChipGroup label="視聴での絞り込み" title="視聴列が「未視聴」か「—」の番組だけを出す(視聴済み・鑑賞中を除く)" value={watch} onChange={(key) => { setPage(1); setWatch(key); }}
+        <ChipGroup label="視聴での絞り込み" title="視聴列が「視聴」でない番組(未視聴・鑑賞中・—)だけを出す" value={watch} onChange={(key) => { setPage(1); setWatch(key); }}
           options={(Object.keys(watchLabel) as ProgramWatch[]).map((key) => ({ key, label: `視聴: ${watchLabel[key]}` }))} />
         <ChipGroup label="並び順" value={sort} onChange={(key) => { setPage(1); setSort(key); }}
           options={(Object.keys(sortLabel) as ProgramSort[]).map((key) => ({ key, label: `${sortLabel[key]}順`, title: key === "latest" ? "ちきりんの最新の投稿が新しい順(ちきりんが関わらないスレッドは最後)" : "スレッドの起票日時が新しい順" }))} />
