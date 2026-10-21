@@ -6,7 +6,7 @@ Watch List、TextTube、Manage Asset、To Doを一つのCloudflare上で管理�
 ## できること
 
 - **Watch List**: 番組・記事・音声・映画などの視聴候補を、検索、絞り込み、優先度、ステータス、リンク付き（リンク先のサムネイルも表示）で管理
-- **TextTube**: 動画・音声・記事のライブラリ、詳細Markdown、目次、Markdown表、Mermaid図を含む本文表示、Studio編集。公開YouTube URLからメタデータと既存字幕を取り込み可能
+- **TextTube**: 動画・音声・記事のライブラリ、詳細Markdown、目次、Markdown表、Mermaid図を含む本文表示、編集フォーム。公開YouTube URLからメタデータと既存字幕を取り込み可能
 - **Manage Asset**: 資産総額、資産配分、保有資産、保管場所、通貨推移、履歴、設定、データ更新を表示
 - **ちきりんオプチャ**: LINEオープンチャット「集まれテレビっ子」のノート（1ノート＝1番組）から、全スレッドを番組ごとに表示し、ちきりんの関わり方（スレッド／コメント／なし）を示す。Mac上のcollectorがLINEの画面を読み取り（参照のみ）、差分だけをD1へ同期
 - **To Do**: 日ごとの看板でタスクを管理。単発タスクと毎日／曜日指定の繰り返しタスクを分けて保存
@@ -27,9 +27,8 @@ Watch List、TextTube、Manage Asset、To Doを一つのCloudflare上で管理�
 | --- | --- |
 | `/` | ポータルホーム。各機能への導線とデータ基盤の状態 |
 | `/watch-list` | Watch Listの検索、フィルタ、ページング、登録・編集・削除、インポート/エクスポート。`?q=` で検索語つきで開ける（ちきりんオプチャの「Watch List」列から） |
-| `/text-tube` | TextTubeライブラリ。検索、並び替え、ステータス管理、詳細表示への導線 |
-| `/text-tube/studio` | TextTubeの作成・編集画面 |
-| `/text-tube/watch/:id` | TextTube本文の読書画面。Markdown、GFM表、目次アンカー、Mermaidを表示 |
+| `/text-tube` | TextTubeライブラリ。検索、並び替え、追加、各カードからの編集・削除、詳細表示への導線 |
+| `/text-tube/watch/:id` | TextTube本文の読書画面。Markdown、GFM表、目次アンカー、Mermaidを表示。編集・削除もここから |
 | `/manage-asset` | Manage Assetホーム。総資産、資産推移、資産配分、保有資産 |
 | `/manage-asset/locations` | 保管場所ごとの資産内訳 |
 | `/manage-asset/currencies` | 通貨ごとの資産推移と履歴 |

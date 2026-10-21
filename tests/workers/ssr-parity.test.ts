@@ -130,14 +130,12 @@ describe("Watch List page", () => {
 });
 
 describe("TextTube pages", () => {
-  // app/text-tube/page.tsx and app/text-tube/studio/page.tsx are Server
-  // Components (see app/lib/queries/text-tube.ts). Both share the same
-  // underlying video list, so both get the same assertion. Neither page
-  // ever showed a "読み込み中" placeholder even before RSC -- an empty
-  // grid/table just rendered with zero rows -- so the meaningful check here
-  // is that the rendered markup actually links every video, not the absence
-  // of loading text.
-  for (const path of ["/text-tube", "/text-tube/studio"]) {
+  // app/text-tube/page.tsx is a Server Component (see
+  // app/lib/queries/text-tube.ts). It never showed a "読み込み中"
+  // placeholder even before RSC -- an empty grid just rendered with zero
+  // cards -- so the meaningful check here is that the rendered markup
+  // actually links every video, not the absence of loading text.
+  for (const path of ["/text-tube"]) {
     test(`GET ${path} embeds the real video list in the server-rendered HTML`, async () => {
       await seedOneVideo();
       const [pageResponse, videosPage] = await Promise.all([

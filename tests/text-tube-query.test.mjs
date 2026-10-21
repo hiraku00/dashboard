@@ -5,7 +5,7 @@ import { buildVideosFilter } from "../app/lib/text-tube-query.ts";
 // buildVideosFilter() is the pure "which WHERE clause and binds does this
 // request produce" decision extracted out of listVideos() so it can be
 // tested without a D1 binding. app/api/text-tube/videos/route.ts (GET) and
-// the /text-tube and /text-tube/studio pages' future Server Components all
+// the /text-tube page's Server Component both
 // go through listVideos(), so a bug here would silently make them disagree
 // on what "the list" contains.
 
