@@ -16,7 +16,8 @@ export const ROOM = "atsumare-tv";
 export type ProgramKind = "all" | "involved" | "thread" | "comment" | "none";
 export type ProgramsQuery = { q?: string | null; kind?: string | null; sort?: string | null; watch?: string | null; page?: number | string | null; limit?: number | null };
 
-/** 視聴列での絞り込み。unwatched: 「未視聴」か「—」(視聴済み・鑑賞中でないもの)だけ。 */
+/** 視聴列での絞り込み。unwatched: 視聴列が「視聴」(Watch List で完了)でないもの(未視聴・鑑賞中・—)だけ。
+ *  値の名前は、ブックマークしたURL(?watch=unwatched)が効き続けるように残している。 */
 export type ProgramWatch = "all" | "unwatched";
 export function parseWatch(value: unknown): ProgramWatch {
   return value === "unwatched" ? "unwatched" : "all";
@@ -227,14 +228,14 @@ export function normalizeEpisodeTitle(value: string): string {
 }
 
 /** 一覧に出るリンクのURL(編集したリンク + ノートのリンクカード)を正規化して返す。 */
-export function programLinkUrls(p: Program): string[] {
+export function programLinkUrls(p: Pick<Program, "linkUrl" | "meta">): string[] {
   return [...new Set([...p.meta.links.map((l) => l.url), p.linkUrl].filter(Boolean))];
 }
 
 /** 一覧のリンクが Watch List にも登録されているかを、正規化したURLで照合する。
  *  番組の一覧ページのように複数の項目が同じURLを共有しているときは、URLだけでは回を決められないので、
  *  ノートの「その日の放送タイトル」と項目のタイトルが一致する項目だけを登録済とする(一致しなければ登録済にしない)。 */
-export function matchWatched(programs: Program[], rows: WatchedRow[]): WatchedLinks {
+export function matchWatched(programs: Array<Pick<Program, "noteId" | "linkUrl" | "meta">>, rows: WatchedRow[]): WatchedLinks {
   const byCanonical = new Map<string, WatchedRow[]>();
   for (const r of rows) byCanonical.set(r.canonicalUrl, [...(byCanonical.get(r.canonicalUrl) ?? []), r]);
   const watched: WatchedLinks = {};
@@ -253,4 +254,11 @@ export function matchWatched(programs: Program[], rows: WatchedRow[]): WatchedLi
     }
   }
   return watched;
+}
+
+/** 視聴列が「視聴」(Watch List で完了)になるか。画面(app/chikirin-app.tsx の displayLinks)と同じく、
+ *  編集したリンクがあればそれ、無ければノートのリンクカードを見て、そのどれかが完了した項目に結びつけば true。 */
+export function isWatchCompleted(p: Pick<Program, "noteId" | "linkUrl" | "meta">, watched: WatchedLinks): boolean {
+  const shown = p.meta.links.length > 0 ? p.meta.links.map((l) => l.url) : [p.linkUrl].filter(Boolean);
+  return shown.some((url) => watched[watchedKey(p.noteId, url)]?.status === "completed");
 }

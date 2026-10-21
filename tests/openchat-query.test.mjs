@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, test } from "vitest";
 import {
-  buildProgramsFilter, formatPostedAt, KIND_CONDITIONS, programCountsSql, matchWatched, watchedKey, likePattern, parseKind, parseSort, parseWatch, programsOrderBy, resolveThumbnails, thumbnailSourceUrl, toProgram, MAX_PAGE, PAGE_SIZE,
+  buildProgramsFilter, formatPostedAt, isWatchCompleted, KIND_CONDITIONS, programCountsSql, matchWatched, watchedKey, likePattern, parseKind, parseSort, parseWatch, programsOrderBy, resolveThumbnails, thumbnailSourceUrl, toProgram, MAX_PAGE, PAGE_SIZE,
 } from "../app/lib/openchat-query.ts";
 
 // vinextの静的解析は searchParams の読み取りだけでは動的ページと判定しない(実機で確認:
@@ -215,6 +215,16 @@ describe("matchWatched", () => {
     const rows = [row(INDEX, "i1", "回A"), row(INDEX, "i2", "回B")];
     expect(matchWatched([program("n1", "回C", [INDEX])], rows)).toEqual({});
     expect(matchWatched([program("n2", "", [INDEX])], rows)).toEqual({});
+  });
+
+  test("isWatchCompleted follows the 視聴 column: only 完了 counts, and only the links the list shows (edited links over the link card)", () => {
+    const rows = [row("https://example.com/done", "i1", "回A", "completed", "2026-01-01"), row("https://example.com/doing", "i2", "回B", "in_progress")];
+    const check = (p) => isWatchCompleted(p, matchWatched([p], rows));
+    expect(check(program("n1", "", ["https://example.com/done"]))).toBe(true);
+    expect(check(program("n2", "", ["https://example.com/doing"]))).toBe(false);
+    expect(check(program("n3", "", []))).toBe(false);
+    expect(check(program("n4", "", [], "https://example.com/done"))).toBe(true);                               // 編集したリンクが無ければリンクカード
+    expect(check(program("n5", "", ["https://example.com/doing"], "https://example.com/done"))).toBe(false);   // 編集したリンクがあればリンクカードは見ない(画面と同じ)
   });
 
   test("two notes sharing one URL are matched separately", () => {
