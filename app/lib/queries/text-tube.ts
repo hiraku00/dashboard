@@ -36,7 +36,7 @@ export async function listVideos(query: VideosQuery = {}): Promise<{ videos: Vid
 }
 
 /** app/api/text-tube/videos/[id] の GET と、編集フォーム展開
- *  (text-tube-app.tsx の useVideoActions().edit()) が必要とする全カラムをそのまま返す --
+ *  (app/text-tube/video-edit-app.tsx の編集画面) が必要とする全カラムをそのまま返す --
  *  listVideos() の絞ったカラム一覧とは別物なので使い回さない。 */
 export async function getVideo(id: string): Promise<Video | null> {
   await ensureSchema({ seed: false });

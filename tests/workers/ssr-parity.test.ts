@@ -143,11 +143,10 @@ describe("TextTube pages", () => {
         SELF.fetch(`${BASE}/api/text-tube/videos`).then((response) => response.json() as Promise<{ videos: unknown[] }>),
       ]);
       const html = await pageResponse.text();
-      // Both pages render one Link/row per video with the video's own id in
-      // the href, so counting distinct /text-tube/watch/<id> hrefs counts
-      // rendered videos regardless of which markup (grid card vs. table
-      // row) the page uses.
-      const linkedIds = new Set([...html.matchAll(/\/text-tube\/watch\/([^"?]+)/g)].map((match) => match[1]));
+      // Each card links to /text-tube/watch/<id> (and its edit link to
+      // /text-tube/watch/<id>/edit), so counting distinct ids counts
+      // rendered videos.
+      const linkedIds = new Set([...html.matchAll(/\/text-tube\/watch\/([^"?/]+)/g)].map((match) => match[1]));
       expect(linkedIds.size).toBe(videosPage.videos.length);
       expect(videosPage.videos.length).toBeGreaterThan(0);
     });

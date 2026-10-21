@@ -10,7 +10,7 @@ export const GET = route(async (_request: Request, context: Context) => {
   await ensureSchema({ seed: false }); const { id } = await context.params;
   // This is the only reader of the detailed script body left (the watch
   // page no longer displays it -- see app/text-tube/watch/watch-app.tsx).
-  // The edit form (useVideoActions() in text-tube-app.tsx) is the caller, so a missing R2 object behind a
+  // The edit form (app/text-tube/video-edit-app.tsx) is the caller, so a missing R2 object behind a
   // recorded key is a real data-integrity problem worth a 404 here, in
   // server logs or a direct API call, rather than silently degrading to "".
   const video = (await env.DB.prepare("SELECT detailed_script_object_key FROM text_tube_videos WHERE id=? AND deleted_at IS NULL").bind(id).all<{ detailed_script_object_key: string | null }>()).results?.[0];
