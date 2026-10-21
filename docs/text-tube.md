@@ -2,9 +2,10 @@
 
 ## 画面構成
 
-- `/text-tube`: ライブラリ。検索、並び替え、ステータス/種別フィルタ、詳細への導線
-- `/text-tube/studio`: 新規登録・編集。メタデータ、リンク、詳細Markdownを扱う
-- `/text-tube/watch/:id`: 読書画面。固定ポータルヘッダーの下で本文を閲覧する
+- `/text-tube`: ライブラリ。検索、並び替え、チャンネル絞り込み、新規登録。各カードから編集・削除
+- `/text-tube/watch/:id`: 読書画面。固定ポータルヘッダーの下で本文を閲覧する。ここからも編集・削除できる
+
+編集は同じ画面の上に開くフォームで行い、メタデータ、リンク、詳細Markdownを扱う。以前あった `/text-tube/studio`（一覧表と編集・削除だけの画面）とTextTube内のサイドバーは廃止した。
 
 TextTubeは単独アプリではなく、ポータルの共通ヘッダー・認証・保存基盤を利用する機能です。元の画面構成をベースにしつつ、色、余白、幅、ナビゲーションはポータルのデザインシステムに合わせます。
 
@@ -30,7 +31,7 @@ TextTubeは単独アプリではなく、ポータルの共通ヘッダー・認
 
 ## YouTube URL取り込み
 
-Studioの「動画情報を取得」は、YouTube Data API v3で動画メタデータを、SupadataでYouTube標準字幕を取得します。字幕はタイムスタンプ付きMarkdownに変換し、保存時にR2へ格納します。
+編集フォームの「動画情報を取得」は、YouTube Data API v3で動画メタデータを、SupadataでYouTube標準字幕を取得します。字幕はタイムスタンプ付きMarkdownに変換し、保存時にR2へ格納します。
 
 - Cloudflare Secret: `YOUTUBE_DATA_API_KEY`、`SUPADATA_API_KEY`
 - 字幕取得は `mode=native` に固定し、AI文字起こしへ自動フォールバックしません。

@@ -16,7 +16,7 @@ function clean(value: unknown, max = 4000): string {
 export type VideosQuery = { q?: string | null };
 export type VideosFilter = { where: string; values: string[] };
 
-/** app/api/text-tube/videos の GET と、/text-tube・/text-tube/studio の
+/** app/api/text-tube/videos の GET と、/text-tube の
  *  初期表示が両方これを経由する（listVideos() 経由）。q以外のフィルタは
  *  無く、ページネーションも無い（呼び出し元のSQLに固定 LIMIT 100 がある）
  *  ので、ここでの仕事はWHERE句の組み立てだけ。 */

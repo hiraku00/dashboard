@@ -1,7 +1,7 @@
 /** Saves a TextTube video's detailed-script body to R2 and records the
  *  revision. Moved out of app/api/text-tube/videos/[id]/document/route.ts's
  *  POST handler so app/lib/text-tube-import.ts (the Watch List auto-import)
- *  can save the transcript it fetches through the same path Studio's edit
+ *  can save the transcript it fetches through the same path the edit
  *  form uses -- one place writing text_tube_video_revisions means the two
  *  callers cannot record it differently. */
 import { env } from "cloudflare:workers";

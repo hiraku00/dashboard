@@ -1,9 +1,9 @@
 "use client";
 import Link from "next/link";
 import Image from "next/image";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { MarkdownRenderer } from "../markdown-renderer";
-import { TextTubeChrome } from "../../text-tube-app";
+import { TextTubeChrome, useVideoActions } from "../../text-tube-app";
 import { ApiError, readJson } from "../../lib/json";
 
 type Video = Record<string, unknown>;
@@ -25,7 +25,21 @@ export function TextTubeWatchApp({
   initialError?: string;
 }) {
   const [video, setVideo] = useState<Video | null>(initialVideo),
-    [error, setError] = useState(initialError);
+    [error, setError] = useState(initialError),
+    [notice, setNotice] = useState("");
+  const reload = useCallback(async () => {
+    const r = await fetch(`/api/text-tube/videos/${id}`);
+    if (r.ok) setVideo((await readJson<{ video: Video }>(r)).video);
+  }, [id]);
+  const actions = useVideoActions({
+    onSaved: reload,
+    // A full page load, not a client-side navigation: the library's list
+    // could otherwise come back from the client router cache with the
+    // deleted video still in it (the same reason chikirin-detail.tsx goes
+    // back to its list this way after saving).
+    onDeleted: () => { window.location.href = "/text-tube"; },
+    onNotice: setNotice,
+  });
   useEffect(() => {
     // Two cases skip the client fetch entirely: the server already has the
     // video (normal case), or the server positively confirmed it does not
@@ -71,6 +85,7 @@ export function TextTubeWatchApp({
   const readTime = Math.max(1, Math.ceil(String(video.summary ?? "").length / 1000));
   return (
     <TextTubeChrome>
+      {notice && <div className="tt-notice">{notice}</div>}
       <div className="tt-reading-layout">
         <article className="tt-reading-main">
           <header className="tt-reading-header">
@@ -93,6 +108,18 @@ export function TextTubeWatchApp({
                   元の動画を見る ↗
                 </a>
               )}
+              <div className="tt-card-actions tt-reading-actions">
+                <button type="button" onClick={() => actions.edit(id)}>
+                  編集
+                </button>
+                <button
+                  type="button"
+                  className="danger"
+                  onClick={() => actions.remove({ id, title: String(video.title) })}
+                >
+                  削除
+                </button>
+              </div>
             </div>
           </header>
           <section className="tt-reading-section">
@@ -106,12 +133,9 @@ export function TextTubeWatchApp({
             <small>おすすめ</small>
             <b>もっと動画を探す</b>
           </Link>
-          <Link href="/text-tube/studio" prefetch={false}>
-            <small>Studio</small>
-            <b>動画を管理する</b>
-          </Link>
         </aside>
       </div>
+      {actions.editor}
     </TextTubeChrome>
   );
 }

@@ -95,7 +95,7 @@ export async function runTextTubeImport(
   if ("error" in info) return markFailed(importId, info.error);
 
   // 字幕が取れなくても(未対応言語、字幕なしの動画など)動画自体は作る --
-  // 要約と同じく、字幕もあとから手動で補える(Studioの編集フォーム)。
+  // 要約と同じく、字幕もあとから手動で補える(編集フォーム)。
   // ここで失敗にしてしまうと、字幕が無いだけの動画がいつまでも「未反映」
   // のままになる。
   const captions = await fetchYouTubeTranscript(
@@ -131,7 +131,7 @@ export async function runTextTubeImport(
     // ArrayBufferにしてsaveVideoDocument()へ -- POST .../documentが
     // request.arrayBuffer()で受け取るのと同じ形。失敗しても動画自体の
     // 作成は既に済んでいるので、取り込み全体は成功のまま扱う(字幕だけ
-    // Studioで後から保存し直せる)。
+    // 編集フォームで後から保存し直せる)。
     await saveVideoDocument(videoId, new TextEncoder().encode(captions.script).buffer).catch(() => {});
   }
 

@@ -55,59 +55,7 @@ const views = (value: number) =>
     ? `${(value / 10000).toFixed(1)}万`
     : value.toLocaleString("ja-JP");
 
-function TextTubeIcon({ children }: { children: React.ReactNode }) {
-  return (
-    <span className="tt-sidebar-icon" aria-hidden="true">
-      {children}
-    </span>
-  );
-}
-
-function TextTubeOriginalSidebar({ active }: { active: string }) {
-  const items = [
-    ["/text-tube", "⌂", "ホーム"],
-    ["/text-tube", "▣", "ライブラリ"],
-    ["/text-tube/studio", "✎", "Studio"],
-    ["/watch-list", "◷", "Watch List"],
-    ["/manage-asset", "▥", "Manage Asset"],
-  ];
-  return (
-    <aside className="tt-sidebar tt-embedded-sidebar">
-      <div className="tt-sidebar-menu">
-        {items.map(([href, icon, label]) => (
-          // prefetch={false}: see the comment on the portal nav links in
-          // portal-nav.tsx -- Next.js prefetches a visible Link's target as
-          // soon as it renders, not only on hover or click. Every TextTube
-          // page shows this sidebar, so leaving prefetch on would mean every
-          // TextTube page view silently reads D1 once per sidebar item too,
-          // once those destinations become Server Components reading D1.
-          <Link
-            key={label}
-            className={active === href ? "active" : ""}
-            href={href}
-            prefetch={false}
-          >
-            <TextTubeIcon>{icon}</TextTubeIcon>
-            <b>{label}</b>
-          </Link>
-        ))}
-      </div>
-      <div className="tt-side-rule" />
-      <div className="tt-sidebar-note">
-        <small>登録チャンネル</small>
-        <p>個人用TextTubeライブラリ</p>
-      </div>
-    </aside>
-  );
-}
-
-export function TextTubeChrome({
-  children,
-  active = "/text-tube",
-}: {
-  children: React.ReactNode;
-  active?: string;
-}) {
+export function TextTubeChrome({ children }: { children: React.ReactNode }) {
   return (
     <main className="portal-shell texttube-workspace">
       <PortalHeader
@@ -120,27 +68,9 @@ export function TextTubeChrome({
           </>
         }
         active="/text-tube"
-      >
-        <nav className="texttube-section-nav" aria-label="TextTube メニュー">
-          <Link
-            className={active === "/text-tube" ? "active" : ""}
-            href="/text-tube"
-            prefetch={false}
-          >
-            ライブラリ
-          </Link>
-          <Link
-            className={active === "/text-tube/studio" ? "active" : ""}
-            href="/text-tube/studio"
-            prefetch={false}
-          >
-            Studio
-          </Link>
-        </nav>
-      </PortalHeader>
+      />
       <div className="tt-original-frame">
         <div className="tt-original-body">
-          <TextTubeOriginalSidebar active={active} />
           <div className="tt-main">{children}</div>
         </div>
       </div>
@@ -155,6 +85,105 @@ export function TextTubeChrome({
       <div id="tt-modal-root" />
     </main>
   );
+}
+/** Editing and deleting a video, shared by the library cards and the watch
+ *  page (this used to live in a separate Studio page, whose only job was these
+ *  two buttons). `editor` is the modal to render while editing; it portals into
+ *  TextTubeChrome's #tt-modal-root, so the caller just has to render it. */
+export function useVideoActions({
+  onSaved,
+  onDeleted,
+  onNotice,
+}: {
+  onSaved: () => void;
+  onDeleted: (id: string) => void;
+  onNotice: (message: string) => void;
+}) {
+  const [editing, setEditing] = useState<{ id: string; form: VideoForm } | null>(null);
+  async function edit(id: string) {
+    try {
+      const [videoResponse, doc] = await Promise.all([
+        fetch(`/api/text-tube/videos/${id}`),
+        fetch(`/api/text-tube/videos/${id}/document`).then((r) =>
+          r.ok ? r.text() : "",
+        ),
+      ]);
+      // Checked before readJson(): an unhandled exception on the API side
+      // comes back as a non-2xx response with an empty body, and parsing
+      // that throws "Unexpected end of JSON input" rather than a usable
+      // message.
+      if (!videoResponse.ok) throw new Error("動画を読み込めませんでした。");
+      const { video } = await readJson<{ video: Video }>(videoResponse);
+      setEditing({ id, form: videoToForm(video, doc) });
+    } catch (error) {
+      onNotice(error instanceof Error ? error.message : "動画を読み込めませんでした。");
+    }
+  }
+  async function save(e: FormEvent) {
+    e.preventDefault();
+    if (!editing) return;
+    try {
+      const r = await fetch(`/api/text-tube/videos/${editing.id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(formToPayload(editing.form)),
+      });
+      if (!r.ok) {
+        const body = (await r.json().catch(() => null)) as ApiError | null;
+        onNotice(body?.error ?? "更新できませんでした。");
+        return;
+      }
+      const docResponse = await fetch(`/api/text-tube/videos/${editing.id}/document`, {
+        method: "POST",
+        body: editing.form.detailedScript,
+      });
+      setEditing(null);
+      if (docResponse.ok) onNotice("保存しました。");
+      else {
+        const body = (await docResponse.json().catch(() => null)) as ApiError | null;
+        onNotice(`保存しました。(本文は保存できませんでした: ${body?.error ?? "不明なエラー"})`);
+      }
+      onSaved();
+    } catch (error) {
+      onNotice(error instanceof Error ? error.message : "更新できませんでした。");
+    }
+  }
+  async function remove(video: Pick<Video, "id" | "title">) {
+    if (!confirm(`「${video.title}」を削除しますか？`)) return;
+    try {
+      const r = await fetch(`/api/text-tube/videos/${video.id}`, { method: "DELETE" });
+      if (!r.ok) throw new Error("削除できませんでした。");
+      onNotice("削除しました。");
+      onDeleted(video.id);
+    } catch (error) {
+      onNotice(error instanceof Error ? error.message : "削除できませんでした。");
+    }
+  }
+  const editor = editing && (
+    <VideoEditor
+      title="動画を編集"
+      value={editing.form}
+      onChange={(form) => setEditing({ ...editing, form })}
+      onClose={() => setEditing(null)}
+      onSubmit={save}
+      submitLabel="保存する"
+    />
+  );
+  return { edit, remove, editor };
+}
+function videoToForm(video: Video, detailedScript: string): VideoForm {
+  return {
+    title: video.title,
+    channelName: video.channel_name,
+    originalUrl: video.original_url,
+    thumbnailUrl: video.thumbnail_url,
+    channelThumbnailUrl: video.channel_thumbnail_url ?? "",
+    summary: video.summary,
+    detailedScript,
+    publishedAt: video.published_at ?? "",
+    viewCount: video.view_count,
+    duration: video.duration,
+  };
 }
 export function TextTubeApp({
   initialVideos = null,
@@ -187,6 +216,11 @@ export function TextTubeApp({
   // Skips exactly the mount-time reload when the server already rendered
   // this same default (q="") view. See app/lib/use-search-reload.ts.
   useSearchReload(load, q, Boolean(initialVideos));
+  const actions = useVideoActions({
+    onSaved: load,
+    onDeleted: (id) => setVideos((current) => current.filter((v) => v.id !== id)),
+    onNotice: setNotice,
+  });
   const channels = useMemo(
     () =>
       Array.from(
@@ -297,65 +331,72 @@ export function TextTubeApp({
       </div>
       <div className="tt-video-grid">
         {shown.map((v) => (
-          // prefetch={false}: this page can render up to 100 of these cards.
-          // Once /text-tube/watch/[id] becomes a Server Component reading
-          // D1+R2, leaving prefetch on would mean simply scrolling this grid
-          // into view reads D1 once per visible card -- see the matching
-          // comment on the sidebar Links above.
-          <Link
-            className="tt-video-card"
-            href={`/text-tube/watch/${v.id}`}
-            key={v.id}
-            prefetch={false}
-          >
-            <div className="tt-thumb">
-              {v.thumbnail_url ? (
-                <Image
-                  src={v.thumbnail_url}
-                  alt=""
-                  fill
-                  sizes="(max-width: 460px) 100vw, (max-width: 1000px) 50vw, 25vw"
-                  unoptimized
-                />
-              ) : (
-                <span>
-                  TEXT
-                  <br />
-                  TUBE
-                </span>
-              )}
-              {v.duration && <b>{v.duration}</b>}
-            </div>
-            <div className="tt-video-info">
-              <span className="tt-channel-avatar">
-                {v.channel_thumbnail_url ? (
+          <article className="tt-video-card" key={v.id}>
+            {/* prefetch={false}: this page can render up to 100 of these
+                cards, and /text-tube/watch/[id] is a Server Component reading
+                D1 -- leaving prefetch on would mean simply scrolling this grid
+                into view reads D1 once per visible card. */}
+            <Link
+              className="tt-video-link"
+              href={`/text-tube/watch/${v.id}`}
+              prefetch={false}
+            >
+              <div className="tt-thumb">
+                {v.thumbnail_url ? (
                   <Image
-                    src={v.channel_thumbnail_url}
+                    src={v.thumbnail_url}
                     alt=""
                     fill
-                    sizes="34px"
+                    sizes="(max-width: 460px) 100vw, (max-width: 1000px) 50vw, 25vw"
                     unoptimized
                   />
                 ) : (
-                  (v.channel_name || "T").slice(0, 1)
+                  <span>
+                    TEXT
+                    <br />
+                    TUBE
+                  </span>
                 )}
-              </span>
-              <div>
-                <h3>{v.title}</h3>
-                <p>{v.channel_name || "チャンネル未設定"}</p>
-                <small>
-                  {views(v.view_count)} 閲覧 · 記事作成日 {date(v.created_at)}
-                  <br />
-                  動画公開日 {date(v.published_at)}
-                </small>
+                {v.duration && <b>{v.duration}</b>}
               </div>
+              <div className="tt-video-info">
+                <span className="tt-channel-avatar">
+                  {v.channel_thumbnail_url ? (
+                    <Image
+                      src={v.channel_thumbnail_url}
+                      alt=""
+                      fill
+                      sizes="34px"
+                      unoptimized
+                    />
+                  ) : (
+                    (v.channel_name || "T").slice(0, 1)
+                  )}
+                </span>
+                <div>
+                  <h3>{v.title}</h3>
+                  <p>{v.channel_name || "チャンネル未設定"}</p>
+                  <small>
+                    {views(v.view_count)} 閲覧 · 記事作成日 {date(v.created_at)}
+                    <br />
+                    動画公開日 {date(v.published_at)}
+                  </small>
+                </div>
+              </div>
+            </Link>
+            <div className="tt-card-actions">
+              <button type="button" onClick={() => actions.edit(v.id)}>
+                編集
+              </button>
+              <button type="button" className="danger" onClick={() => actions.remove(v)}>
+                削除
+              </button>
             </div>
-          </Link>
+          </article>
         ))}
         {!shown.length && (
           <div className="tt-empty">
             該当する動画がありません。
-            <Link href="/text-tube/studio" prefetch={false}>Studioで作成する</Link>
           </div>
         )}
       </div>
@@ -369,6 +410,7 @@ export function TextTubeApp({
           submitLabel="追加する"
         />
       )}
+      {actions.editor}
     </TextTubeChrome>
   );
 }
@@ -476,7 +518,7 @@ export function VideoEditor({
       >
         <div className="tt-editor-head">
           <div>
-            <p className="tt-kicker">TEXTTUBE STUDIO</p>
+            <p className="tt-kicker">TEXTTUBE</p>
             <h2 id="texttube-editor-title">{title}</h2>
           </div>
           <button onClick={onClose}>×</button>
