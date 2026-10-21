@@ -101,6 +101,19 @@ test("a new video whose script failed to save is updated, not added again, on th
   ]);
 });
 
+test("opened from a library card, cancelling and saving both go back to the library", async () => {
+  const assigned: string[] = [];
+  vi.stubGlobal("location", { set href(url: string) { assigned.push(url); } });
+  stubFetch(({ url, method }) =>
+    method === "GET" ? (url.endsWith("/document") ? new Response("") : json({ video })) : json({ ok: true }),
+  );
+  render(<TextTubeVideoEditApp id="v1" fromList />);
+  const cancel = await screen.findByRole("link", { name: "キャンセル" });
+  expect(cancel.getAttribute("href")).toBe("/text-tube");
+  fireEvent.click(screen.getByRole("button", { name: "保存する" }));
+  await waitFor(() => expect(assigned).toEqual(["/text-tube"]));
+});
+
 test("cancelling with unsaved changes asks first, and stays when declined", async () => {
   stubFetch(({ url }) => (url.endsWith("/document") ? new Response("") : json({ video })));
   const confirm = vi.fn(() => false);

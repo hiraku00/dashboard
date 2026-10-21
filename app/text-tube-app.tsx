@@ -248,7 +248,7 @@ export function TextTubeApp({
               </div>
             </Link>
             <div className="tt-card-actions">
-              <Link href={`/text-tube/watch/${v.id}/edit`} prefetch={false}>
+              <Link href={`/text-tube/watch/${v.id}/edit?from=list`} prefetch={false}>
                 編集
               </Link>
               <button type="button" className="danger" onClick={() => remove(v)}>

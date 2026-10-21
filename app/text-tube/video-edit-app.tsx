@@ -19,7 +19,15 @@ import { ApiError, readJson } from "../lib/json";
  *  With `id`, it loads that video and its detailed script (R2) on mount; the
  *  script is only ever read here, so there is no server-rendered copy to start
  *  from. */
-export function TextTubeVideoEditApp({ id }: { id?: string }) {
+export function TextTubeVideoEditApp({
+  id,
+  fromList = false,
+}: {
+  id?: string;
+  // Opened from a library card (?from=list) rather than the watch page:
+  // cancelling and saving both go back there instead of to the watch page.
+  fromList?: boolean;
+}) {
   const [form, setForm] = useState<VideoForm | null>(id ? null : blankVideo),
     [saved, setSaved] = useState<VideoForm | null>(id ? null : blankVideo),
     [loadError, setLoadError] = useState(""),
@@ -28,7 +36,7 @@ export function TextTubeVideoEditApp({ id }: { id?: string }) {
     [createdId, setCreatedId] = useState<string | null>(null),
     [importing, setImporting] = useState(false),
     [importError, setImportError] = useState("");
-  const backHref = id ? `/text-tube/watch/${id}` : "/text-tube";
+  const backHref = id && !fromList ? `/text-tube/watch/${id}` : "/text-tube";
 
   useEffect(() => {
     if (!id) return;
@@ -111,11 +119,13 @@ export function TextTubeVideoEditApp({ id }: { id?: string }) {
         }
       }
       leaving.current = true;
-      // A full page load rather than a client-side navigation: the watch
-      // page could otherwise come back from the client router cache showing
-      // the video as it was before this save (the same reason
-      // chikirin-detail.tsx goes back this way).
-      window.location.href = `/text-tube/watch/${videoId}`;
+      // A full page load rather than a client-side navigation: the page
+      // could otherwise come back from the client router cache showing the
+      // video as it was before this save (the same reason
+      // chikirin-detail.tsx goes back this way). Back to the library when
+      // that is where the edit started; otherwise (the watch page, or a new
+      // video) to the video itself.
+      window.location.href = fromList ? "/text-tube" : `/text-tube/watch/${videoId}`;
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "保存できませんでした。");
       setSaving(false);
