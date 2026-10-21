@@ -68,11 +68,31 @@ function openchatNotesStatement() {
 }
 
 function toOpenchatNotes(rows: Array<Record<string, unknown>>): OpenchatNoteLinks[] {
-  return rows.map((row) => ({
-    noteId: String(row.id),
-    title: String(row.episode_title || row.program_title || ""),
-    urls: [...metaFromRow(row).links.map((l) => l.url), String(row.link_url ?? "")],
-  }));
+  return rows.map((row) => {
+    const meta = metaFromRow(row);
+    return {
+      noteId: String(row.id),
+      title: String(row.episode_title || row.program_title || ""),
+      urls: [...meta.links.map((l) => l.url), String(row.link_url ?? "")],
+      episodeTitle: meta.episodeTitle,
+    };
+  });
+}
+
+/** 「ちきりんオプチャ」列で共有URLを見分けるための、ページの項目が持つリンクの正規化URLごとの、
+ *  Watch List 全体(削除済みを除く)でそのURLを持つ項目の数(attachOpenchat() 参照)。
+ *  pageItemIds は、ページの項目の id を返すサブクエリか「?,?,…」。 */
+function linkItemCountsStatement(pageItemIds: string, values: unknown[]) {
+  return env.DB.prepare(
+    `SELECT l.canonical_url, COUNT(DISTINCT l.item_id) AS c
+       FROM item_links l JOIN items i ON i.id = l.item_id
+      WHERE i.deleted_at IS NULL AND l.canonical_url IN (SELECT canonical_url FROM item_links WHERE item_id IN (${pageItemIds}))
+      GROUP BY l.canonical_url`,
+  ).bind(...values);
+}
+
+function toItemCounts(rows: Array<Record<string, unknown>>): Map<string, number> {
+  return new Map(rows.map((row) => [String(row.canonical_url), Number(row.c)]));
 }
 
 /** POST/PATCH も保存直後の1件表示にこれを使う。id複数件バインドは
@@ -86,8 +106,8 @@ export async function attachLinks(rows: Array<Record<string, unknown>>): Promise
   const { results } = await env.DB.prepare(`SELECT * FROM item_links WHERE item_id IN (${placeholders}) ORDER BY position ASC`).bind(...ids).all<Record<string, unknown>>();
   const byItem = groupLinksByItem(results ?? []);
   const items = rows.map((row) => toItem(row, byItem.get(String(row.id)) ?? []));
-  const [withStatus, openchat] = await Promise.all([withTextTubeStatus(items), openchatNotesStatement().all<Record<string, unknown>>()]);
-  return attachOpenchat(withStatus, toOpenchatNotes(openchat.results ?? []));
+  const [withStatus, [openchat, itemCounts]] = await Promise.all([withTextTubeStatus(items), env.DB.batch([openchatNotesStatement(), linkItemCountsStatement(placeholders, ids)])]);
+  return attachOpenchat(withStatus, toOpenchatNotes((openchat.results ?? []) as Array<Record<string, unknown>>), toItemCounts((itemCounts.results ?? []) as Array<Record<string, unknown>>));
 }
 
 function groupLinksByItem(links: Array<Record<string, unknown>>) {
@@ -108,7 +128,7 @@ export type ListItemsResult = {
 
 /** app/api/items の GET と、Watch List ページの初期表示が両方呼ぶ。
  *
- *  一覧・総数・リンク・オプチャの照合用スレッドを D1 への1往復（1回の batch）で取る。以前はリンクを
+ *  一覧・総数・リンク・オプチャの照合用スレッド・共有URLの項目数を D1 への1往復（1回の batch）で取る。以前はリンクを
  *  一覧の取得後に別の問い合わせで引いており、ページ送りのたびに D1 へ
  *  2往復していた（D1 の1往復は SQL 自体の実行より桁違いに長い）。リンクは
  *  ページ内の id をまだ知らないので、一覧と同じ WHERE / ORDER BY / LIMIT の
@@ -118,15 +138,16 @@ export async function listItems(query: ListItemsQuery = {}): Promise<ListItemsRe
   await ensureSchema();
   const { where, values, limit, offset } = buildItemsFilter(query);
   const page = `SELECT id FROM items ${where} ${ITEMS_ORDER_BY} LIMIT ? OFFSET ?`;
-  const [rows, totalResult, linkResult, openchatResult] = await env.DB.batch([
+  const [rows, totalResult, linkResult, openchatResult, itemCountResult] = await env.DB.batch([
     env.DB.prepare(`SELECT * FROM items ${where} ${ITEMS_ORDER_BY} LIMIT ? OFFSET ?`).bind(...values, limit, offset),
     env.DB.prepare(`SELECT COUNT(*) AS count FROM items ${where}`).bind(...values),
     env.DB.prepare(`SELECT * FROM item_links WHERE item_id IN (${page}) ORDER BY position ASC`).bind(...values, limit, offset),
     openchatNotesStatement(),
+    linkItemCountsStatement(page, [...values, limit, offset]),
   ]);
   const linksByItem = groupLinksByItem((linkResult.results ?? []) as Array<Record<string, unknown>>);
   const rawItems = ((rows.results ?? []) as Array<Record<string, unknown>>).map((row) => toItem(row, linksByItem.get(String(row.id)) ?? []));
-  const items = attachOpenchat(await withTextTubeStatus(rawItems), toOpenchatNotes((openchatResult.results ?? []) as Array<Record<string, unknown>>));
+  const items = attachOpenchat(await withTextTubeStatus(rawItems), toOpenchatNotes((openchatResult.results ?? []) as Array<Record<string, unknown>>), toItemCounts((itemCountResult.results ?? []) as Array<Record<string, unknown>>));
   const total = Number((totalResult.results?.[0] as { count?: number } | undefined)?.count ?? 0);
   return { items, pagination: { total, limit, offset, hasMore: offset + items.length < total } };
 }

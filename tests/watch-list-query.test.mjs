@@ -1,6 +1,7 @@
-import { expect, test } from "vitest";
+import { describe, expect, test } from "vitest";
 
 import { attachOpenchat, attachTextTubeStatus, buildItemsFilter, ITEMS_ORDER_BY, resolveTextTubeStatus, toItem } from "../app/lib/watch-list-query.ts";
+import { matchWatched, watchedKey } from "../app/lib/openchat-query.ts";
 
 // buildItemsFilter() is the pure "which WHERE clause and binds does this
 // request produce" decision extracted out of listItems() so it can be tested
@@ -180,16 +181,56 @@ test("attachTextTubeStatus: attaches textTube only to links that are a YouTube v
 test("attachOpenchat: 項目のリンクと同じリンク(正規化して照合)を持つオプチャのスレッドをつける", () => {
   const item = (id, urls) => ({ id, links: urls.map((url, i) => ({ id: `${id}-${i}`, label: "", url, linkType: "reference", position: i })) });
   const notes = [
-    { noteId: "a", title: "放送A", urls: ["https://www.web.nhk/tv/pl/series-tep-X/ep/1", ""] },
-    { noteId: "b", title: "放送B", urls: ["https://txbiz.tv-tokyo.co.jp/wbs/oa/post_1", "https://www.web.nhk/tv/pl/series-tep-X/ep/1"] },
-    { noteId: "c", title: "放送C", urls: ["https://example.com/other"] },
+    { noteId: "a", title: "放送A", episodeTitle: "", urls: ["https://www.web.nhk/tv/pl/series-tep-X/ep/1", ""] },
+    { noteId: "b", title: "放送B", episodeTitle: "", urls: ["https://txbiz.tv-tokyo.co.jp/wbs/oa/post_1", "https://www.web.nhk/tv/pl/series-tep-X/ep/1"] },
+    { noteId: "c", title: "放送C", episodeTitle: "", urls: ["https://example.com/other"] },
   ];
   const [one, none, empty] = attachOpenchat([
     item("1", ["https://www.web.nhk/tv/pl/series-tep-X/ep/1?utm_source=x#top", "https://txbiz.tv-tokyo.co.jp/wbs/oa/post_1"]),
     item("2", ["https://example.com/unrelated"]),
     item("3", []),
-  ], notes);
+  ], notes, new Map());
   expect(one.openchat).toEqual([{ noteId: "a", title: "放送A" }, { noteId: "b", title: "放送B" }]);
   expect(none.openchat).toEqual([]);
   expect(empty.openchat).toEqual([]);
+});
+
+describe("attachOpenchat: a URL shared by many Watch List items (a program index page)", () => {
+  const INDEX = "https://bs.tbs.co.jp/houdou1930/archives/index.html";
+  const item = (id, title, urls) => ({ id, title, links: urls.map((url, i) => ({ id: `${id}-${i}`, label: "", url, linkType: "reference", position: i })) });
+  const note = (noteId, episodeTitle, urls) => ({ noteId, title: episodeTitle || "番組名", episodeTitle, urls });
+
+  test("attaches only the thread whose episode title matches the item's title", () => {
+    const items = [item("i1", "サイバー攻撃急増の裏側 先端ＡＩが日本を狙う？", [INDEX]), item("i2", "別の回", [INDEX]), item("i3", "さらに別の回", [INDEX])];
+    const notes = [note("n1", "サイバー攻撃急増の裏側先端AIが日本を狙う?", [INDEX]), note("n2", "まだ登録していない回", [INDEX]), note("n3", "", [INDEX])];
+    const [one, two, three] = attachOpenchat(items, notes, new Map([[INDEX, 3]]));
+    expect(one.openchat).toEqual([{ noteId: "n1", title: "サイバー攻撃急増の裏側先端AIが日本を狙う?" }]);
+    expect(two.openchat).toEqual([]);
+    expect(three.openchat).toEqual([]);
+  });
+
+  test("counts Watch List items beyond the current page: one item on the page can still hold a shared URL", () => {
+    const [only] = attachOpenchat([item("i1", "回A", [INDEX])], [note("n1", "回B", [INDEX])], new Map([[INDEX, 55]]));
+    expect(only.openchat).toEqual([]);
+  });
+
+  test("a URL held by one item still matches every thread by URL alone", () => {
+    const [only] = attachOpenchat([item("i1", "番組の一覧", [INDEX])], [note("n1", "回A", [INDEX]), note("n2", "回B", [INDEX])], new Map([[INDEX, 1]]));
+    expect(only.openchat.map((m) => m.noteId)).toEqual(["n1", "n2"]);
+  });
+
+  test("agrees with the ちきりんオプチャ list's matchWatched() pair for pair", () => {
+    const UNIQUE = "https://example.com/ep1";
+    const items = [item("i1", "回A", [INDEX]), item("i2", "回B", [INDEX, UNIQUE]), item("i3", "回C", [INDEX])];
+    const notes = [note("n1", "回A", [INDEX]), note("n2", "回X", [UNIQUE, INDEX]), note("n3", "", [INDEX]), note("n4", "回C", [INDEX])];
+    const counts = new Map([[INDEX, 3], [UNIQUE, 1]]);
+    const fromWatchList = new Set(attachOpenchat(items, notes, counts).flatMap((it) => it.openchat.map((m) => `${m.noteId}/${it.id}`)));
+    const rows = items.flatMap((it) => it.links.map((l) => ({ canonicalUrl: l.url, url: l.url, itemId: it.id, title: it.title, status: "backlog", watchedOn: null })));
+    const programs = notes.map((n) => ({ noteId: n.noteId, linkUrl: "", meta: { broadcaster: "", programName: "", episodeTitle: n.episodeTitle, links: n.urls.map((url) => ({ url, label: "" })) } }));
+    const watched = matchWatched(programs, rows);
+    // Every match here is to a single item, so the badge's title names which one.
+    const fromOpenchat = new Set(notes.flatMap((n) => n.urls.map((url) => watched[watchedKey(n.noteId, url)]).filter(Boolean).map((w) => `${n.noteId}/${items.find((it) => it.title === w.title).id}`)));
+    expect(fromWatchList).toEqual(new Set(["n1/i1", "n2/i2", "n4/i3"]));
+    expect(fromWatchList).toEqual(fromOpenchat);
+  });
 });
