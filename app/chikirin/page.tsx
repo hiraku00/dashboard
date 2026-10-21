@@ -1,6 +1,6 @@
 import { ChikirinApp } from "../chikirin-app";
 import { parseKind, parseSort, parseWatch } from "@/app/lib/openchat-query";
-import { latestOpenchatRun, listPrograms } from "@/app/lib/queries/openchat";
+import { latestOpenchatRun, listPrograms, programCounts } from "@/app/lib/queries/openchat";
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
@@ -16,7 +16,7 @@ export const dynamic = "force-dynamic";
 export default async function ChikirinPage({ searchParams }: { searchParams: SearchParams }) {
   const { q, kind, sort, watch, page } = await readQuery(searchParams);
   const initial = await fetchInitial(q, kind, sort, watch, page);
-  return <ChikirinApp initialPage={initial?.page ?? null} initialRun={initial?.run ?? null} initialQuery={q} initialKind={kind} initialSort={sort} initialWatch={watch} />;
+  return <ChikirinApp initialPage={initial?.page ?? null} initialRun={initial?.run ?? null} initialCounts={initial?.counts ?? null} initialQuery={q} initialKind={kind} initialSort={sort} initialWatch={watch} />;
 }
 
 async function readQuery(searchParams: SearchParams) {
@@ -28,9 +28,10 @@ async function readQuery(searchParams: SearchParams) {
 async function fetchInitial(q: string, kind: ReturnType<typeof parseKind>, sort: ReturnType<typeof parseSort>, watch: ReturnType<typeof parseWatch>, page: string) {
   // 失敗しても画面は出す: initialPage が null なら、クライアントが /api/openchat/programs を自分で読む
   // (Watch List と同じ。一時的なSSR側の失敗をエラーとして見せない)。
+  // 件数(kind ごと)はここでだけ読む(ページ移動のAPIでは読まない。D1の読み取りを抑える)。読めなければ帯は「—」。
   try {
-    const [initialPage, run] = await Promise.all([listPrograms({ q, kind, sort, watch, page }), latestOpenchatRun()]);
-    return { page: initialPage, run };
+    const [initialPage, run, counts] = await Promise.all([listPrograms({ q, kind, sort, watch, page }), latestOpenchatRun(), programCounts().catch(() => null)]);
+    return { page: initialPage, run, counts };
   } catch {
     return null;
   }

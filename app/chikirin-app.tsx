@@ -6,7 +6,8 @@ import Link from "next/link";
 import { PortalHeader } from "./portal-nav";
 import { readErrorMessage, readJson } from "./lib/json";
 import { inferBroadcaster, siteOf } from "./lib/openchat-meta.ts";
-import { formatPostedAt, watchedKey, type Program, type ProgramKind, type ProgramSort, type ProgramWatch, type WatchedInfo, type WatchedLinks } from "./lib/openchat-query.ts";
+import { ChipGroup, CountFilter, EmptyState, ListHeading, Pagination } from "./list-ui";
+import { formatPostedAt, watchedKey, type Program, type ProgramCounts, type ProgramKind, type ProgramSort, type ProgramWatch, type WatchedInfo, type WatchedLinks } from "./lib/openchat-query.ts";
 import { MAX_LIKE_TERM_BYTES, truncateUtf8Bytes, utf8ByteLength } from "./lib/sql-text.ts";
 import { watchListSearchTerm } from "./lib/text.ts";
 import { useLatestRequest } from "./lib/use-latest-request";
@@ -126,7 +127,7 @@ function CopyableCommand({ label, note, command }: { label: string; note: string
 function SyncCommandHelp() {
   const [open, setOpen] = useState(false);
   return <>
-    <button type="button" className="chikirin-sync-help" onClick={() => setOpen(true)}>同期コマンド</button>
+    <button type="button" className="toolbar-button" onClick={() => setOpen(true)}>同期コマンド</button>
     {open && <div className="modal-backdrop" role="presentation" onClick={() => setOpen(false)}>
       <section className="editor sync-command-editor" role="dialog" aria-modal="true" aria-labelledby="sync-command-title" onClick={(event) => event.stopPropagation()}>
         <div className="editor-heading"><h2 id="sync-command-title">ノートの同期コマンド</h2><button className="close-button" onClick={() => setOpen(false)} aria-label="閉じる">×</button></div>
@@ -138,7 +139,8 @@ function SyncCommandHelp() {
   </>;
 }
 
-export function ChikirinApp({ initialPage = null, initialRun = null, initialQuery = "", initialKind = "all", initialSort = "posted", initialWatch = "all" }: { initialPage?: ProgramsPage | null; initialRun?: RunSummary; initialQuery?: string; initialKind?: ProgramKind; initialSort?: ProgramSort; initialWatch?: ProgramWatch } = {}) {
+/** initialCounts: 件数を兼ねた絞り込みの数字(kind ごと、検索・視聴に関係ない全体の数)。サーバーの最初の表示でだけ読む。無ければ「—」。 */
+export function ChikirinApp({ initialPage = null, initialRun = null, initialCounts = null, initialQuery = "", initialKind = "all", initialSort = "posted", initialWatch = "all" }: { initialPage?: ProgramsPage | null; initialRun?: RunSummary; initialCounts?: ProgramCounts | null; initialQuery?: string; initialKind?: ProgramKind; initialSort?: ProgramSort; initialWatch?: ProgramWatch } = {}) {
   const [programs, setPrograms] = useState<Program[]>(initialPage?.programs ?? []);
   const [watched, setWatched] = useState(initialPage?.watched ?? {});
   const [total, setTotal] = useState(initialPage?.total ?? 0);
@@ -191,41 +193,33 @@ export function ChikirinApp({ initialPage = null, initialRun = null, initialQuer
   const listQuerySuffix = listQuery.toString() ? `?${listQuery}` : "";
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
-  const from = total === 0 ? 0 : (page - 1) * pageSize + 1;
-  const to = Math.min(page * pageSize, total);
-  const pages = [...new Set([1, page - 1, page, page + 1, totalPages])].filter((n) => n >= 1 && n <= totalPages).sort((x, y) => x - y);
-  const pagination = totalPages > 1 ? <nav className="pagination" aria-label="ページ移動">
-    <button type="button" aria-label="前のページ" disabled={page === 1} onClick={() => setPage(page - 1)}>‹</button>
-    {pages.map((value, index) => <span className="page-number" key={value}>{index > 0 && value - pages[index - 1] > 1 && <i aria-hidden="true">…</i>}<button type="button" className={value === page ? "current-page" : ""} aria-current={value === page ? "page" : undefined} onClick={() => setPage(value)}>{value}</button></span>)}
-    <button type="button" aria-label="次のページ" disabled={page === totalPages} onClick={() => setPage(page + 1)}>›</button>
-  </nav> : null;
+  // 並び順は絞り込みではないので、クリアの対象にしない。
+  const filtered = Boolean(query) || kind !== "all" || watch !== "all";
+  const clearFilters = () => { setPage(1); setQuery(""); setKind("all"); setWatch("all"); };
 
   return <main className="app-shell">
     <PortalHeader title="ちきりんオプチャ" active="/chikirin" />
     {notice && <p className="notice toast-notice" role="alert">{notice}</p>}
+    <div className="page-toolbar list-toolbar">
+      <CountFilter label="ちきりんの関わりで絞り込み" value={kind} onChange={(key) => { setPage(1); setKind(key); }}
+        options={(Object.keys(kindLabel) as ProgramKind[]).map((key) => ({ key, label: kindLabel[key], count: initialCounts?.[key] }))} />
+      <SyncCommandHelp />
+    </div>
     <section className="library-panel" aria-labelledby="chikirin-title">
-      <div className="library-heading">
-        <h2 id="chikirin-title">番組ごとのちきりん</h2>
-        <span className="result-count">{loading ? "読み込み中" : `${total} 件中 ${from}–${to}`}<small className="chikirin-tz"> ・日時は日本時間(JST)</small></span>
-      </div>
-      <div className="chikirin-run" data-testid="run-line">{runLine(initialRun)}{initialRun && initialRun.warningCount > 0 && <details className="chikirin-warnings"><summary>警告 {initialRun.warningCount} 件</summary><ul>{(initialRun.warnings ?? []).map((w, i) => <li key={i}>{w}</li>)}</ul></details>}<SyncCommandHelp /></div>
+      <ListHeading id="chikirin-title" title="番組ごとのちきりん" loading={loading} total={total} page={page} pageSize={pageSize} onClear={filtered ? clearFilters : undefined}><small className="chikirin-tz"> ・日時は日本時間(JST)</small></ListHeading>
+      <div className="chikirin-run" data-testid="run-line">{runLine(initialRun)}{initialRun && initialRun.warningCount > 0 && <details className="chikirin-warnings"><summary>警告 {initialRun.warningCount} 件</summary><ul>{(initialRun.warnings ?? []).map((w, i) => <li key={i}>{w}</li>)}</ul></details>}</div>
       <div className="filters chikirin-filters">
         <label className="search"><span aria-hidden="true">⌕</span>
           <input value={query} onChange={(event) => { setPage(1); setQuery(truncateUtf8Bytes(event.target.value, MAX_LIKE_TERM_BYTES)); }}
             placeholder="番組名、ちきりんの投稿を検索" aria-label="検索"
             title={`検索語は${MAX_LIKE_TERM_BYTES}バイトまで（今 ${utf8ByteLength(query)} バイト）`} />
         </label>
-        <div className="chikirin-kinds" role="group" aria-label="表示する投稿">
-          {(Object.keys(kindLabel) as ProgramKind[]).map((key) => <button type="button" key={key} className={key === kind ? "chikirin-kind is-active" : "chikirin-kind"} aria-pressed={key === kind} onClick={() => { setPage(1); setKind(key); }}>{kindLabel[key]}</button>)}
-        </div>
-        <div className="chikirin-kinds" role="group" aria-label="視聴での絞り込み" title="視聴列が「未視聴」か「—」の番組だけを出す(視聴済み・鑑賞中を除く)">
-          {(Object.keys(watchLabel) as ProgramWatch[]).map((key) => <button type="button" key={key} className={key === watch ? "chikirin-kind is-active" : "chikirin-kind"} aria-pressed={key === watch} onClick={() => { setPage(1); setWatch(key); }}>視聴: {watchLabel[key]}</button>)}
-        </div>
-        <div className="chikirin-kinds" role="group" aria-label="並び順">
-          {(Object.keys(sortLabel) as ProgramSort[]).map((key) => <button type="button" key={key} className={key === sort ? "chikirin-kind is-active" : "chikirin-kind"} aria-pressed={key === sort} title={key === "latest" ? "ちきりんの最新の投稿が新しい順(ちきりんが関わらないスレッドは最後)" : "スレッドの起票日時が新しい順"} onClick={() => { setPage(1); setSort(key); }}>{sortLabel[key]}順</button>)}
-        </div>
+        <ChipGroup label="視聴での絞り込み" title="視聴列が「未視聴」か「—」の番組だけを出す(視聴済み・鑑賞中を除く)" value={watch} onChange={(key) => { setPage(1); setWatch(key); }}
+          options={(Object.keys(watchLabel) as ProgramWatch[]).map((key) => ({ key, label: `視聴: ${watchLabel[key]}` }))} />
+        <ChipGroup label="並び順" value={sort} onChange={(key) => { setPage(1); setSort(key); }}
+          options={(Object.keys(sortLabel) as ProgramSort[]).map((key) => ({ key, label: `${sortLabel[key]}順`, title: key === "latest" ? "ちきりんの最新の投稿が新しい順(ちきりんが関わらないスレッドは最後)" : "スレッドの起票日時が新しい順" }))} />
       </div>
-      {!loading && programs.length === 0 && <div className="empty-state"><strong>該当する番組はありません。</strong><p>{initialRun || query || kind !== "all" || watch !== "all" ? "条件を変えてみてください。" : "同期が終わるとここに表示されます。"}</p></div>}
+      {!loading && programs.length === 0 && <EmptyState title="該当する番組はありません。"><p>{initialRun || filtered ? "条件を変えてみてください。" : "同期が終わるとここに表示されます。"}</p></EmptyState>}
       {programs.length > 0 && <div className={loading ? "table-scroll is-loading" : "table-scroll"} aria-busy={loading}>
         <table className="content-table chikirin-table">
           <colgroup><col className="col-broadcaster" /><col className="col-thumb" /><col className="col-title" /><col className="col-owner" /><col className="col-posted" /><col className="col-posted" /><col className="col-count" /><col className="col-count" /><col className="col-status" /><col className="col-links" /><col className="col-texttube" /><col className="col-texttube" /></colgroup>
@@ -266,7 +260,7 @@ export function ChikirinApp({ initialPage = null, initialRun = null, initialQuer
           })}</tbody>
         </table>
       </div>}
-      {pagination}
+      <Pagination page={page} totalPages={totalPages} onChange={setPage} />
     </section>
   </main>;
 }

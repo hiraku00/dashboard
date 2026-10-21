@@ -131,18 +131,38 @@ export async function listItems(query: ListItemsQuery = {}): Promise<ListItemsRe
   return { items, pagination: { total, limit, offset, hasMore: offset + items.length < total } };
 }
 
-export type WatchListStats = { total: number; completed: number; movie: number; audio: number; text: number };
+export type WatchListStats = {
+  total: number; completed: number; movie: number; audio: number; text: number;
+  byStatus: { backlog: number; in_progress: number; completed: number; dropped: number };
+  /** 削除されていない項目の人物・媒体(空は除く)を重複なしで五十音順に。「人物・媒体」の絞り込みの選択肢に使う
+   *  (表示中のページの10件から作ると、他のページにしかいない人物を選べなかった)。 */
+  creators: string[];
+};
 
-/** app/api/stats の GET と、Watch List ページの初期表示が両方呼ぶ。 */
+/** app/api/stats の GET と、Watch List ページの初期表示が両方呼ぶ。
+ *  件数は1本の集計(COUNT + SUM(CASE…))で取る。以前は条件ごとに5本の COUNT を投げており、
+ *  そのたびに items を読み直して D1 の読み取り行数が5倍になっていた。人物の一覧と合わせて1回の batch で取る。
+ *  並べ替えは日本語の読み順にしたいので SQL ではなく JS(localeCompare(…, "ja"))で行う。 */
 export async function watchListStats(): Promise<WatchListStats> {
   await ensureSchema({ seed: false });
-  const [total, completed, movie, audio, text] = await env.DB.batch<{ count: number }>([
-    env.DB.prepare("SELECT COUNT(*) AS count FROM items WHERE deleted_at IS NULL"),
-    env.DB.prepare("SELECT COUNT(*) AS count FROM items WHERE deleted_at IS NULL AND status='completed'"),
-    env.DB.prepare("SELECT COUNT(*) AS count FROM items WHERE deleted_at IS NULL AND content_type='movie'"),
-    env.DB.prepare("SELECT COUNT(*) AS count FROM items WHERE deleted_at IS NULL AND content_type='audio'"),
-    env.DB.prepare("SELECT COUNT(*) AS count FROM items WHERE deleted_at IS NULL AND content_type='text'"),
+  const [counts, creators] = await env.DB.batch<Record<string, unknown>>([
+    env.DB.prepare(`SELECT COUNT(*) AS total,
+        SUM(CASE WHEN status='backlog' THEN 1 ELSE 0 END) AS backlog,
+        SUM(CASE WHEN status='in_progress' THEN 1 ELSE 0 END) AS in_progress,
+        SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END) AS completed,
+        SUM(CASE WHEN status='dropped' THEN 1 ELSE 0 END) AS dropped,
+        SUM(CASE WHEN content_type='movie' THEN 1 ELSE 0 END) AS movie,
+        SUM(CASE WHEN content_type='audio' THEN 1 ELSE 0 END) AS audio,
+        SUM(CASE WHEN content_type='text' THEN 1 ELSE 0 END) AS text
+      FROM items WHERE deleted_at IS NULL`),
+    env.DB.prepare("SELECT DISTINCT creator_name FROM items WHERE deleted_at IS NULL AND creator_name IS NOT NULL AND TRIM(creator_name) <> ''"),
   ]);
-  const count = (result: D1Result<{ count: number }>) => Number(result.results?.[0]?.count ?? 0);
-  return { total: count(total), completed: count(completed), movie: count(movie), audio: count(audio), text: count(text) };
+  const row = counts.results?.[0] ?? {};
+  // 0件のとき SUM は NULL を返すので 0 にそろえる。
+  const n = (key: string) => Number(row[key] ?? 0);
+  return {
+    total: n("total"), completed: n("completed"), movie: n("movie"), audio: n("audio"), text: n("text"),
+    byStatus: { backlog: n("backlog"), in_progress: n("in_progress"), completed: n("completed"), dropped: n("dropped") },
+    creators: (creators.results ?? []).map((r) => String(r.creator_name)).sort((a, b) => a.localeCompare(b, "ja")),
+  };
 }

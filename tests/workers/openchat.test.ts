@@ -5,7 +5,7 @@ import { POST as syncPost } from "@/app/api/openchat/sync/route";
 import { GET as programsGet } from "@/app/api/openchat/programs/route";
 import { GET as ledgerGet } from "@/app/api/openchat/ledger/route";
 import { GET as programGet, PATCH as programPatch, PUT as programPut } from "@/app/api/openchat/programs/[id]/route";
-import { getProgram, latestOpenchatRun, listPrograms, saveProgramMeta, saveProgramText } from "@/app/lib/queries/openchat";
+import { getProgram, latestOpenchatRun, listPrograms, programCounts, saveProgramMeta, saveProgramText } from "@/app/lib/queries/openchat";
 import { watchedKey } from "@/app/lib/openchat-query";
 
 // ちきりんオプチャ: 同期API(start → notes → complete)と、画面用の一覧・台帳の復元。
@@ -350,6 +350,14 @@ describe("programs list", () => {
     expect(threads.map((p) => p.noteByTarget)).toEqual([true]);
     const comments = (await listPrograms({ kind: "comment" })).programs.filter((p) => p.programTitle.startsWith("一覧テスト"));
     expect(comments).toHaveLength(2);       // 本人スレッドにも本人のコメントがある
+  });
+
+  test("the count strip's numbers equal each kind's (unsearched) list total and exclude deleted notes", async () => {
+    const counts = await programCounts();
+    for (const kind of ["all", "involved", "thread", "comment", "none"] as const) expect(counts[kind]).toBe((await listPrograms({ kind })).total);
+    expect(counts.all).toBe(counts.involved + counts.none);
+    expect(counts.thread).toBeGreaterThan(0);
+    expect(counts.none).toBeGreaterThan(0);
   });
 
   test("paging returns every program once, with the total and page size", async () => {

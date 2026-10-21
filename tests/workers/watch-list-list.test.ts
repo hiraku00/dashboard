@@ -1,7 +1,7 @@
 import { env } from "cloudflare:test";
 import { afterEach, beforeAll, describe, expect, test, vi } from "vitest";
 import { ensureSchema } from "@/db";
-import { listItems } from "@/app/lib/queries/watch-list";
+import { listItems, watchListStats } from "@/app/lib/queries/watch-list";
 
 // listItems() serves both GET /api/items and the Watch List page's first
 // render. It fetches the page, the total and the page's links in ONE D1 batch
@@ -134,5 +134,50 @@ describe("listItems search (q)", () => {
     expect(last.items).toHaveLength(2);
     expect(last.pagination.hasMore).toBe(false);
     for (const item of [...first.items, ...last.items]) expect(item.links).toHaveLength(1);
+  });
+});
+
+describe("watchListStats", () => {
+  // 「人物・媒体」の絞り込みの選択肢は、以前は表示中のページの10件から作っていて、他のページにしかいない人物を選べなかった。
+  // 選択肢は watchListStats() の creators(全件から)になったので、1ページに収まらない人数でそれを確かめる。
+  test("counts by status and type in one aggregate, and lists every creator (not just one page's)", async () => {
+    const before = await watchListStats();
+    const statuses = ["backlog", "in_progress", "completed", "dropped"] as const;
+    const statements: D1PreparedStatement[] = [];
+    for (let i = 0; i < 12; i++) {
+      statements.push(env.DB.prepare("INSERT INTO items (id, content_type, creator_name, title, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, '2024-04-04T00:00:00.000Z', '2024-04-04T00:00:00.000Z')")
+        .bind(`stats-${i}`, i % 2 ? "audio" : "movie", `stats-creator-${String(i).padStart(2, "0")}`, `stats ${i}`, statuses[i % 4]));
+    }
+    // 空の人物と、削除済みの項目の人物は出さない(削除済みは件数にも入れない)。
+    statements.push(env.DB.prepare("INSERT INTO items (id, content_type, creator_name, title, created_at, updated_at) VALUES ('stats-blank', 'text', '', 'blank', '2024-04-04T00:00:00.000Z', '2024-04-04T00:00:00.000Z')"));
+    statements.push(env.DB.prepare("INSERT INTO items (id, content_type, creator_name, title, status, created_at, updated_at, deleted_at) VALUES ('stats-deleted', 'text', 'stats-deleted-creator', 'deleted', 'completed', '2024-04-04T00:00:00.000Z', '2024-04-04T00:00:00.000Z', '2024-04-05T00:00:00.000Z')"));
+    await env.DB.batch(statements);
+
+    const after = await watchListStats();
+    expect(after.total - before.total).toBe(13);
+    expect(after.movie - before.movie).toBe(6);
+    expect(after.audio - before.audio).toBe(6);
+    expect(after.text - before.text).toBe(1);
+    expect(after.completed - before.completed).toBe(3);
+    expect({
+      backlog: after.byStatus.backlog - before.byStatus.backlog, in_progress: after.byStatus.in_progress - before.byStatus.in_progress,
+      completed: after.byStatus.completed - before.byStatus.completed, dropped: after.byStatus.dropped - before.byStatus.dropped,
+    }).toEqual({ backlog: 4, in_progress: 3, completed: 3, dropped: 3 });
+    expect(after.completed).toBe(after.byStatus.completed);
+    expect(after.byStatus.backlog + after.byStatus.in_progress + after.byStatus.completed + after.byStatus.dropped).toBe(after.total);
+
+    const seeded = after.creators.filter((name) => name.startsWith("stats-"));
+    expect(seeded).toEqual(Array.from({ length: 12 }, (_, i) => `stats-creator-${String(i).padStart(2, "0")}`));
+    expect(after.creators).not.toContain("");
+    expect(after.creators).not.toContain("stats-deleted-creator");
+    expect(new Set(after.creators).size).toBe(after.creators.length);
+  });
+
+  test("makes a single D1 batch of two statements", async () => {
+    await ensureSchema({ seed: false });
+    const batch = vi.spyOn(env.DB, "batch");
+    await watchListStats();
+    expect(batch).toHaveBeenCalledTimes(1);
+    expect(batch.mock.calls[0][0]).toHaveLength(2);
   });
 });

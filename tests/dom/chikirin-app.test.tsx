@@ -213,11 +213,43 @@ test("登録済 badge falls back to a short URL fragment when the saved item som
   expect(href).toBe(`/watch-list?q=${encodeURIComponent("4N6PM42X7K")}`);
 });
 
-test("all five kind filters are offered, including ちきりんあり and ちきりんなし", () => {
+test("all five kind filters are offered as count buttons, including ちきりんあり and ちきりんなし; without counts they show —", () => {
   render(<ChikirinApp initialPage={page([program()])} initialRun={null} />);
+  const strip = screen.getByRole("group", { name: "ちきりんの関わりで絞り込み" });
   for (const label of ["すべて", "ちきりんあり", "ちきりんのスレッド", "ちきりんのコメント", "ちきりんなし"]) {
-    expect(screen.getByRole("button", { name: label })).toBeTruthy();
+    expect(within(strip).getByRole("button", { name: `${label}—件` })).toBeTruthy();
   }
+  expect(within(strip).getByRole("button", { name: /^すべて/, pressed: true })).toBeTruthy();
+});
+
+test("the count strip shows the server's counts for every kind (whole room, not the current search)", () => {
+  render(<ChikirinApp initialPage={page([program()])} initialRun={null} initialCounts={{ all: 120, involved: 40, thread: 12, comment: 30, none: 80 }} initialQuery="鉄道" />);
+  const strip = screen.getByRole("group", { name: "ちきりんの関わりで絞り込み" });
+  expect(within(strip).getAllByRole("button").map((b) => b.textContent)).toEqual(["すべて120件", "ちきりんあり40件", "ちきりんのスレッド12件", "ちきりんのコメント30件", "ちきりんなし80件"]);
+});
+
+test("clicking a count button requests that kind from page 1 and marks it pressed", async () => {
+  const urls: string[] = [];
+  vi.stubGlobal("fetch", (url: string) => { urls.push(url); return Promise.resolve(json(page([program({ noteId: "n2" })]))); });
+  render(<ChikirinApp initialPage={page([program()], 45, 3)} initialRun={null} initialCounts={{ all: 120, involved: 40, thread: 12, comment: 30, none: 80 }} />);
+  fireEvent.click(screen.getByRole("button", { name: /^ちきりんなし/ }));
+  await waitFor(() => expect(urls.some((u) => u.includes("kind=none") && !u.includes("page="))).toBe(true));
+  expect(screen.getByRole("button", { name: /^ちきりんなし/, pressed: true })).toBeTruthy();
+});
+
+test("条件をクリア appears only while filtered (search, kind or watch; not sort), and resets them to the default view", async () => {
+  const urls: string[] = [];
+  vi.stubGlobal("fetch", (url: string) => { urls.push(url); return Promise.resolve(json(page([program()]))); });
+  const { unmount } = render(<ChikirinApp initialPage={page([program()])} initialRun={null} initialSort="latest" />);
+  expect(screen.queryByRole("button", { name: "条件をクリア" })).toBeNull();
+  unmount();
+  render(<ChikirinApp initialPage={page([program()], 45, 2)} initialRun={null} initialQuery="鉄道" initialKind="comment" initialWatch="unwatched" initialSort="latest" />);
+  fireEvent.click(screen.getByRole("button", { name: "条件をクリア" }));
+  await waitFor(() => expect(urls.some((u) => u.endsWith("?sort=latest"))).toBe(true));   // 並び順は残す
+  expect((screen.getByLabelText("検索") as HTMLInputElement).value).toBe("");
+  expect(screen.getByRole("button", { name: /^すべて/, pressed: true })).toBeTruthy();
+  expect(screen.getByRole("button", { name: "視聴: すべて", pressed: true })).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "条件をクリア" })).toBeNull();
 });
 
 test("shows the total and the range, and numbered pagination when there is more than one page", () => {
@@ -257,7 +289,7 @@ test("the server's initial page/query/kind seed the screen, so a link opened fro
   render(<ChikirinApp initialPage={page([program({ noteId: "n2" })], 45, 2)} initialRun={null} initialQuery="鉄道" initialKind="comment" />);
   expect(screen.getByText("45 件中 21–40")).toBeTruthy();
   expect((screen.getByLabelText("検索") as HTMLInputElement).value).toBe("鉄道");
-  expect(screen.getByRole("button", { name: "ちきりんのコメント", pressed: true })).toBeTruthy();
+  expect(screen.getByRole("button", { name: /^ちきりんのコメント/, pressed: true })).toBeTruthy();
 });
 
 test("detail shows the thread owner's post and every comment by the target, oldest first", () => {
@@ -360,7 +392,7 @@ test("search and kind filter go to the API as query parameters", async () => {
   fireEvent.change(screen.getByLabelText("検索"), { target: { value: "鉄道" } });
   await act(async () => { await vi.advanceTimersByTimeAsync(250); });
   await waitFor(() => expect(urls.some((u) => u.includes("q=%E9%89%84%E9%81%93"))).toBe(true));
-  fireEvent.click(screen.getByRole("button", { name: "ちきりんのスレッド" }));
+  fireEvent.click(screen.getByRole("button", { name: /^ちきりんのスレッド/ }));
   await act(async () => { await vi.advanceTimersByTimeAsync(250); });
   await waitFor(() => expect(urls.some((u) => u.includes("kind=thread"))).toBe(true));
 });

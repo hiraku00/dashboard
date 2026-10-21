@@ -46,16 +46,30 @@ export function likePattern(term: string): string {
   return `%${safe}%`;
 }
 
+/** kind ごとの関わり方の条件(SQL)。一覧の絞り込み(buildProgramsFilter)と件数(programCountsSql)の両方がこれを使うので、数字と一覧がずれない。all は条件なし。 */
+export const KIND_CONDITIONS: Record<Exclude<ProgramKind, "all">, string> = {
+  involved: "(n.author_is_target = 1 OR n.target_comment_count > 0)",
+  thread: "n.author_is_target = 1",
+  comment: "n.target_comment_count > 0",
+  none: "n.author_is_target = 0 AND n.target_comment_count = 0",
+};
+
+export type ProgramCounts = Record<ProgramKind, number>;
+
+/** 件数を兼ねた絞り込みの数字: ルームの削除されていないノートを、1回の集計で kind ごとに数える(検索・視聴の絞り込みは無視する全体の数)。
+ *  D1の読み取り行数を抑えるため、kind ごとに別のクエリにしない。バインドする値は [ROOM]。 */
+export function programCountsSql(): string {
+  const sums = (Object.keys(KIND_CONDITIONS) as Array<keyof typeof KIND_CONDITIONS>)
+    .map((kind) => `COALESCE(SUM(CASE WHEN ${KIND_CONDITIONS[kind]} THEN 1 ELSE 0 END), 0) AS ${kind}`);
+  return `SELECT COUNT(*) AS all_count, ${sums.join(", ")} FROM openchat_notes n WHERE n.room = ? AND n.deleted_at IS NULL`;
+}
+
 /** 一覧に載るノート: 既定(all)は全スレッド。kind で、ちきりんの関わり方に絞り込める。 */
 export function buildProgramsFilter(query: ProgramsQuery): { where: string; values: unknown[]; limit: number; offset: number; page: number; kind: ProgramKind; sort: ProgramSort; watch: ProgramWatch } {
   const kind = parseKind(query.kind);
   const clauses = ["n.room = ?", "n.deleted_at IS NULL"];
   const values: unknown[] = [ROOM];
-  if (kind === "thread") clauses.push("n.author_is_target = 1");
-  else if (kind === "comment") clauses.push("n.target_comment_count > 0");
-  else if (kind === "involved") clauses.push("(n.author_is_target = 1 OR n.target_comment_count > 0)");
-  else if (kind === "none") clauses.push("n.author_is_target = 0 AND n.target_comment_count = 0");
-  // all: 関わり方の条件を付けない
+  if (kind !== "all") clauses.push(KIND_CONDITIONS[kind]);   // all: 関わり方の条件を付けない
 
   const q = clean(query.q, 120);
   if (q) {

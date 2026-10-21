@@ -118,7 +118,8 @@ describe("Watch List page", () => {
     const html = await pageResponse.text();
     const rowCount = (html.match(/<tr class="/g) ?? []).length;
     expect(rowCount, "expected the server-rendered table to already have the first page of rows").toBe(itemsPage.items.length);
-    const summaryTotal = html.match(/summary-card"><span>すべて<\/span><strong>(\d+)/);
+    // 「すべて」は状態で絞り込むボタン(押されている状態: class="summary-card is-active" aria-pressed="true")。
+    const summaryTotal = html.match(/class="summary-card[^"]*"[^>]*><span>すべて<\/span><strong>(\d+)/);
     expect(summaryTotal, "expected the 'すべて' summary card to have a numeric total in the raw HTML").toBeTruthy();
     expect(Number(summaryTotal![1])).toBe(stats.total);
   });
@@ -433,6 +434,11 @@ describe("API response shapes", () => {
     for (const key of ["total", "completed", "movie", "audio", "text"]) {
       expect(typeof body[key], `expected ${key} to be a number`).toBe("number");
     }
+    const byStatus = body.byStatus as Record<string, unknown>;
+    for (const key of ["backlog", "in_progress", "completed", "dropped"]) {
+      expect(typeof byStatus[key], `expected byStatus.${key} to be a number`).toBe("number");
+    }
+    expect(Array.isArray(body.creators)).toBe(true);
   });
 
   test("GET /api/portal/summary returns the shape PortalHome consumes", async () => {
