@@ -27,7 +27,7 @@ import { mockOutboundResponse } from "./tests/workers/fixtures/outbound-mocks";
 //   would slow them down for no benefit, since none of them touch a
 //   binding.
 //
-// - "dom" (tests/dom/**/*.test.{ts,tsx}): app/text-tube-app.tsx's VideoEditor
+// - "dom" (tests/dom/**/*.test.{ts,tsx}): app/text-tube/video-edit-app.tsx's add / edit page
 //   (a real React component's click behavior, tested with
 //   @testing-library/react), which genuinely needs a DOM. Originally also
 //   covered public/manage-asset-original/compat-fixes.js, removed once the

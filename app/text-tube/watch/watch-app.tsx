@@ -1,9 +1,9 @@
 "use client";
 import Link from "next/link";
 import Image from "next/image";
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { MarkdownRenderer } from "../markdown-renderer";
-import { TextTubeChrome, useVideoActions } from "../../text-tube-app";
+import { TextTubeChrome, useDeleteVideo } from "../../text-tube-app";
 import { ApiError, readJson } from "../../lib/json";
 
 type Video = Record<string, unknown>;
@@ -27,12 +27,7 @@ export function TextTubeWatchApp({
   const [video, setVideo] = useState<Video | null>(initialVideo),
     [error, setError] = useState(initialError),
     [notice, setNotice] = useState("");
-  const reload = useCallback(async () => {
-    const r = await fetch(`/api/text-tube/videos/${id}`);
-    if (r.ok) setVideo((await readJson<{ video: Video }>(r)).video);
-  }, [id]);
-  const actions = useVideoActions({
-    onSaved: reload,
+  const remove = useDeleteVideo({
     // A full page load, not a client-side navigation: the library's list
     // could otherwise come back from the client router cache with the
     // deleted video still in it (the same reason chikirin-detail.tsx goes
@@ -109,13 +104,13 @@ export function TextTubeWatchApp({
                 </a>
               )}
               <div className="tt-card-actions tt-reading-actions">
-                <button type="button" onClick={() => actions.edit(id)}>
+                <Link href={`/text-tube/watch/${id}/edit`} prefetch={false}>
                   編集
-                </button>
+                </Link>
                 <button
                   type="button"
                   className="danger"
-                  onClick={() => actions.remove({ id, title: String(video.title) })}
+                  onClick={() => remove({ id, title: String(video.title) })}
                 >
                   削除
                 </button>
@@ -135,7 +130,6 @@ export function TextTubeWatchApp({
           </Link>
         </aside>
       </div>
-      {actions.editor}
     </TextTubeChrome>
   );
 }
