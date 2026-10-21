@@ -1,7 +1,8 @@
 import { env } from "cloudflare:test";
 import { afterEach, beforeAll, describe, expect, test, vi } from "vitest";
 import { ensureSchema } from "@/db";
-import { listItems, watchListStats } from "@/app/lib/queries/watch-list";
+import { attachLinks, listItems, watchListStats } from "@/app/lib/queries/watch-list";
+import { ROOM } from "@/app/lib/openchat-query";
 
 // listItems() serves both GET /api/items and the Watch List page's first
 // render. It fetches the page, the total and the page's links in ONE D1 batch
@@ -78,10 +79,52 @@ describe("listItems", () => {
     const prepare = vi.spyOn(env.DB, "prepare");
     await listItems({ limit: 10 });
     expect(batch).toHaveBeenCalledTimes(1);
-    // Four statements prepared (items, count, links, オプチャ threads for the
-    // ちきりんオプチャ column), all handed to that one batch.
-    expect(prepare).toHaveBeenCalledTimes(4);
-    expect(batch.mock.calls[0][0]).toHaveLength(4);
+    // Five statements prepared (items, count, links, and for the ちきりんオプチャ
+    // column the オプチャ threads and how many items share each link), all
+    // handed to that one batch.
+    expect(prepare).toHaveBeenCalledTimes(5);
+    expect(batch.mock.calls[0][0]).toHaveLength(5);
+  });
+});
+
+describe("ちきりんオプチャ column on a link many items share", () => {
+  // 報道1930 のように、番組の一覧ページのURLを回ごとの項目が共有している。URLだけでは回を決められないので、
+  // オプチャのスレッドは放送タイトルが項目のタイトルと一致する項目にだけつく(オプチャ一覧の matchWatched() と同じ)。
+  const INDEX = "https://bs.tbs.co.jp/houdou1930-shared-test/archives/index.html";
+  beforeAll(async () => {
+    const at = "2024-04-04T00:00:00.000Z";
+    const item = (id: string, title: string, deletedAt: string | null = null) => [
+      env.DB.prepare("INSERT INTO items (id, content_type, title, created_at, updated_at, deleted_at) VALUES (?, 'movie', ?, ?, ?, ?)").bind(id, title, at, at, deletedAt),
+      env.DB.prepare("INSERT INTO item_links (id, item_id, label, url, position, canonical_url) VALUES (?, ?, '', ?, 0, ?)").bind(`${id}-l`, id, INDEX, INDEX),
+    ];
+    const note = (id: string, episodeTitle: string) => [
+      env.DB.prepare("INSERT INTO openchat_notes (id, room, author_name, program_title, link_url, posted_at, posted_at_precision, first_seen_at, last_checked_at) VALUES (?, ?, 'x', '報道1930', ?, ?, 'exact', ?, ?)").bind(id, ROOM, INDEX, at, at, at),
+      env.DB.prepare("INSERT INTO openchat_note_meta (note_id, episode_title, updated_at) VALUES (?, ?, ?)").bind(id, episodeTitle, at),
+    ];
+    await env.DB.batch([
+      ...item("shared-a", "sharedurl 回A"), ...item("shared-b", "sharedurl 回B"), ...item("shared-gone", "sharedurl 回C", at),
+      ...note("shared-note-a", "sharedurl 回A"), ...note("shared-note-c", "sharedurl 回C"),
+    ]);
+  });
+
+  test("listItems attaches only the thread with the item's episode title, even when the page holds one item", async () => {
+    const byId = new Map<string, unknown>();
+    for (const offset of [0, 1]) for (const it of (await listItems({ q: "sharedurl", limit: 1, offset })).items) byId.set(String(it.id), it.openchat);
+    expect(byId.get("shared-a")).toEqual([{ noteId: "shared-note-a", title: "sharedurl 回A" }]);
+    expect(byId.get("shared-b")).toEqual([]);
+  });
+
+  test("attachLinks (one item just after save) uses the same rule", async () => {
+    const [b] = await attachLinks([{ id: "shared-b", title: "sharedurl 回B", content_type: "movie" }]);
+    expect(b.openchat).toEqual([]);
+    const [a] = await attachLinks([{ id: "shared-a", title: "sharedurl 回A", content_type: "movie" }]);
+    expect(a.openchat).toEqual([{ noteId: "shared-note-a", title: "sharedurl 回A" }]);
+  });
+
+  test("a deleted item does not make the link count as shared", async () => {
+    await env.DB.prepare("UPDATE items SET deleted_at = ? WHERE id = 'shared-b'").bind("2024-04-05T00:00:00.000Z").run();
+    const [a] = (await listItems({ q: "sharedurl", limit: 10 })).items;
+    expect(a.openchat?.map((m) => m.noteId).sort()).toEqual(["shared-note-a", "shared-note-c"]);
   });
 });
 
