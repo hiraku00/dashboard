@@ -81,4 +81,9 @@ test("NHK ONE: OCRが「1」を「I」と読み違えたIDを、直した候補�
   // 余計な「I」が1文字足された11文字のID(6NMMPMNK5K → 6NMMPMINK5K)は、その「I」を外した候補を出す。
   expect(nhkIdVariants("https://www.web.nhk/tv/an/bssp/pl/series-tep-6NMMPMINK5K/ep/UBTLTW48SR")).toContain("https://www.web.nhk/tv/an/bssp/pl/series-tep-6NMMPMNK5K/ep/UBTLTW48SR");
   expect(nhkIdVariants("https://www.web.nhk/tv/pl/series-tep-IOIO/ep/IOIO").length).toBeLessThanOrEqual(8);
+  // 「7」を「T」と読み、同時に「1」を「I」と読んだID(実例)。小文字の「l」も「1」の読み違い。
+  expect(nhkIdVariants("https://www.web.nhk/tv/pl/series-tep-Y5P47Z7YVW/ep/PKQYIJGQTV")).toContain("https://www.web.nhk/tv/pl/series-tep-Y5P47Z7YVW/ep/PKQY1JGQ7V");
+  expect(nhkIdVariants("https://www.web.nhk/tv/pl/series-tep-Y5P47Z7YVW/ep/PKQYlJGQ7V")).toContain("https://www.web.nhk/tv/pl/series-tep-Y5P47Z7YVW/ep/PKQY1JGQ7V");
+  // 「X」を小文字の「x」と読み、同時に「1」を「I」と読んだID(実例)。
+  expect(nhkIdVariants("https://www.web.nhk/tv/an/butterfly/pl/series-tep-9N81M92LxV/ep/GQGLMIKYLQ")).toContain("https://www.web.nhk/tv/an/butterfly/pl/series-tep-9N81M92LXV/ep/GQGLM1KYLQ");
 });

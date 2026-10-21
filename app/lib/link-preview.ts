@@ -104,8 +104,15 @@ export function autoFillFields(preview: LinkPreview, url: string) {
   };
 }
 
+/** OCRが読み違えやすい文字と、本来の文字。 */
+const OCR_MISREADS: Record<string, string> = { I: "1", O: "0", T: "7", l: "1" };
+/** IDは大文字と数字だけ。小文字(OCRが「X」を「x」と読むなど)は、大文字に直した文字が本来の文字。 */
+const misreadFix = (ch: string) => OCR_MISREADS[ch] ?? (/[a-z]/.test(ch) ? ch.toUpperCase() : undefined);
+
 /** NHK ONE のURLの ID(series-tep-… と /ep/…。どちらも10文字)は、OCRが読み違えることがある。見つかっている型は2つ。
  *  - 「1」を「I」、「0」を「O」と読む(実例: VWRZ1WWNYP → VWRZIWWNYP で404)。
+ *  - 「7」を「T」、「1」を小文字の「l」と読む(実例: PKQY1JGQ7V → PKQYIJGQTV。この例は「1→I」と同時に起きた)。
+ *  - 大文字を小文字と読む(実例: 9N81M92LXV → 9N81M92LxV。「1→I」と同時に起きた)。
  *  - 縦線のノイズを「I」として1文字足す(実例: 6NMMPMNK5K → 6NMMPMINK5K の11文字で404)。
  *  読み違えかもしれない文字を直した候補のURLを、直す箇所の少ない順に返す(元のURLは含まない)。
  *  候補が多いときは当てずっぽうになるので出さない。NHK ONE 以外のURLも出さない。 */
@@ -113,16 +120,16 @@ export function nhkIdVariants(url: string): string[] {
   let u: URL;
   try { u = new URL(url); } catch { return []; }
   if (u.hostname.replace(/^www\./, "") !== "web.nhk") return [];
-  const ids = [...u.pathname.matchAll(/(series-tep-|\/ep\/)([A-Z0-9]+)/g)].map((m) => ({ at: (m.index ?? 0) + m[1].length, id: m[2] }));
+  const ids = [...u.pathname.matchAll(/(series-tep-|\/ep\/)([A-Za-z0-9]+)/g)].map((m) => ({ at: (m.index ?? 0) + m[1].length, id: m[2] }));
   // 1つのIDの候補(直す箇所の数, 直したID)。元のIDは直す箇所0。
   const candidatesOf = (id: string) => {
     const result: Array<{ changes: number; id: string }> = [{ changes: 0, id }];
-    const swaps = [...id].flatMap((ch, i) => (ch === "I" || ch === "O" ? [i] : []));
-    if (swaps.length <= 3) {
+    const swaps = [...id].flatMap((ch, i) => (misreadFix(ch) ? [i] : []));
+    if (swaps.length <= 6) {
       for (let mask = 1; mask < 1 << swaps.length; mask++) {
         const chars = [...id];
         let changes = 0;
-        swaps.forEach((at, i) => { if (mask & (1 << i)) { chars[at] = chars[at] === "I" ? "1" : "0"; changes++; } });
+        swaps.forEach((at, i) => { if (mask & (1 << i)) { chars[at] = misreadFix(chars[at])!; changes++; } });
         result.push({ changes, id: chars.join("") });
       }
     }
