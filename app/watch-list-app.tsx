@@ -9,6 +9,7 @@ import { MAX_LIKE_TERM_BYTES, truncateUtf8Bytes, utf8ByteLength } from "./lib/sq
 import { useSearchReload } from "./lib/use-search-reload";
 import { useLatestRequest } from "./lib/use-latest-request";
 import { youTubeVideoId } from "./lib/youtube.ts";
+import { CountFilter, EmptyState, ListHeading, Pagination } from "./list-ui";
 
 export type ContentType = "text" | "audio" | "movie" | "other";
 export type Status = "backlog" | "in_progress" | "completed" | "dropped";
@@ -19,7 +20,8 @@ export type Link = { id?: string; label: string; url: string; linkType?: string;
 export type OpenchatMatch = { noteId: string; title: string };
 export type Item = { id: string; contentType: ContentType; creatorName: string; seriesTitle: string; title: string; description: string; priority: number | null; status: Status; addedOn: string | null; watchedOn: string | null; comment: string; thumbnailUrl: string; version: number; links: Link[]; openchat?: OpenchatMatch[] };
 type Draft = Omit<Item, "id" | "version">;
-export type Stats = { total: number; completed: number; movie: number; audio: number; text: number };
+/** app/lib/queries/watch-list.ts の WatchListStats と同じ形。creators は「人物・媒体」の絞り込みの選択肢(全件から)。 */
+export type Stats = { total: number; completed: number; movie: number; audio: number; text: number; byStatus: Record<Status, number>; creators: string[] };
 export type PendingTextTubeImport = { id: string; youtubeVideoId: string; itemId: string | null; itemTitle: string | null; status: "failed" | "stuck"; error: string };
 type TextTubeRunResult = { status: "reflected" | "running" | "done" | "failed"; videoId?: string; error?: string };
 
@@ -30,6 +32,7 @@ const typeLabel: Record<ContentType, string> = { movie: "映像", audio: "音声
 const statusLabel: Record<Status, string> = { backlog: "未着手", in_progress: "鑑賞中", completed: "完了", dropped: "見送り" };
 const dateLabel = (value: string | null) => value ? value.replaceAll("-", ".") : "未設定";
 const pageSize = 10;
+const emptyStats = (): Stats => ({ total: 0, completed: 0, movie: 0, audio: 0, text: 0, byStatus: { backlog: 0, in_progress: 0, completed: 0, dropped: 0 }, creators: [] });
 
 export function WatchListApp({
   initialItems = null,
@@ -50,7 +53,7 @@ export function WatchListApp({
   initialQuery?: string;
 } = {}) {
   const [items, setItems] = useState<Item[]>(initialItems?.items ?? []);
-  const [stats, setStats] = useState<Stats>(initialStats ?? { total: 0, completed: 0, movie: 0, audio: 0, text: 0 });
+  const [stats, setStats] = useState<Stats>(initialStats ?? emptyStats());
   const [query, setQuery] = useState(initialQuery);
   const [type, setType] = useState<"all" | ContentType>("all");
   const [status, setStatus] = useState<"all" | Status>("all");
@@ -137,7 +140,9 @@ export function WatchListApp({
     return () => window.clearTimeout(timer);
   }, [notice]);
 
-  const creators = useMemo(() => [...new Set(items.map((item) => item.creatorName).filter(Boolean))].sort((a, b) => a.localeCompare(b, "ja")), [items]);
+  // 選択肢は全件の人物・媒体(stats.creators)から作る。表示中のページの10件から作ると、他のページにしかいない人物を選べなかった。
+  // 選んでいる人物が一覧に無い(削除した直後など)ときも、select が別の値を見せないよう選択肢に残す。
+  const creators = useMemo(() => creator !== "all" && !stats.creators.includes(creator) ? [...stats.creators, creator] : stats.creators, [stats.creators, creator]);
   // 保存済みのリンク（editing.links、下書きではなく）のうちYouTubeのもの
   // だけ。「TextTubeへ反映」欄は保存済みの状態に対して動くので、まだ
   // 保存していない下書きの追加・編集中のリンクは含めない -- 新規追加
@@ -146,8 +151,8 @@ export function WatchListApp({
   const progress = stats.total ? Math.round((stats.completed / stats.total) * 100) : 0;
   const totalPages = Math.max(1, Math.ceil(totalResults / pageSize));
   const activeEditor = isNew || editing;
-  const paginationPages = [...new Set([1, page, totalPages])].sort((a, b) => a - b);
-  const pagination = totalPages > 1 ? <nav className="pagination" aria-label="ページ移動"><button type="button" aria-label="前のページ" disabled={page === 1} onClick={() => setPage((current) => current - 1)}>‹</button>{paginationPages.map((value, index) => <span className="page-number" key={value}>{index > 0 && value - paginationPages[index - 1] > 1 && <i aria-hidden="true">…</i>}<button type="button" className={value === page ? "current-page" : ""} aria-current={value === page ? "page" : undefined} onClick={() => setPage(value)}>{value}</button></span>)}<button type="button" aria-label="次のページ" disabled={page === totalPages} onClick={() => setPage((current) => current + 1)}>›</button></nav> : null;
+  const filtered = Boolean(query) || type !== "all" || status !== "all" || creator !== "all";
+  function clearFilters() { setQuery(""); setType("all"); setStatus("all"); setCreator("all"); setPage(1); }
 
   function openNew() { setDraft(emptyDraft()); setYouTubeUrl(""); setYouTubeNotice(""); setEditing(null); setIsNew(true); setNotice(""); }
   function openEdit(item: Item) { setDraft({ ...item, links: item.links.map((link) => ({ ...link })) }); setYouTubeUrl(""); setYouTubeNotice(""); setEditing(item); setIsNew(false); setNotice(""); }
@@ -260,26 +265,26 @@ export function WatchListApp({
         <button type="button" onClick={() => dismissAttention(entry.id)}>閉じる</button>
       </div>
     </div>)}</div>}
-    <div className="page-toolbar watch-list-toolbar">
-      <section className="summary-grid" aria-label="鑑賞の状況">
-        <article className="summary-card"><span>すべて</span><strong>{stats.total}</strong><small>件</small></article>
-        <article className="summary-card"><span>完了</span><strong>{stats.completed}</strong><small>{progress}%</small></article>
-        <article className="summary-card"><span>映像</span><strong>{stats.movie}</strong><small>件</small></article>
-        <article className="summary-card"><span>読む・聴く</span><strong>{stats.text + stats.audio}</strong><small>件</small></article>
-      </section>
+    <div className="page-toolbar list-toolbar">
+      <CountFilter label="状態で絞り込み" value={status} onChange={(key) => { setStatus(key); setPage(1); }} options={[
+        { key: "all", label: "すべて", count: stats.total },
+        { key: "backlog", label: statusLabel.backlog, count: stats.byStatus.backlog },
+        { key: "in_progress", label: statusLabel.in_progress, count: stats.byStatus.in_progress },
+        { key: "completed", label: statusLabel.completed, count: stats.byStatus.completed, note: `${progress}%` },
+        { key: "dropped", label: statusLabel.dropped, count: stats.byStatus.dropped },
+      ]} />
       <button className="add-button" onClick={openNew}><span aria-hidden="true">＋</span> 追加</button>
     </div>
 
     <section className="library-panel" aria-labelledby="library-title">
-      <div className="library-heading"><h2 id="library-title">ライブラリ</h2><span className="result-count">{loading ? "読み込み中" : `${totalResults} 件中 ${Math.min((page - 1) * pageSize + 1, totalResults || 0)}–${Math.min(page * pageSize, totalResults)}`}</span></div>
-      <div className="filters">
+      <ListHeading id="library-title" title="ライブラリ" loading={loading} total={totalResults} page={page} pageSize={pageSize} onClear={filtered ? clearFilters : undefined} />
+      <div className="filters watch-list-filters">
         <label className="search"><span aria-hidden="true">⌕</span><input value={query} onChange={(event) => { setQuery(truncateUtf8Bytes(event.target.value, MAX_LIKE_TERM_BYTES)); setPage(1); }} placeholder="タイトル、人物、内容、リンクを検索" aria-label="検索" title={`検索語は${MAX_LIKE_TERM_BYTES}バイトまでです（半角英数字は1文字1バイト、日本語などの全角文字は1文字3バイト）`} />{query && <span className="search-limit" aria-hidden="true">{utf8ByteLength(query)}/{MAX_LIKE_TERM_BYTES}</span>}</label>
         <label><span className="sr-only">種別</span><select value={type} onChange={(event) => { setType(event.target.value as typeof type); setPage(1); }}><option value="all">すべての種別</option>{(Object.keys(typeLabel) as ContentType[]).map((key) => <option key={key} value={key}>{typeLabel[key]}</option>)}</select></label>
-        <label><span className="sr-only">状態</span><select value={status} onChange={(event) => { setStatus(event.target.value as typeof status); setPage(1); }}><option value="all">すべての状態</option>{(Object.keys(statusLabel) as Status[]).map((key) => <option key={key} value={key}>{statusLabel[key]}</option>)}</select></label>
         <label><span className="sr-only">人物・媒体</span><select value={creator} onChange={(event) => { setCreator(event.target.value); setPage(1); }}><option value="all">すべての人物・媒体</option>{creators.map((value) => <option key={value}>{value}</option>)}</select></label>
       </div>
       <div className="item-list">
-        {!loading && items.length === 0 && <div className="empty-state"><strong>該当するコンテンツはありません。</strong><p>条件を変えるか、新しく追加してください。</p><button onClick={openNew}>コンテンツを追加</button></div>}
+        {!loading && items.length === 0 && <EmptyState title="該当するコンテンツはありません。"><p>条件を変えるか、新しく追加してください。</p><button onClick={openNew}>コンテンツを追加</button></EmptyState>}
         {items.length > 0 && <div className={loading ? "table-scroll is-loading" : "table-scroll"} aria-busy={loading}><table className="content-table">
           <colgroup><col className="col-type" /><col className="col-creator" /><col className="col-thumb" /><col className="col-title" /><col className="col-date" /><col className="col-status" /><col className="col-links" /><col className="col-texttube" /><col className="col-texttube" /><col className="col-action" /></colgroup>
           <thead><tr><th scope="col"><span className="sr-only">種別</span></th><th scope="col">人物・媒体</th><th scope="col" colSpan={2}>タイトル</th><th scope="col">追加日</th><th scope="col">状態</th><th scope="col">リンク</th><th scope="col"><span className="head-2">ちきりん<br />オプチャ</span></th><th scope="col">TextTube</th><th scope="col">削除</th></tr></thead>
@@ -304,7 +309,7 @@ export function WatchListApp({
             </tr>;
           })}</tbody>
         </table></div>}
-        {pagination}
+        <Pagination page={page} totalPages={totalPages} onChange={setPage} />
       </div>
     </section>
 

@@ -9,8 +9,8 @@ import { canonicalUrl } from "@/app/lib/text";
 import { autoFillFields, canAutoFill } from "@/app/lib/link-preview";
 import { fetchLinkPreview, fetchPageThumbnail } from "@/app/lib/thumbnail-fetch";
 import {
-  buildProgramsFilter, matchWatched, programLinkUrls, programsOrderBy, toProgram, ROOM, resolveThumbnails, thumbnailSourceUrl,
-  type CachedThumbnail, type Program, type ProgramsQuery, type WatchedLinks, type WatchedRow,
+  buildProgramsFilter, matchWatched, programCountsSql, programLinkUrls, programsOrderBy, toProgram, ROOM, resolveThumbnails, thumbnailSourceUrl,
+  type CachedThumbnail, type Program, type ProgramCounts, type ProgramsQuery, type WatchedLinks, type WatchedRow,
 } from "@/app/lib/openchat-query";
 
 export type { WatchedLinks };
@@ -48,6 +48,15 @@ export async function listPrograms(query: ProgramsQuery = {}): Promise<ProgramsP
   const commented = await withComments(notes);
   const programs = await withThumbnails(commented).catch(() => commented);
   return { programs, total, page, pageSize: limit, watched: await watchedLinks(programs) };
+}
+
+/** 件数を兼ねた絞り込みの数字(kind ごとのノート数)。検索・視聴の絞り込みに関係なく全体の数。
+ *  1回の集計クエリ(ノートを1度だけ読む)。D1の読み取り行数を抑えるため、ページの最初の表示(Server Component)でだけ呼び、ページ移動のAPIでは呼ばない。 */
+export async function programCounts(): Promise<ProgramCounts> {
+  await ensureSchema({ seed: false });
+  const row = await env.DB.prepare(programCountsSql()).bind(ROOM).first<Record<string, number | null>>();
+  const n = (key: string) => Number(row?.[key] ?? 0);
+  return { all: n("all_count"), involved: n("involved"), thread: n("thread"), comment: n("comment"), none: n("none") };
 }
 
 /** 視聴列が「未視聴」か「—」になるノートのid(並び順どおり)。リンクのどれかが Watch List で視聴済み・鑑賞中なら除く。 */

@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, test } from "vitest";
 import {
-  buildProgramsFilter, formatPostedAt, matchWatched, watchedKey, likePattern, parseKind, parseSort, parseWatch, programsOrderBy, resolveThumbnails, thumbnailSourceUrl, toProgram, MAX_PAGE, PAGE_SIZE,
+  buildProgramsFilter, formatPostedAt, KIND_CONDITIONS, programCountsSql, matchWatched, watchedKey, likePattern, parseKind, parseSort, parseWatch, programsOrderBy, resolveThumbnails, thumbnailSourceUrl, toProgram, MAX_PAGE, PAGE_SIZE,
 } from "../app/lib/openchat-query.ts";
 
 // vinextの静的解析は searchParams の読み取りだけでは動的ページと判定しない(実機で確認:
@@ -32,6 +32,18 @@ describe("buildProgramsFilter", () => {
     expect(buildProgramsFilter({ kind: "involved" }).where).toContain("(n.author_is_target = 1 OR n.target_comment_count > 0)");
     expect(buildProgramsFilter({ kind: "none" }).where).toContain("n.author_is_target = 0 AND n.target_comment_count = 0");
     expect(parseKind("weird")).toBe("all");
+  });
+
+  test("the count strip's SQL counts every kind with the same conditions the list filters by (one query, whole room, not deleted)", () => {
+    const sql = programCountsSql();
+    expect(Object.keys(KIND_CONDITIONS).sort()).toEqual(["comment", "involved", "none", "thread"]);
+    for (const [kind, condition] of Object.entries(KIND_CONDITIONS)) {
+      expect(buildProgramsFilter({ kind }).where).toContain(condition);
+      expect(sql).toContain(`CASE WHEN ${condition} THEN 1 ELSE 0 END), 0) AS ${kind}`);
+    }
+    expect(sql).toContain("COUNT(*) AS all_count");
+    expect(sql).toContain("WHERE n.room = ? AND n.deleted_at IS NULL");
+    expect(sql).not.toContain("LIKE");   // 検索は件数に関係しない
   });
 
   test("search looks only at what the screen shows: every thread's body, the target's own comments and the edited programme info", () => {
