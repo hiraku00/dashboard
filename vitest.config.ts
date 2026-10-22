@@ -75,6 +75,8 @@ export default defineConfig({
           environment: "node",
           include: [
             "tests/access.test.mjs",
+            "tests/daily-report-parse.test.mjs",
+            "tests/daily-report-tags.test.mjs",
             "tests/history-window.test.mjs",
             "tests/manage-asset-core.test.mjs",
             "tests/manage-asset-history-fields.test.mjs",

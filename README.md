@@ -73,6 +73,7 @@ Mac (launchd)
 - [デプロイとAccess設定](docs/deployment-and-access.md)
 - [日次運用・障害対応](docs/operations.md)
 - [データ移行](docs/migration.md)
+- [作業日報の取り込み設計](docs/daily-report-ingest-design.md)（解析とタグ辞書のみ実装済み。D1・APIは未実装）
 - [セキュリティ方針](SECURITY.md)
 
 ## ローカル開発
@@ -142,6 +143,7 @@ Cloudflare Access、D1、R2、collector/launchdの設定手順は[デプロイ�
 - `scripts/import-manage-asset-history.mjs`: Manage Asset履歴 → D1
 - `scripts/sync-manage-asset.mjs`: ローカル資産スナップショット → Worker
 - `scripts/backfill-openchat-thumbnails.mjs`: ちきりんオプチャの既存スレッドのサムネイルを一度だけ取得（`--apply` で本番D1へ書き込み）
+- `scripts/check-daily-reports.mjs`: 手元の作業日報を一括で解析・タグ付けし、結果を表示するだけ（D1・ネットワークには触れない）
 
 実行条件、冪等性、バックアップ、失敗時の確認方法は[データ移行](docs/migration.md)を参照してください。
 
