@@ -1,7 +1,8 @@
 import { beforeAll, describe, expect, test } from "vitest";
 import { ensureSchema } from "@/db";
 import { ingestDailyReports } from "@/app/lib/daily-report-store";
-import { BASELINE_DAYS, dayView } from "@/app/lib/queries/daily-report";
+import { BASELINE_DAYS, dayView, latestReportDate } from "@/app/lib/queries/daily-report";
+import { portalSummary } from "@/app/lib/queries/portal";
 
 // /daily-report/:date の読み取り: 取り込んだ日報から、当日の本文・時間帯・タグ、週の7日、前後の日報、
 // 直前28日の1日平均を、実際の(ephemeralな)D1から読めることを確かめる。
@@ -41,6 +42,16 @@ async function seed(dates: string[]) {
   const results = await ingestDailyReports(dates.map((date) => ({ date, markdown: report(date, "dashboardの改善") })));
   expect(results.map((result) => result.status)).not.toContain("error");
 }
+
+describe("latestReportDate / portal summary", () => {
+  test("gives the newest report date, which the portal card also shows", async () => {
+    await seed(["2026-10-19", "2026-11-02"]);
+    expect(await latestReportDate()).toBe("2026-11-02");
+    const summary = await portalSummary();
+    expect(summary.dailyReport.latestDate).toBe("2026-11-02");
+    expect(summary.dailyReport.total).toBeGreaterThanOrEqual(2);
+  });
+});
 
 describe("dayView", () => {
   test("reads the day, its week, its neighbours and the 28-day baseline", async () => {

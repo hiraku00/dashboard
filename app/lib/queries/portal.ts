@@ -24,7 +24,7 @@ const LATEST_SNAPSHOTS = `SELECT s.id, s.source_id, s.captured_at, s.as_of_date,
 export async function portalSummary(): Promise<PortalSummary> {
   await ensureSchema({ seed: false });
   // One D1 round trip for everything.
-  const [watch, completed, textTube, latestVideo, latestAsset, sources, todoTotal, todoCompleted, latestSnapshotResult, openchat] = await env.DB.batch<Record<string, unknown>>([
+  const [watch, completed, textTube, latestVideo, latestAsset, sources, todoTotal, todoCompleted, latestSnapshotResult, openchat, dailyReport] =await env.DB.batch<Record<string, unknown>>([
     env.DB.prepare("SELECT COUNT(*) AS count FROM items WHERE deleted_at IS NULL"),
     env.DB.prepare("SELECT COUNT(*) AS count FROM items WHERE deleted_at IS NULL AND status='completed'"),
     env.DB.prepare("SELECT COUNT(*) AS count FROM text_tube_videos WHERE deleted_at IS NULL"),
@@ -38,6 +38,7 @@ export async function portalSummary(): Promise<PortalSummary> {
     // 2026-09-27: 一覧が全スレッドを出すようになった(#172)のに合わせて、この集計も全スレッドにする
     // (以前はちきりんが関わるスレッドだけを数えており、一覧の総数・最新日時とずれていた)。
     env.DB.prepare("SELECT COUNT(*) AS count, MAX(posted_at) AS latest_at FROM openchat_notes WHERE room = ? AND deleted_at IS NULL").bind(ROOM),
+    env.DB.prepare("SELECT COUNT(*) AS count, MAX(report_date) AS latest_date FROM daily_reports"),
   ]);
   const latestSnapshots = (latestSnapshotResult.results ?? []) as Array<Record<string, unknown>>;
   const totals = assetTotals(latestSnapshots);
@@ -48,5 +49,6 @@ export async function portalSummary(): Promise<PortalSummary> {
     assets: { totalUsd: totals.usd, totalJpy: totals.jpy, latestAt: (latestAsset.results?.[0]?.latest_at as string | undefined) ?? null, sourceCount: number(sources, "count") },
     todo: { total: number(todoTotal, "count"), completed: number(todoCompleted, "count") },
     openchat: { total: number(openchat, "count"), latestPostedAt: (openchat.results?.[0]?.latest_at as string | undefined) ?? null },
+    dailyReport: { total: number(dailyReport, "count"), latestDate: (dailyReport.results?.[0]?.latest_date as string | null | undefined) ?? null },
   };
 }

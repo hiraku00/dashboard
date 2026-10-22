@@ -16,7 +16,7 @@ Watch List、TextTube、Manage Asset、To Doを一つのCloudflare上で管理�
 ## 本番環境
 
 - Worker: <https://dashboard.hiraku00.workers.dev>
-- 主な画面: `/`, `/watch-list`, `/text-tube`, `/manage-asset`, `/todo`, `/chikirin`, `/settings/storage`
+- 主な画面: `/`, `/watch-list`, `/text-tube`, `/manage-asset`, `/todo`, `/daily-report`, `/chikirin`, `/settings/storage`
 - 本番データ: Cloudflare D1 `hiraku-watch-list` / R2 `hiraku-portal-files`
 
 本番URLはCloudflare Accessで保護されています。Accessの認証・セッションがない環境からは画面/APIを利用できません。

@@ -62,6 +62,13 @@ function parseWarnings(raw: unknown): string[] {
   }
 }
 
+/** 取り込み済みの最新の日報の日付。1つも無ければ null。 */
+export async function latestReportDate(): Promise<string | null> {
+  await ensureSchema({ seed: false });
+  const row = await env.DB.prepare("SELECT MAX(report_date) AS latest FROM daily_reports").first<{ latest: string | null }>();
+  return row?.latest ?? null;
+}
+
 export async function dayView(date: string): Promise<DayView> {
   await ensureSchema({ seed: false });
   const week = weekDates(date);
