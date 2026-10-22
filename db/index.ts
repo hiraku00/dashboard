@@ -28,7 +28,7 @@ let schemaReady = false;
  *  than reconciled, since the drizzle ORM was never actually used to query. */
 /** Bump whenever the DDL below changes, so existing databases re-run it once.
  *  A database whose schema_meta row already matches skips the whole batch. */
-const SCHEMA_VERSION = 13;
+const SCHEMA_VERSION = 14;
 
 /** Reads the recorded schema version. A database that predates schema_meta (or
  *  a brand new one) has no table, and the query fails rather than returning a
@@ -268,6 +268,13 @@ export async function ensureSchema({ seed = true }: { seed?: boolean } = {}) {
     env.DB.prepare(`CREATE TABLE IF NOT EXISTS daily_report_tag_days (
       report_date TEXT NOT NULL, tag TEXT NOT NULL, minutes INTEGER NOT NULL DEFAULT 0,
       work_item_count INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (report_date, tag)
+    )`),
+    // 作業日報の週次・月次サマリ(schema version 14、docs/daily-report-ingest-design.md §10)。原本をそのまま置き、
+    // 解析・タグ付けはしない。同じ内容が migrations/0018_daily_report_summaries.sql にもある。
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS daily_report_summaries (
+      kind TEXT NOT NULL, period_start TEXT NOT NULL, period_end TEXT NOT NULL, markdown TEXT NOT NULL,
+      sha256 TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+      PRIMARY KEY (kind, period_start), CHECK(kind IN ('week','month'))
     )`),
     env.DB.prepare(`CREATE TABLE IF NOT EXISTS asset_snapshots (
       id TEXT PRIMARY KEY, run_id TEXT NOT NULL, source_id TEXT NOT NULL,

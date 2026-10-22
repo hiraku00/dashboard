@@ -51,6 +51,8 @@ auto-daily-report が生成する1日1件の作業日報（`migrations/0017_dail
 
 正規化とタグのテーブルは、取り込み・再解析のたびにその日付の分を作り直す（`app/lib/daily-report-store.ts`）。解析とタグ付けの規則は `app/lib/daily-report-parse.ts` と `app/lib/daily-report-tags.ts`。
 
+- `daily_report_summaries`: auto-daily-report の `summarize.py` が作る週次・月次サマリ（`migrations/0018_daily_report_summaries.sql`、schema version 14）。主キーは (`kind`, `period_start`)。`kind` は `week`（月曜〜日曜）か `month`（1日〜末日）、`period_start` / `period_end` は `YYYY-MM-DD`。原本のMarkdown（`markdown`）と `sha256` だけを置き、解析・タグ付けはしない。書き直しは上書きで、改訂は残さない（`app/lib/daily-report-summary-store.ts`）
+
 ### Storage
 
 - `storage_objects`: R2オブジェクトの論理台帳
