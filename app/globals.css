@@ -611,3 +611,15 @@ h1,h2,h3 { color:var(--ink); } h1 { margin:0; font-size:30px; line-height:1.1; l
   .dr-alloc-tag th { padding-left:28px; }
   .dr-hero-figures { gap:4px 24px; }
 }
+
+/* 使用量: 主な保存データの容量(1日1回の計測の概算。app/lib/d1-table-usage.ts) */
+.usage-row strong .usage-size { display:block; margin-top:3px; color:var(--muted); font-size:12px; font-weight:500; font-variant-numeric:tabular-nums; }
+.database-breakdown>.usage-window-note,.database-breakdown>.usage-table-details { grid-column:1/-1; }
+.database-breakdown>.usage-window-note { padding-top:12px; }
+.usage-table-details { padding:0 26px 18px; }
+.usage-table-details summary { cursor:pointer; color:var(--blue-strong); font-size:13px; font-weight:700; }
+.usage-table-breakdown { width:100%; margin-top:10px; border-collapse:collapse; font-size:13px; font-variant-numeric:tabular-nums; }
+.usage-table-breakdown th,.usage-table-breakdown td { padding:6px 8px; border-bottom:1px solid var(--line); text-align:right; }
+.usage-table-breakdown th:first-child { text-align:left; font-weight:500; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; }
+.usage-table-breakdown thead th { color:var(--muted); font-family:inherit; font-weight:600; }
+@media(max-width:760px){ .usage-table-details { padding:0 20px 16px; } }

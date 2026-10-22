@@ -17,6 +17,7 @@
 import { env } from "cloudflare:workers";
 import { ensureSchema } from "@/db";
 import { STORAGE_BYTES_SQL, storageBytesFromRow } from "@/app/lib/r2-storage";
+import { summarizeTableUsage, type TableUsageSummary } from "@/app/lib/d1-table-usage";
 
 export type D1BackedUsage = {
   ok: boolean;
@@ -26,6 +27,8 @@ export type D1BackedUsage = {
   latest: Record<string, unknown> | null;
   databaseRecords: { watchList: number; manageAsset: number; textTube: number; openchatNotes: number; openchatComments: number; todoTasks: number; dailyReports: number };
   transcriptUsage: { credits: number; attempts: number; lastUsedAt: string | null };
+  /** テーブルごとの容量の概算(1日1回の計測の最新と、30日前ごろとの比較)。app/lib/d1-table-usage.ts */
+  tableUsage: TableUsageSummary;
 };
 
 const emptyD1Records: Omit<D1BackedUsage, "ok" | "error"> = {
@@ -34,6 +37,7 @@ const emptyD1Records: Omit<D1BackedUsage, "ok" | "error"> = {
   latest: null,
   databaseRecords: { watchList: 0, manageAsset: 0, textTube: 0, openchatNotes: 0, openchatComments: 0, todoTasks: 0, dailyReports: 0 },
   transcriptUsage: { credits: 0, attempts: 0, lastUsedAt: null },
+  tableUsage: summarizeTableUsage([]),
 };
 
 // D1's own daily row-read/write cap (separate from the Cloudflare Analytics
@@ -42,6 +46,13 @@ const emptyD1Records: Omit<D1BackedUsage, "ok" | "error"> = {
 // with `ok: false` -- those Analytics numbers come from a different API and
 // are not blocked by the D1 query cap -- instead of failing the whole usage
 // page exactly when a D1 outage is the thing the page exists to explain.
+const TABLE_USAGE_SQL = `WITH latest AS (SELECT MAX(usage_date) AS d FROM d1_table_usage_daily),
+  base AS (SELECT COALESCE(
+    (SELECT MAX(usage_date) FROM d1_table_usage_daily WHERE usage_date <= date((SELECT d FROM latest), '-30 day')),
+    (SELECT MIN(usage_date) FROM d1_table_usage_daily)) AS d)
+  SELECT usage_date, table_name, row_count, payload_bytes FROM d1_table_usage_daily
+  WHERE usage_date = (SELECT d FROM latest) OR usage_date = (SELECT d FROM base)`;
+
 export async function d1BackedUsage(month: string): Promise<D1BackedUsage> {
   try {
     await ensureSchema({ seed: false });
@@ -50,7 +61,7 @@ export async function d1BackedUsage(month: string): Promise<D1BackedUsage> {
     // Promise.all), which cost a round trip each, ~100-300ms apiece from the
     // Worker. A failure in any statement rejects the batch, so it still lands
     // in the catch below and yields the same { ok: false } as before.
-    const [bytes, categories, latest, watchList, manageAsset, textTube, transcript, openchatNotes, openchatComments, todoTasks, dailyReports] = await env.DB.batch<Record<string, unknown>>([
+    const [bytes, categories, latest, watchList, manageAsset, textTube, transcript, openchatNotes, openchatComments, todoTasks, dailyReports, tableUsage] = await env.DB.batch<Record<string, unknown>>([
       env.DB.prepare(STORAGE_BYTES_SQL),
       env.DB.prepare("SELECT category, COUNT(*) AS count, COALESCE(SUM(size_bytes),0) AS bytes FROM storage_objects WHERE deleted_at IS NULL GROUP BY category ORDER BY bytes DESC"),
       env.DB.prepare("SELECT * FROM storage_usage_daily ORDER BY usage_date DESC LIMIT 1"),
@@ -64,6 +75,8 @@ export async function d1BackedUsage(month: string): Promise<D1BackedUsage> {
       env.DB.prepare("SELECT COUNT(*) AS count FROM todo_tasks WHERE deleted_at IS NULL"),
       // 作業日報(1日1行。正規化・タグの行はこの日数に従って増える)
       env.DB.prepare("SELECT COUNT(*) AS count FROM daily_reports"),
+      // 容量の計測の、最新の日と、比べる日(最新の30日前以前で一番新しい日。無ければ最初の日)の行だけ
+      env.DB.prepare(TABLE_USAGE_SQL),
     ]);
     const transcriptUsage = (transcript.results?.[0] as { credits?: number; attempts?: number; last_used_at?: string | null } | undefined) ?? { credits: 0, attempts: 0, last_used_at: null };
     return {
@@ -81,6 +94,12 @@ export async function d1BackedUsage(month: string): Promise<D1BackedUsage> {
         todoTasks: Number(todoTasks.results?.[0]?.count ?? 0),
         dailyReports: Number(dailyReports.results?.[0]?.count ?? 0),
       },
+      tableUsage: summarizeTableUsage((tableUsage.results ?? []).map((row) => ({
+        usageDate: String(row.usage_date),
+        tableName: String(row.table_name),
+        rowCount: Number(row.row_count ?? 0),
+        payloadBytes: Number(row.payload_bytes ?? 0),
+      }))),
       transcriptUsage: {
         credits: Number(transcriptUsage.credits ?? 0),
         attempts: Number(transcriptUsage.attempts ?? 0),

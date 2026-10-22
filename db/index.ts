@@ -28,7 +28,7 @@ let schemaReady = false;
  *  than reconciled, since the drizzle ORM was never actually used to query. */
 /** Bump whenever the DDL below changes, so existing databases re-run it once.
  *  A database whose schema_meta row already matches skips the whole batch. */
-const SCHEMA_VERSION = 15;
+const SCHEMA_VERSION = 16;
 
 /** Reads the recorded schema version. A database that predates schema_meta (or
  *  a brand new one) has no table, and the query fails rather than returning a
@@ -334,6 +334,12 @@ export async function ensureSchema({ seed = true }: { seed?: boolean } = {}) {
       payload_bytes INTEGER NOT NULL DEFAULT 0, class_a_estimate INTEGER NOT NULL DEFAULT 0,
       class_b_estimate INTEGER NOT NULL DEFAULT 0, source TEXT NOT NULL DEFAULT 'ledger',
       updated_at TEXT NOT NULL
+    )`),
+    // テーブルごとの容量の概算(1日1回。app/lib/d1-table-usage.ts、migration 0020)
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS d1_table_usage_daily (
+      usage_date TEXT NOT NULL, table_name TEXT NOT NULL, row_count INTEGER NOT NULL DEFAULT 0,
+      payload_bytes INTEGER NOT NULL DEFAULT 0, measured_at TEXT NOT NULL,
+      PRIMARY KEY (usage_date, table_name)
     )`),
     env.DB.prepare(`CREATE TABLE IF NOT EXISTS text_tube_api_usage (
       id TEXT PRIMARY KEY, provider TEXT NOT NULL, operation TEXT NOT NULL,
