@@ -73,7 +73,7 @@ Mac (launchd)
 - [デプロイとAccess設定](docs/deployment-and-access.md)
 - [日次運用・障害対応](docs/operations.md)
 - [データ移行](docs/migration.md)
-- [作業日報の取り込み設計](docs/daily-report-ingest-design.md)（解析とタグ辞書のみ実装済み。D1・APIは未実装）
+- [作業日報の取り込み設計](docs/daily-report-ingest-design.md)（D1と取り込みAPIまで実装済み。画面は未実装）
 - [セキュリティ方針](SECURITY.md)
 
 ## ローカル開発

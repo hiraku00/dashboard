@@ -39,6 +39,18 @@
 
 ちきりん以外の投稿も保存するのは、collectorが「取得済みか」を判定する台帳を失ったときに復元できるようにするため。画面とAPIの一覧には出さない。
 
+### 作業日報
+
+auto-daily-report が生成する1日1件の作業日報（`migrations/0017_daily_reports.sql`、schema version 13）。設計は[作業日報の取り込み設計](daily-report-ingest-design.md)。どのテーブルも `report_date`（`YYYY-MM-DD`）で引く。
+
+- `daily_reports`: 1日1行。原本のMarkdown（`markdown`、R2は使わない）と `sha256`、見出しから読んだ記録期間・キャプチャ回数（「N回以上」は `capture_count_is_min=1`）、「ログなし」の合計分（`gap_minutes`）、解析の版（`parser_version`）と結果（`parse_status`: `ok`/`partial`/`failed`、`parse_warnings`: 警告のJSON配列）。`failed` でも行と原本は残す
+- `daily_report_revisions`: 内容が変わった再送のときに、差し替えられる前の原本を退避する。集計には使わない
+- `daily_report_work_items` / `daily_report_app_usage` / `daily_report_time_blocks` / `daily_report_notes`: 「本日のメイン作業」「アプリ使用状況」（`app_key` は集計用に寄せたアプリ名）「作業詳細」（0時からの分。日付をまたげば1440を超える）「得られた知見・メモ」の正規化
+- `daily_report_item_tags`: 作業項目（`source='work'`）・時間帯（`source='time'`）に付いたタグ
+- `daily_report_tag_days`: 1日×タグの合計（分・作業項目数）。どのタグにも当たらない分は `other`。週・月の集計はこの表の `SUM` だけで済ませる
+
+正規化とタグのテーブルは、取り込み・再解析のたびにその日付の分を作り直す（`app/lib/daily-report-store.ts`）。解析とタグ付けの規則は `app/lib/daily-report-parse.ts` と `app/lib/daily-report-tags.ts`。
+
 ### Storage
 
 - `storage_objects`: R2オブジェクトの論理台帳

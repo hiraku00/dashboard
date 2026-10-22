@@ -42,6 +42,16 @@
 | `GET /api/openchat/programs/:id` | 詳細。1番組のスレッド主の投稿（`noteBody`）とちきりんのコメント全部を `{ program }` で返す。一覧に載らない（ちきりんが関わらない）・削除済み・存在しないノートは404。 |
 | `GET /api/openchat/ledger?confirm=restore` | collectorのローカル台帳を失ったときの復元用。読み取り行数が多いので、`confirm=restore`が無いと400を返す。本文は先頭200字だけ。 |
 
+## 作業日報
+
+auto-daily-report の送信スクリプトから呼ぶ。どれもCloudflare AccessのService Tokenからの呼び出しだけを受け付け、ブラウザでログインした人からの呼び出しは403を返す（`app/lib/access.ts` の `requireServiceToken`）。画面・GET APIはまだ無い。
+
+| パス | 用途 |
+| --- | --- |
+| `POST /api/daily-reports` | 取り込み。`{ reports: [{ date: "YYYY-MM-DD", markdown }] }`（1リクエスト20件・1件64KBまで。超えたら全体を400）。本文のsha256をサーバーで計算し、登録済みと同じなら `skipped`（何も書かない）。変わっていれば解析・タグ付けし、書き直し前の原本の退避・`daily_reports` のupsert・正規化とタグの作り直しを1回のbatchで行う。解析できない日報も `parseStatus: "failed"` で保存する。応答は `{ created, updated, skipped, errors, results: [{ date, status, parseStatus, warnings, error? }] }`（`status` は `created`/`updated`/`skipped`/`error`）。1件の誤り（日付の形・空の本文・大きすぎる本文）はその件の `error` にし、全体は200 |
+| `POST /api/daily-reports/reparse` | `parser_version` が古い日報を、D1の原本から最大20件解析し直す。`{ reparsed, remaining }` を返すので、`remaining` が0になるまで繰り返し呼ぶ |
+| `DELETE /api/daily-reports/:date` | その日付の日報を、正規化・タグ・改訂も含めて消す。`{ deleted: date }`。無ければ404、日付の形が違えば400 |
+
 ## To Do
 
 | パス | 用途 |
@@ -75,4 +85,4 @@
 
 ## 認証の扱い
 
-ブラウザ操作はAccessの通常セッションを使用します。collectorの同期はAccess Service Authのclient ID/secretを使用し、外部APIキーを同期APIへ渡しません。認証失敗はデータ取得成功として記録しません。
+ブラウザ操作はAccessの通常セッションを使用します。collectorの同期と作業日報の取り込みはAccess Service Authのclient ID/secretを使用し、外部APIキーを同期APIへ渡しません。認証失敗はデータ取得成功として記録しません。

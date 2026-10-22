@@ -166,3 +166,45 @@ export async function guardRequest(
 function deny() {
   return new Response("Forbidden", { status: 403 });
 }
+
+/** For routes only a machine should call (the daily-report ingest): allows a
+ *  Cloudflare Access service token and refuses a person signed in through the
+ *  browser, even though Access lets both reach the app. Returns null to allow,
+ *  or the Response to return instead.
+ *
+ *  Access attaches its assertion to every request it lets through, a service
+ *  token's included; a service token's carries `common_name` (the client ID)
+ *  and no `email`. When ACCESS_TEAM_DOMAIN / ACCESS_AUD are set the assertion
+ *  is verified here as guardRequest() does. Until then (as in production
+ *  today) it is only decoded: the edge has already validated it, and Access
+ *  covers the whole hostname, so this check only has to tell the two kinds of
+ *  caller apart, not stand in for Access. */
+export async function requireServiceToken(
+  request: Request,
+  env: Record<string, unknown>,
+): Promise<Response | null> {
+  const token = readAssertion(request);
+  if (!token) return serviceOnly();
+  const config = readConfig(env);
+  let identity: AccessIdentity | null;
+  if (config) {
+    try {
+      identity = await verifyAccessJwt(token, config);
+    } catch {
+      return new Response("Access verification unavailable", { status: 503 });
+    }
+  } else {
+    const payload = decodeJson(token.split(".")[1] ?? "");
+    identity = payload
+      ? {
+          email: typeof payload.email === "string" ? payload.email : undefined,
+          commonName: typeof payload.common_name === "string" ? payload.common_name : undefined,
+        }
+      : null;
+  }
+  return identity?.commonName && !identity.email ? null : serviceOnly();
+}
+
+function serviceOnly() {
+  return Response.json({ error: "このAPIはService Tokenからだけ呼べます。" }, { status: 403 });
+}
