@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, test } from "vitest";
+import { afterEach, beforeAll, describe, expect, test } from "vitest";
 import { env } from "cloudflare:workers";
 import { ensureSchema } from "@/db";
 import { POST as syncPost } from "@/app/api/openchat/sync/route";
@@ -506,6 +506,50 @@ describe("thumbnails", () => {
     expect("error" in (saved ?? {})).toBe(false);
     expect(await thumbOf(n.id)).toBe("https://blog.example.org/img/cover.png");
     expect((await row(n.id))?.source_url).toBe("https://blog.example.org/fixed");
+  });
+});
+
+// 放送情報の自動入力(同期の完了時): 読めなかったら、その場でもう1回試す。読めなかった理由は autofill_error に残す。
+describe("meta auto-fill", () => {
+  const metaRow = (id: string) => env.DB.prepare("SELECT program_name, episode_title, links_json, autofill_error FROM openchat_note_meta WHERE note_id = ?")
+    .bind(id).first<{ program_name: string; episode_title: string; links_json: string; autofill_error: string }>();
+  const nhk = (kind: string) => `https://www.web.nhk/tv/${kind}/${uid("p")}`;
+  // 読めなかった(空の)行は、あとの同期の完了で取り直されるので、試したスレッドは消しておく(あとのテストの同期が、その分待たされない)
+  const created: string[] = [];
+  afterEach(async () => {
+    for (const id of created.splice(0)) await env.DB.prepare("UPDATE openchat_notes SET deleted_at = '2099-01-01T00:00:00Z' WHERE id = ?").bind(id).run();
+  });
+  // 新しい(まだ試していない)スレッドから取るので、一番新しい投稿にして確実に対象に入れる
+  const syncOne = async (linkUrl: string) => {
+    await startRun();
+    const n = note({ linkUrl, postedAt: "2099-02-01T00:00:00Z" });
+    created.push(n.id);
+    await send([n]);
+    await complete();
+    return n.id;
+  };
+
+  test("read on the first try: filled, no error recorded", async () => {
+    const id = await syncOne(nhk("once"));                // 1回断られても、読み取りの中の再試行で読める
+    expect(await metaRow(id)).toMatchObject({ program_name: "クローズアップ現代", episode_title: "クマはなぜ街へ? 〜都市部に広がる死角〜", autofill_error: "" });
+  });
+
+  test("refused at first, read on the retry within the same sync: filled, and the first failure is kept", async () => {
+    const id = await syncOne(nhk("thrice"));              // 1回目の読み取り(3回)は全部 403、少し待った2回目で読める
+    expect(await metaRow(id)).toMatchObject({ program_name: "クローズアップ現代", autofill_error: "1回目: HTTP 403(3回) / 2回目: 読めた" });
+  }, 20_000);
+
+  test("refused both times: the row stays empty (tried) with both reasons", async () => {
+    const id = await syncOne(nhk("always"));
+    expect(await metaRow(id)).toMatchObject({ program_name: "", episode_title: "", links_json: "[]", autofill_error: "1回目: HTTP 403(3回) / 2回目: HTTP 403(3回)" });
+  }, 20_000);
+
+  test("a page that is gone (404) is not retried", async () => {
+    const url = nhk("gone");
+    const id = await syncOne(url);
+    expect((await metaRow(id))?.autofill_error).toBe("HTTP 404");
+    // 取り直していれば、2回目の取得でページが返り、行が埋まっていたはず
+    expect((await metaRow(id))?.episode_title).toBe("");
   });
 });
 

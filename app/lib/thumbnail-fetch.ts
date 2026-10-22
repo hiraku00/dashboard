@@ -84,8 +84,9 @@ async function readHead(response: Response, stopAtHeadEnd = true) {
 /** One page fetch, retried a couple of times when the answer is a transient
  *  refusal. Every attempt is a subrequest, which a Worker has few of; that is
  *  why only those statuses are retried and only twice. */
-async function fetchPage(url: string, signal: AbortSignal): Promise<Response> {
+async function fetchPage(url: string, signal: AbortSignal, count?: { attempts: number }): Promise<Response> {
   for (let attempt = 0; ; attempt++) {
+    if (count) count.attempts = attempt + 1;
     const response = await fetch(url, {
       redirect: "manual",
       signal,
@@ -162,24 +163,45 @@ export async function resolveStoredThumbnail(urls: string[]): Promise<string> {
  *  the link preview, which reads the title and program name rather than the image. It reads past </head> on purpose: NHK ONE puts
  *  the program name (JSON-LD partOfSeries) in the body, ~50KB in. */
 export async function fetchPageHead(url: string, timeoutMs = PREVIEW_TIMEOUT_MS): Promise<{ html: string; url: string } | null> {
+  const page = await readPageHead(url, timeoutMs);
+  return page.ok ? { html: page.html, url: page.url } : null;
+}
+
+/** 読めなかったときの理由(「HTTP 403(3回)」「時間切れ(8秒)」「例外: TypeError: …」など)。gone は、ページが無い(404・410)。 */
+export type ReadFailure = { ok: false; reason: string; gone: boolean };
+
+/** fetchPageHead と同じ読み取りで、読めなかったときはその理由を返す(同期の自動入力が、失敗の理由を記録するため)。 */
+export async function readPageHead(url: string, timeoutMs = PREVIEW_TIMEOUT_MS): Promise<{ ok: true; html: string; url: string } | ReadFailure> {
   const controller = new AbortController();
   let timer: ReturnType<typeof setTimeout> | undefined;
-  const deadline = new Promise<null>((resolve) => {
-    timer = setTimeout(() => { controller.abort(); resolve(null); }, timeoutMs);
+  const fail = (reason: string, gone = false): ReadFailure => ({ ok: false, reason, gone });
+  const deadline = new Promise<ReadFailure>((resolve) => {
+    timer = setTimeout(() => { controller.abort(); resolve(fail(`時間切れ(${timeoutMs / 1000}秒)`)); }, timeoutMs);
   });
   const read = async () => {
     try {
       let current = url;
       for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
-        if (!isPublicHttpUrl(current)) return null;
-        const response = await fetchPage(current, controller.signal);
+        if (!isPublicHttpUrl(current)) return fail(`公開されていないURL: ${current}`);
+        const count = { attempts: 0 };
+        const response = await fetchPage(current, controller.signal, count);
         const location = response.headers.get("location");
         if (response.status >= 300 && response.status < 400 && location) { current = new URL(location, current).href; continue; }
-        if (!response.ok || !(response.headers.get("content-type") ?? "text/html").toLowerCase().includes("html")) return null;
-        return { html: await readHead(response, false), url: current };
+        if (!response.ok) {
+          await response.body?.cancel().catch(() => {});
+          return fail(`HTTP ${response.status}${count.attempts > 1 ? `(${count.attempts}回)` : ""}`, response.status === 404 || response.status === 410);
+        }
+        const type = response.headers.get("content-type") ?? "text/html";
+        if (!type.toLowerCase().includes("html")) {
+          await response.body?.cancel().catch(() => {});
+          return fail(`HTMLではない: ${type}`);
+        }
+        return { ok: true as const, html: await readHead(response, false), url: current };
       }
-    } catch { /* Best effort. */ }
-    return null;
+      return fail(`転送が${MAX_REDIRECTS}回を超えた`);
+    } catch (error) {
+      return fail(`例外: ${error instanceof Error ? `${error.name}: ${error.message}` : String(error)}`.slice(0, 200));
+    }
   };
   try {
     return await Promise.race([read(), deadline]);
@@ -191,16 +213,25 @@ export async function fetchPageHead(url: string, timeoutMs = PREVIEW_TIMEOUT_MS)
 /** リンク先から読み取った番組情報と、(転送を辿った後の)ページのURL。TVer は公開JSON、ほかは HTML から読む。読めなければ null。
  *  詳細画面の「リンクから取得」と、同期の完了時の自動入力が、同じこの読み取りを使う。 */
 export async function fetchLinkPreview(url: string): Promise<{ preview: LinkPreview; url: string } | null> {
+  const result = await readLinkPreview(url);
+  return result.ok ? { preview: result.preview, url: result.url } : null;
+}
+
+/** fetchLinkPreview と同じ読み取りで、読めなかったときはその理由を返す。 */
+export async function readLinkPreview(url: string): Promise<{ ok: true; preview: LinkPreview; url: string } | ReadFailure> {
   if (tverEpisodeId(url)) {
     const preview = await fetchTverPreview(tverEpisodeId(url));
-    return preview ? { preview, url } : null;
+    return preview ? { ok: true, preview, url } : { ok: false, reason: "TVerの番組情報(公開JSON)を読めなかった", gone: false };
   }
-  const page = await fetchPageHead(url);
-  if (page) return { preview: parseLinkPreview(page.html, page.url), url: page.url };
-  // 読めなければ、OCRの読み違い(1 → I など)を直した候補のURLを順に試す。見つかったページのURLを返す(保存されるリンクも直る)。
-  for (const variant of nhkIdVariants(url)) {
-    const fixed = await fetchPageHead(variant);
-    if (fixed) return { preview: parseLinkPreview(fixed.html, fixed.url), url: fixed.url };
+  const page = await readPageHead(url);
+  if (page.ok) return { ok: true, preview: parseLinkPreview(page.html, page.url), url: page.url };
+  // ページが無い(404)ときは、OCRの読み違い(1 → I など)を直した候補のURLを順に試す。見つかったページのURLを返す(保存されるリンクも直る)。
+  // 403 や時間切れでは試さない: 断られているときに候補を試しても同じように断られ、候補ごとに最大3回のサブリクエストを使うだけ。
+  if (!page.gone) return page;
+  const variants = nhkIdVariants(url);
+  for (const variant of variants) {
+    const fixed = await readPageHead(variant);
+    if (fixed.ok) return { ok: true, preview: parseLinkPreview(fixed.html, fixed.url), url: fixed.url };
   }
-  return null;
+  return variants.length ? { ...page, reason: `${page.reason}(読み違いを直した候補${variants.length}件も読めなかった)` } : page;
 }

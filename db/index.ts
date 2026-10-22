@@ -28,7 +28,7 @@ let schemaReady = false;
  *  than reconciled, since the drizzle ORM was never actually used to query. */
 /** Bump whenever the DDL below changes, so existing databases re-run it once.
  *  A database whose schema_meta row already matches skips the whole batch. */
-const SCHEMA_VERSION = 14;
+const SCHEMA_VERSION = 15;
 
 /** Reads the recorded schema version. A database that predates schema_meta (or
  *  a brand new one) has no table, and the query fails rather than returning a
@@ -194,7 +194,7 @@ export async function ensureSchema({ seed = true }: { seed?: boolean } = {}) {
     env.DB.prepare(`CREATE TABLE IF NOT EXISTS openchat_note_meta (
       note_id TEXT PRIMARY KEY REFERENCES openchat_notes(id) ON DELETE CASCADE,
       broadcaster TEXT NOT NULL DEFAULT '', program_name TEXT NOT NULL DEFAULT '', episode_title TEXT NOT NULL DEFAULT '',
-      links_json TEXT NOT NULL DEFAULT '[]', updated_at TEXT NOT NULL
+      links_json TEXT NOT NULL DEFAULT '[]', autofill_error TEXT NOT NULL DEFAULT '', updated_at TEXT NOT NULL
     )`),
     // 一覧のサムネイル(schema version 9)。放送情報の保存時に取得する。source_url は画像を探したリンク。
     // 同じ内容が migrations/0013_openchat_note_thumbnails.sql にもある。
@@ -355,6 +355,8 @@ export async function ensureSchema({ seed = true }: { seed?: boolean } = {}) {
   ]);
   await env.DB.prepare("ALTER TABLE todo_routines ADD COLUMN default_due_time TEXT").run().catch(() => {});
   await env.DB.prepare("ALTER TABLE openchat_note_meta ADD COLUMN program_name TEXT NOT NULL DEFAULT ''").run().catch(() => {});
+  // Schema version 15: 放送情報の自動入力で読めなかった理由(migrations/0019_openchat_autofill_error.sql)。
+  await env.DB.prepare("ALTER TABLE openchat_note_meta ADD COLUMN autofill_error TEXT NOT NULL DEFAULT ''").run().catch(() => {});
   // Schema version 10: 手で直した本文は同期で上書きしない(migrations/0014_openchat_body_edited.sql)。
   await env.DB.prepare("ALTER TABLE openchat_notes ADD COLUMN body_edited INTEGER NOT NULL DEFAULT 0").run().catch(() => {});
   await env.DB.prepare("ALTER TABLE openchat_comments ADD COLUMN body_edited INTEGER NOT NULL DEFAULT 0").run().catch(() => {});

@@ -125,8 +125,20 @@ const FLAKY_REFUSALS: Record<string, { status: number; times: number }> = {
   always: { status: 403, times: Number.POSITIVE_INFINITY },
 };
 
+/** NHK ONE の番組ページ(放送情報の自動入力が読む)。og:title は「エピソード | 番組名」。 */
+export const NHK_EPISODE_HTML = `<!doctype html><html><head><meta property="og:title" content="クマはなぜ街へ? 〜都市部に広がる死角〜 | クローズアップ現代"></head><body></body></html>`;
+
 export function mockOutboundResponse(request: Request): Response {
   const url = new URL(request.url);
+  // www.web.nhk/tv/<once|thrice|always|gone…>/<一意な文字列>: flaky.example.org と同じ断り方で、NHK ONE の番組ページを返す
+  // (放送情報の自動入力は、サイトが分かるリンクにしか動かないので、NHK ONE のホストで試す)。
+  if (url.hostname === "www.web.nhk" && url.pathname.startsWith("/tv/")) {
+    const refusal = FLAKY_REFUSALS[url.pathname.split("/")[2]];
+    const count = (flakySeen.get(request.url) ?? 0) + 1;
+    flakySeen.set(request.url, count);
+    if (refusal && count <= refusal.times) return new Response("refused", { status: refusal.status });
+    return new Response(NHK_EPISODE_HTML, { status: 200, headers: { "content-type": "text/html; charset=utf-8" } });
+  }
   if (url.hostname === "flaky.example.org") {
     const refusal = FLAKY_REFUSALS[url.pathname.split("/")[1]];
     const count = (flakySeen.get(request.url) ?? 0) + 1;
