@@ -76,6 +76,7 @@ export default defineConfig({
           include: [
             "tests/access.test.mjs",
             "tests/daily-report-parse.test.mjs",
+            "tests/daily-report-summary.test.mjs",
             "tests/daily-report-tags.test.mjs",
             "tests/history-window.test.mjs",
             "tests/manage-asset-core.test.mjs",
