@@ -171,7 +171,7 @@ python sync_dashboard.py --reparse        # 規則を変えてデプロイした
 
 ## 8. 実装の順序
 
-進捗（2026-10-22）: 1〜4は実装済み。6のうちdashboardのdocsは3・4と一緒に更新した。5はauto-daily-report側で進める。
+進捗（2026-10-22）: 1〜4は実装済み。6のうちdashboardのdocsは3・4と一緒に更新した。5はauto-daily-report側で進める。週次・月次サマリの取り込み（§10）も実装済み。
 
 1. パーサーとテスト（既存204件で `failed` 0件）
 2. タグ辞書の作り込み（既存204件の頻度から）とテスト
@@ -184,3 +184,40 @@ python sync_dashboard.py --reparse        # 規則を変えてデプロイした
 
 - 日報には口座・確定申告・閲覧サイトなど個人的な内容が含まれる。dashboardはAccessで保護されていて本人だけが見る前提だが、共有用のリンクや画面を作るときは配慮が要る。
 - 正規表現の辞書によるタグ付けの精度。`other` の割合が高すぎる、または誤ったタグが目立つ場合は、辞書を見直すか、生成時にLLMにタグを付けさせる案（§1の採らなかった案）を検討する。
+
+## 10. 週次・月次サマリ
+
+auto-daily-report の `summarize.py` が、期間内の日報から週次・月次のサマリ（Markdown）を `claude -p` で作る。送信側は週末・月末にサマリを作り、日報と同じ service token で送る。
+
+- 本文は「# 週次サマリ …」（月次も同様）の見出しと、「## 1. 概要」「## 2. 主な取り組み」「## 3. 成果・進捗」「## 4. 得られた知見」「## 5. 次に向けて」の5節。1件はおおむね5〜10KB。
+- 日報から作った二次的な文章で、集計は日報の正規化データで足りるので、**解析・タグ付けはせず原本をそのまま保存する**。改訂も残さない（作り直せばよい）。
+
+### 10.1 テーブル `daily_report_summaries`
+
+`migrations/0018_daily_report_summaries.sql`、schema version 14。
+
+| 列 | 内容 |
+| --- | --- |
+| `kind` | `week`（月曜〜日曜）か `month`（1日〜末日） |
+| `period_start` / `period_end` | `YYYY-MM-DD`。主キーは (`kind`, `period_start`) |
+| `markdown` / `sha256` | 原本とそのsha256（サーバーで計算） |
+| `created_at` / `updated_at` | ISO 8601 |
+
+### 10.2 `POST /api/daily-report-summaries`
+
+```json
+{ "summaries": [ { "kind": "week", "periodStart": "2026-10-12", "periodEnd": "2026-10-18", "markdown": "# 週次サマリ …" } ] }
+```
+
+- 1リクエスト最大**20件**、1件最大**64KB**。
+- 週は `periodStart` が月曜で `periodEnd` がその6日後、月は `periodStart` が1日で `periodEnd` がその月の末日。合わなければその件を `error` にする。
+- sha256が登録済みと同じなら `skipped`（何も書かない）、変われば上書きする。1件の失敗で全体を400にしない。
+
+```json
+{ "created": 1, "updated": 0, "skipped": 0, "errors": 0,
+  "results": [ { "kind": "week", "periodStart": "2026-10-12", "status": "created" } ] }
+```
+
+### 10.3 `DELETE /api/daily-report-summaries/:kind/:periodStart`
+
+間違って送ったサマリを消す。`{ "deleted": { "kind", "periodStart" } }`。無ければ404。
