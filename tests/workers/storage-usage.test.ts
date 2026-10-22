@@ -2,6 +2,7 @@ import { env } from "cloudflare:test";
 import { beforeAll, describe, expect, test, vi } from "vitest";
 import { ensureSchema } from "@/db";
 import { d1BackedUsage } from "@/app/lib/queries/storage-usage";
+import { measureD1Tables } from "@/app/lib/d1-table-usage";
 import { currentStorageBytes } from "@/app/lib/r2-storage";
 
 // d1BackedUsage() is the D1 half of /settings/storage. The first block pins its
@@ -51,6 +52,8 @@ describe("d1BackedUsage (result that must not change)", () => {
       latest: { usage_date: "2026-09-20", object_count: 3, payload_bytes: 3600, class_a_estimate: 6, class_b_estimate: 7, source: "ledger", updated_at: T0 },
       databaseRecords: { watchList: 2, manageAsset: 2, textTube: 1, openchatNotes: 0, openchatComments: 0, todoTasks: 0, dailyReports: 0 },
       transcriptUsage: { credits: 5, attempts: 2, lastUsedAt: "2026-09-15T05:00:00Z" },
+      // 容量の計測がまだ1回も無い
+      tableUsage: { date: null, baseDate: null, days: 0, totalBytes: 0, baseTotalBytes: null, groups: [] },
     });
   });
 
@@ -77,6 +80,36 @@ describe("d1BackedUsage reads", () => {
   });
 });
 
+describe("measureD1Tables (1日1回の容量の計測)", () => {
+  test("records every app table with its row count and the summed value lengths, and the page reads them grouped", async () => {
+    const first = await measureD1Tables(env.DB, new Date("2026-09-23T02:17:00Z"));
+    const names = first.tables.map((table) => table.tableName);
+    expect(names).toContain("items");
+    expect(names).toContain("daily_reports");
+    expect(names).toContain("d1_table_usage_daily");
+    expect(names.some((name) => name.startsWith("sqlite_") || name.startsWith("_cf_") || name === "d1_migrations")).toBe(false);
+    const items = first.tables.find((table) => table.tableName === "items")!;
+    // 削除済みの行も容量を使っているので数える(件数の表示とは別)
+    expect(items.rowCount).toBe(3);
+    expect(items.payloadBytes).toBeGreaterThan(0);
+    const stored = await env.DB.prepare("SELECT COUNT(*) AS c FROM d1_table_usage_daily WHERE usage_date='2026-09-23'").first<{ c: number }>();
+    expect(Number(stored?.c)).toBe(names.length);
+
+    // 30日後にもう一度。同じ日に測り直すと上書き(重複しない)
+    await run("INSERT INTO items (id, content_type, title, created_at, updated_at) VALUES ('i4', 'text', 'a longer title for growth', ?, ?)", T0, T0);
+    await measureD1Tables(env.DB, new Date("2026-10-23T02:17:00Z"));
+    await measureD1Tables(env.DB, new Date("2026-10-23T09:00:00Z"));
+    const latest = await env.DB.prepare("SELECT COUNT(*) AS c FROM d1_table_usage_daily WHERE usage_date='2026-10-23'").first<{ c: number }>();
+    expect(Number(latest?.c)).toBe(names.length);
+
+    const usage = await d1BackedUsage("2026-10");
+    expect(usage.tableUsage).toMatchObject({ date: "2026-10-23", baseDate: "2026-09-23", days: 30 });
+    const watchList = usage.tableUsage.groups.find((group) => group.key === "watchList")!;
+    expect(watchList.bytes).toBeGreaterThan(watchList.baseBytes ?? Infinity);
+    expect(watchList.tables.find((table) => table.name === "items")?.rows).toBe(4);
+  });
+});
+
 describe("d1BackedUsage when D1 fails (#35)", () => {
   test("returns ok:false with empty records instead of throwing", async () => {
     // Any one of its queries failing must degrade the whole result the same way.
@@ -90,5 +123,6 @@ describe("d1BackedUsage when D1 fails (#35)", () => {
     expect(usage.latest).toBeNull();
     expect(usage.databaseRecords).toEqual({ watchList: 0, manageAsset: 0, textTube: 0, openchatNotes: 0, openchatComments: 0, todoTasks: 0, dailyReports: 0 });
     expect(usage.transcriptUsage).toEqual({ credits: 0, attempts: 0, lastUsedAt: null });
+    expect(usage.tableUsage.date).toBeNull();
   });
 });

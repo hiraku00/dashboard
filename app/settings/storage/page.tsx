@@ -4,6 +4,7 @@ import { dailyResetWindows } from "../../lib/usage-window";
 import { R2_SOFT_LIMIT_BYTES } from "@/app/lib/r2-storage";
 import { cloudflareAnalyticsUsage, d1BackedUsage, type D1BackedUsage } from "@/app/lib/queries/storage-usage";
 import { TODO_TIMEZONE } from "@/app/lib/todo-date";
+import { formatBytes, formatBytesDelta, type TableUsageSummary, type UsageGroupKey } from "@/app/lib/d1-table-usage";
 
 const D1_DAILY_ROWS_READ_LIMIT = 5_000_000;
 const D1_DAILY_ROWS_WRITTEN_LIMIT = 100_000;
@@ -137,6 +138,7 @@ async function D1AnalyticsPanel({ d1Query }: { d1Query: D1BackedUsage }) {
   const d1StoragePct = Math.min(100, ((d1.configured ? d1.storageBytes : 0) / D1_STORAGE_LIMIT_BYTES) * 100);
   const todayReadPct = Math.min(100, (todayRowsRead / D1_DAILY_ROWS_READ_LIMIT) * 100);
   const todayWrittenPct = Math.min(100, (todayRowsWritten / D1_DAILY_ROWS_WRITTEN_LIMIT) * 100);
+  const tableUsage = d1Query.tableUsage;
 
   return (
     <section className="settings-panel usage-panel d1-usage-panel">
@@ -160,7 +162,7 @@ async function D1AnalyticsPanel({ d1Query }: { d1Query: D1BackedUsage }) {
           </div>
           <div className="usage-meter" aria-label={`D1データベース容量 ${d1StoragePct.toFixed(2)}%`}>
             <div className="usage-bar"><span style={{ width: `${d1StoragePct}%` }} /></div>
-            <p>保存対象: Watch List、Manage Asset、TextTube、ちきりんオプチャのデータと履歴。</p>
+            <p>保存対象: Watch List、Manage Asset、TextTube、ちきりんオプチャ、To Do、作業日報のデータと履歴。</p>
             <p>無料枠: 5 GB · 読取500万行/日 · 書込10万行/日</p>
           </div>
           <div className="usage-section-label">本日の利用状況（日次上限との対比）</div>
@@ -204,14 +206,56 @@ async function D1AnalyticsPanel({ d1Query }: { d1Query: D1BackedUsage }) {
           設定の環境(ローカル開発・テスト)ではこの件数表示ごと消えていた。 */}
       <div className="usage-breakdown database-breakdown">
         <div className="usage-section-label">主な保存データ</div>
-        <div className="usage-row"><span>Watch List</span><strong>{count.format(d1Query.databaseRecords.watchList)} 件</strong></div>
-        <div className="usage-row"><span>Manage Assetのスナップショット</span><strong>{count.format(d1Query.databaseRecords.manageAsset)} 件</strong></div>
-        <div className="usage-row"><span>TextTubeの動画</span><strong>{count.format(d1Query.databaseRecords.textTube)} 件</strong></div>
-        <div className="usage-row"><span>ちきりんオプチャのノート</span><strong>{count.format(d1Query.databaseRecords.openchatNotes)} 件</strong></div>
-        <div className="usage-row"><span>ちきりんオプチャのコメント</span><strong>{count.format(d1Query.databaseRecords.openchatComments)} 件</strong></div>
-        <div className="usage-row"><span>To Doのタスク</span><strong>{count.format(d1Query.databaseRecords.todoTasks)} 件</strong></div>
-        <div className="usage-row"><span>作業日報</span><strong>{count.format(d1Query.databaseRecords.dailyReports)} 日分</strong></div>
+        <div className="usage-row"><span>Watch List</span><strong>{count.format(d1Query.databaseRecords.watchList)} 件<TableSize usage={tableUsage} group="watchList" /></strong></div>
+        <div className="usage-row"><span>Manage Assetのスナップショット</span><strong>{count.format(d1Query.databaseRecords.manageAsset)} 件<TableSize usage={tableUsage} group="manageAsset" /></strong></div>
+        <div className="usage-row"><span>TextTubeの動画</span><strong>{count.format(d1Query.databaseRecords.textTube)} 件<TableSize usage={tableUsage} group="textTube" /></strong></div>
+        <div className="usage-row"><span>ちきりんオプチャのノート</span><strong>{count.format(d1Query.databaseRecords.openchatNotes)} 件<TableSize usage={tableUsage} group="openchatNotes" /></strong></div>
+        <div className="usage-row"><span>ちきりんオプチャのコメント</span><strong>{count.format(d1Query.databaseRecords.openchatComments)} 件<TableSize usage={tableUsage} group="openchatComments" /></strong></div>
+        <div className="usage-row"><span>To Doのタスク</span><strong>{count.format(d1Query.databaseRecords.todoTasks)} 件<TableSize usage={tableUsage} group="todoTasks" /></strong></div>
+        <div className="usage-row"><span>作業日報</span><strong>{count.format(d1Query.databaseRecords.dailyReports)} 日分<TableSize usage={tableUsage} group="dailyReports" /></strong></div>
+        {tableUsage.date && (
+          <div className="usage-row"><span>台帳・同期の記録など</span><strong>{formatBytes(tableUsage.groups.find((group) => group.key === "system")?.bytes ?? 0)}<TableSize usage={tableUsage} group="system" onlyGrowth /></strong></div>
+        )}
+        <p className="usage-window-note">
+          {tableUsage.date ? (
+            <>
+              <span>容量の合計 {formatBytes(tableUsage.totalBytes)}{tableUsage.baseDate && tableUsage.baseTotalBytes !== null ? `(${tableUsage.days}日で ${formatBytesDelta(tableUsage.totalBytes - tableUsage.baseTotalBytes)})` : ""}・{tableUsage.date} の計測</span>
+              <span className="usage-window-caveat">容量は1日1回(UTC 02:17)の計測で、各テーブルの値の長さを足した概算です。索引やページの余白は含まないため、上のD1全体の容量より小さく出ます。</span>
+            </>
+          ) : (
+            <span>容量は1日1回(UTC 02:17)計測します。まだ計測の記録がありません。</span>
+          )}
+        </p>
+        {tableUsage.date && (
+          <details className="usage-table-details">
+            <summary>テーブル別の内訳</summary>
+            <table className="usage-table-breakdown">
+              <thead><tr><th scope="col">テーブル</th><th scope="col">行数</th><th scope="col">容量</th>{tableUsage.baseDate && <th scope="col">{tableUsage.days}日の増加</th>}</tr></thead>
+              <tbody>
+                {tableUsage.groups.flatMap((group) => group.tables.map((table) => (
+                  <tr key={table.name}>
+                    <th scope="row">{table.name}</th>
+                    <td>{count.format(table.rows)}</td>
+                    <td>{formatBytes(table.bytes)}</td>
+                    {tableUsage.baseDate && <td>{table.baseBytes === null ? "—" : formatBytesDelta(table.bytes - table.baseBytes)}</td>}
+                  </tr>
+                )))}
+              </tbody>
+            </table>
+          </details>
+        )}
       </div>
     </section>
   );
+}
+
+/** 「主な保存データ」の行の容量と増え方(1日1回の計測。app/lib/d1-table-usage.ts)。計測がまだ無ければ何も出さない。 */
+function TableSize({ usage, group, onlyGrowth = false }: { usage: TableUsageSummary; group: UsageGroupKey; onlyGrowth?: boolean }) {
+  if (!usage.date) return null;
+  const entry = usage.groups.find((candidate) => candidate.key === group);
+  const bytes = entry?.bytes ?? 0;
+  const growth = usage.baseDate && entry?.baseBytes != null ? `${usage.days}日で ${formatBytesDelta(bytes - entry.baseBytes)}` : null;
+  const parts = [onlyGrowth ? null : formatBytes(bytes), growth].filter(Boolean);
+  if (!parts.length) return null;
+  return <small className="usage-size">{parts.join(" · ")}</small>;
 }

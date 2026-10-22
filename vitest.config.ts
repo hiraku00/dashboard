@@ -75,6 +75,7 @@ export default defineConfig({
           environment: "node",
           include: [
             "tests/access.test.mjs",
+            "tests/d1-table-usage.test.mjs",
             "tests/daily-report-parse.test.mjs",
             "tests/daily-report-summary.test.mjs",
             "tests/daily-report-tags.test.mjs",
