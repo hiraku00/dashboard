@@ -111,7 +111,7 @@ function Hero({ model }: { model: DailyReportModel }) {
 }
 
 /** 概要: ヒーロー＋2枚のパネル(左に活動時間、右に配分)。Manage Asset の資産概要と同じ並び(§4.1)。
- *  日次は活動時間の図を出さない(1日の時間は「時間の使い方」の帯で読む)。 */
+ *  日次は活動時間の図を出さない(1日の時間は「時間帯」タブの帯で読む)。 */
 function SummaryTab({ model }: { model: DailyReportModel }) {
   const { period } = model;
   const allocation = <AllocationTable rows={model.allocation} range={period.range} reportDays={model.reportCount} baseline={model.baseline} />;
@@ -119,12 +119,12 @@ function SummaryTab({ model }: { model: DailyReportModel }) {
     <>
       <Hero model={model} />
       {period.range === "day" ? (
-        // 日次は左に1日の帯だけ(表は「時間の使い方」)。週次・月次と同じ「左に時間、右に配分」の並びにする
+        // 日次は左に1日の帯だけ(表は「時間帯」タブ)。週次・月次と同じ「左に時間、右に配分」の並びにする
         <div className="dr-overview">
           <section className="asset-panel dr-panel">
             <div className="panel-heading">
               <div>
-                <h2>1日のタイムライン</h2>
+                <h2>1日の時間帯</h2>
                 <span>色は配分の表と同じ・斜線はログなし</span>
               </div>
             </div>
@@ -159,7 +159,7 @@ function TimeTab({ model }: { model: DailyReportModel }) {
   const { period } = model;
   if (period.range === "day") {
     return (
-      <Panel title="1日のタイムライン" sub="帯か表の行にポインタを重ねると、もう一方も強調されます">
+      <Panel title="1日の時間帯" sub="帯か表の行にポインタを重ねると、もう一方も強調されます">
         {model.day && model.day.blocks.length ? (
           <>
             <DayTimeline blocks={model.day.blocks} />

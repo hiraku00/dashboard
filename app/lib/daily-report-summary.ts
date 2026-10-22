@@ -269,7 +269,7 @@ export function axisTicks(axis: TimeAxis): number[] {
 
 export type CategoryMinutes = Partial<Record<Category, number>>;
 
-/** 時刻別の平均(設計書 §4「時間の使い方」)。各時間帯を1時間の区切りに重なった分だけ配り、日報のある日数で割る。
+/** 時刻別の平均(設計書 §4「時間帯タブ」)。各時間帯を1時間の区切りに重なった分だけ配り、日報のある日数で割る。
  *  ログなしは数えない。daysWithRecord は「その1時間に何らかの記録(ログなしを含む)があった日」の数。 */
 export function hourProfile(days: TimelineSegment[][], axis: TimeAxis): { hour: number; minutes: CategoryMinutes; daysWithRecord: number }[] {
   const count = days.length;
@@ -421,7 +421,7 @@ export function trendSeries(period: PeriodRange, rows: TagDayRow[], reportDates:
   return points;
 }
 
-/** 曜日別の平均活動時間(月次の「時間の使い方」)。日報のある日だけで平均する。 */
+/** 曜日別の平均活動時間(月次の「時間帯タブ」)。日報のある日だけで平均する。 */
 export function weekdayAverages(columns: DayColumn[]): { weekday: string; minutes: number | null; days: number }[] {
   const labels = ["月", "火", "水", "木", "金", "土", "日"];
   return labels.map((weekday, index) => {

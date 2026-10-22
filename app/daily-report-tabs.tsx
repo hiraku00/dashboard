@@ -15,7 +15,7 @@ import {
   type WorkCategoryRow,
 } from "./lib/daily-report-summary";
 
-/** 時間の使い方・作業内容・知見・メモの各タブ(docs/daily-report-view-design.md §4.3〜§4.5)。 */
+/** 時間帯・作業・知見の各タブ(docs/daily-report-view-design.md §4.3〜§4.5)。 */
 
 type Highlight = Category | "all";
 const FILTER_CATEGORIES: Category[] = ["study", "dev", "life", "media"];
@@ -54,11 +54,11 @@ function minutesFor(segments: TimelineSegment[], highlight: Highlight) {
 
 type ProfileSlot = { hour: number; minutes: Partial<Record<Category, number>>; daysWithRecord: number };
 
-/** 時刻別の平均: 選んだカテゴリ(すべてなら活動全体)の1時間あたりの平均分数を1色の棒で。縦軸は0・30・60分。
- *  帯と同じ横軸・同じ列幅(左のラベル列・右の数字列)で、帯の真下に揃える。 */
+/** 時刻別の平均: 1時間あたりの平均分数。すべて=カテゴリの積み上げ、カテゴリを選んだらそのカテゴリだけの1色の棒。
+ *  縦軸は0・30・60分。帯と同じ横軸・同じ列幅(左のラベル列・右の数字列)で、帯の真下に揃える。 */
 function Profile({ slots, axis, highlight }: { slots: ProfileSlot[]; axis: TimeAxis; highlight: Highlight }) {
   const span = axis.endHour - axis.startHour;
-  const color = highlight === "all" ? "var(--c-all)" : categoryColor(highlight);
+  const stackOrder: Category[] = ["study", "dev", "life", "media", "other"];
   return (
     <div className="dr-profile-block">
       <p className="dr-profile-title">時刻別の平均(1時間あたりの分)</p>
@@ -68,14 +68,20 @@ function Profile({ slots, axis, highlight }: { slots: ProfileSlot[]; axis: TimeA
           <i className="dr-profile-line is-60" aria-hidden="true" />
           <i className="dr-profile-line is-30" aria-hidden="true" />
           {slots.map((slot) => {
-            const minutes = highlight === "all" ? Object.values(slot.minutes).reduce((sum, value) => sum + (value ?? 0), 0) : slot.minutes[highlight] ?? 0;
+            const parts = highlight === "all"
+              ? stackOrder.filter((category) => slot.minutes[category]).map((category) => ({ category, minutes: slot.minutes[category] ?? 0 }))
+              : [{ category: highlight, minutes: slot.minutes[highlight] ?? 0 }];
+            const total = parts.reduce((sum, part) => sum + part.minutes, 0);
+            const detail = highlight === "all" && parts.length ? `(${parts.map((part) => `${CATEGORY_LABELS[part.category]} ${Math.round(part.minutes)}分`).join("・")})` : "";
             return (
               <span
                 key={slot.hour}
                 className="dr-profile-bar"
-                style={{ left: `calc(${((slot.hour - axis.startHour) / span) * 100}% + 2px)`, width: `calc(${100 / span}% - 4px)`, height: `${Math.min(60, minutes) / 60 * 100}%`, background: color }}
-                title={`${slot.hour}時台 平均${Math.round(minutes)}分(記録のあった日 ${slot.daysWithRecord}日)`}
-              />
+                style={{ left: `calc(${((slot.hour - axis.startHour) / span) * 100}% + 2px)`, width: `calc(${100 / span}% - 4px)`, height: `${(Math.min(60, total) / 60) * 100}%` }}
+                title={`${slot.hour}時台 平均${Math.round(total)}分${detail}・記録のあった日 ${slot.daysWithRecord}日`}
+              >
+                {parts.map((part) => <span key={part.category} style={{ flex: part.minutes, background: categoryColor(part.category) }} />)}
+              </span>
             );
           })}
         </div>
@@ -86,7 +92,7 @@ function Profile({ slots, axis, highlight }: { slots: ProfileSlot[]; axis: TimeA
   );
 }
 
-/** 時間の使い方(週次・月次): カテゴリの切り替え＋週の帯(週次だけ)＋時刻別の平均を1枚のパネルに。 */
+/** 時間帯タブ(週次・月次): カテゴリの切り替え＋週の帯(週次だけ)＋時刻別の平均を1枚のパネルに。 */
 export function TimePanel({
   range,
   shares,
@@ -107,8 +113,8 @@ export function TimePanel({
     <section className="asset-panel dr-panel">
       <div className="panel-heading">
         <div>
-          <h2>時間帯</h2>
-          <span>{range === "week" ? "曜日を押すとその日へ" : `日報のある${reportCount}日の平均`}</span>
+          <h2>{range === "week" ? "1週間の時間帯" : "時刻別の平均"}</h2>
+          <span>{range === "week" ? "曜日を押すとその日へ・選んだカテゴリだけ色を残せます" : `日報のある${reportCount}日の平均`}</span>
         </div>
         <CategoryFilter value={highlight} onChange={setHighlight} shares={shares} />
       </div>
@@ -123,16 +129,23 @@ export function TimePanel({
                 ) : (
                   <span>{weekdayLabel(row.date)}<small>{Number(row.date.slice(8, 10))}</small></span>
                 )}
-                {row.hasReport ? <DayBand segments={row.segments} axis={axis} height={20} highlight={highlight} /> : <div className="dr-band is-missing" style={{ height: 20 }}>{row.future ? "" : "日報なし"}</div>}
+                {row.hasReport ? <DayBand segments={row.segments} axis={axis} height={20} highlight={highlight === "all" ? undefined : highlight} /> :<div className="dr-band is-missing" style={{ height: 20 }}>{row.future ? "" : "日報なし"}</div>}
                 <em>{row.hasReport ? formatMinutes(minutesFor(row.segments, highlight)) : ""}</em>
               </div>
             ))}
           </div>
         )}
         <Profile slots={profile} axis={axis} highlight={highlight} />
+        {/* すべてのときは、カテゴリの色は上の切り替えが凡例を兼ねる */}
         <ul className="dr-legend dr-time-legend">
-          <li><i aria-hidden="true" style={{ background: highlight === "all" ? "var(--c-all)" : categoryColor(highlight) }} />{highlight === "all" ? "活動" : CATEGORY_LABELS[highlight]}</li>
-          {highlight !== "all" && <li><i aria-hidden="true" style={{ background: "var(--c-dim)" }} />ほかの活動</li>}
+          {highlight === "all" ? (
+            <li><i aria-hidden="true" style={{ background: categoryColor("other") }} />未分類</li>
+          ) : (
+            <>
+              <li><i aria-hidden="true" style={{ background: categoryColor(highlight) }} />{CATEGORY_LABELS[highlight]}</li>
+              <li><i aria-hidden="true" style={{ background: "var(--c-dim)" }} />ほかの活動</li>
+            </>
+          )}
           <li><i aria-hidden="true" className="dr-hatch" />ログなし</li>
           {range === "week" && <li><i aria-hidden="true" className="dr-dash" />日報なし</li>}
         </ul>
