@@ -65,9 +65,15 @@ describe("periodView + buildModel", () => {
     const model = buildModel(await periodView(period), period, TODAY);
 
     expect(model.reportCount).toBe(1);
-    expect(model.hero.value).toBe("2h30m");
-    expect(model.hero.items.map((item) => item.value)).toEqual(["08:00〜11:00", "30m(記録の17%)", "200回以上", "2h30m"]);
-    expect(model.baseline).toEqual({ days: 2, label: "直近28日の1日平均" });
+    expect(model.hero.figures).toEqual([{ label: "活動時間", value: "2h30m" }]);
+    expect(model.hero.caption).toBe("記録 08:00〜11:00(3h00m)");
+    expect(model.hero.items).toEqual([
+      { label: "直近28日の1日平均", value: "2h30m", sub: "±0m(参考)" },
+      { label: "ログなし", value: "30m", sub: "記録の17%" },
+      { label: "キャプチャ", value: "200回以上" },
+    ]);
+    expect(model.baseline).toEqual({ days: 2, label: "直近28日の1日平均", shortLabel: "直近28日" });
+    expect(model.allocation.map((row) => [row.category, row.total, Math.round(row.percent), row.baselineAverage])).toEqual([["study", 60, 40, 60], ["dev", 90, 60, 90]]);
     expect(model.nav).toMatchObject({ prev: "2026-10-15", next: "2026-10-21" });
     expect(model.nav.switchTo).toEqual({ day: "2026-10-19", week: "2026-10-19", month: "2026-10-01" });
     expect(model.day?.blocks.map((block) => [block.startMinute, block.isGap, block.tags])).toEqual([[480, false, ["english"]], [540, true, []], [570, false, ["dashboard"]]]);
@@ -76,26 +82,32 @@ describe("periodView + buildModel", () => {
     expect(model.notes).toEqual([{ reportDate: "2026-10-19", text: "復習は朝が良い" }]);
     expect(model.original?.markdown).toContain("# 作業日報 26-10-19");
     expect(model.legend.map((share) => [share.category, Math.round(share.percent)])).toEqual([["study", 40], ["dev", 60]]);
-    expect(model.columns).toEqual([]);
+    expect(model.activity.days).toEqual([]);
   });
 
-  test("week: per-day averages against the week before, 7 columns and 7 band rows", async () => {
+  test("week: total and per-day average against the week before, 7 day bars, 12 week bars and 7 band rows", async () => {
     await seed(DATES);
     const period = periodRange("week", "2026-10-21", TODAY);
     const model = buildModel(await periodView(period), period, TODAY);
 
     expect(model.reportCount).toBe(2);
-    expect(model.hero.label).toBe("1日平均の活動時間");
-    expect(model.hero.value).toBe("2h30m");
-    expect(model.hero.items[0]).toEqual({ label: "合計", value: "5h00m" });
-    expect(model.hero.items[2]).toEqual({ label: "日報", value: "2/7日", sub: "4日目まで" });
+    expect(model.hero.figures).toEqual([{ label: "合計", value: "5h00m" }, { label: "1日平均", value: "2h30m" }]);
+    // 前週(10/12〜18)の日報は2日なので参考扱い
+    expect(model.hero.items[0]).toEqual({ label: "前週の1日平均", value: "2h30m", sub: "±0m/日(参考)" });
+    expect(model.hero.items[2]).toEqual({ label: "日報", value: "2/7日", sub: "金〜日はまだ" });
     expect(model.baseline.days).toBe(2);
-    expect(model.shareRows.map((row) => row.label)).toEqual(["今週", "前週"]);
-    expect(model.columns.map((column) => column.hasReport)).toEqual([true, false, true, false, false, false, false]);
+    expect(model.allocation.map((row) => [row.category, row.total, row.average])).toEqual([["study", 120, 60], ["dev", 180, 90]]);
+    expect(model.activity.days.map((bar) => [bar.label, bar.value, bar.future])).toEqual([
+      ["月", 150, false], ["火", null, false], ["水", 150, false], ["木", null, false], ["金", null, true], ["土", null, true], ["日", null, true],
+    ]);
+    expect(model.activity.days[0]).toMatchObject({ title: "10/19(月)", target: { range: "day", date: "2026-10-19" }, breakdown: [{ category: "study", minutes: 60 }, { category: "dev", minutes: 90 }] });
+    expect(model.activity.periods).toHaveLength(12);
+    expect(model.activity.periods.at(-1)).toMatchObject({ key: "2026-10-19", label: "10/19", value: 150, target: { range: "week", date: "2026-10-19" } });
+    expect(model.activity.periods.at(-2)).toMatchObject({ key: "2026-10-12", label: "", value: 150 });
+    expect(model.activity.periods[0]).toMatchObject({ value: null, target: null });
     expect(model.weekRows).toHaveLength(7);
     expect(model.weekRows[3]).toMatchObject({ date: "2026-10-22", hasReport: false, future: false });
     expect(model.weekRows[4]).toMatchObject({ date: "2026-10-23", future: true });
-    expect(model.trend).toHaveLength(12);
     expect(model.headings.map((entry) => [entry.heading, entry.dates])).toEqual([
       ["英語学習", ["2026-10-19", "2026-10-21"]],
       ["ダッシュボードの改善", ["2026-10-19", "2026-10-21"]],
@@ -112,7 +124,10 @@ describe("periodView + buildModel", () => {
     const month = periodRange("month", "2026-10-01", TODAY);
     const model = buildModel(await periodView(month), month, TODAY);
     expect(model.reportCount).toBe(4);
-    expect(model.columns).toHaveLength(31);
+    expect(model.activity.days).toHaveLength(31);
+    expect(model.activity.days.slice(0, 5).map((bar) => bar.label)).toEqual(["1", "", "", "", "5"]);
+    expect(model.activity.periodsLabel).toBe("最近12か月");
+    expect(model.activity.periods.at(-1)).toMatchObject({ label: "10月", value: 150 });
     expect(model.profile.find((slot) => slot.hour === 8)?.minutes).toEqual({ study: 60 });
     // 10月の日報は 13日(火)・15日(木)・19日(月)・21日(水)
     expect(model.weekdays.find((entry) => entry.weekday === "月")).toEqual({ weekday: "月", minutes: 150, days: 1 });
@@ -121,6 +136,6 @@ describe("periodView + buildModel", () => {
     const empty = periodRange("week", "2026-10-05", TODAY);
     const emptyModel = buildModel(await periodView(empty), empty, TODAY);
     expect(emptyModel.reportCount).toBe(0);
-    expect(emptyModel.hero.value).toBe("—");
+    expect(emptyModel.hero.figures.map((figure) => figure.value)).toEqual(["—", "—"]);
   });
 });

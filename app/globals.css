@@ -381,7 +381,9 @@ h1,h2,h3 { color:var(--ink); } h1 { margin:0; font-size:30px; line-height:1.1; l
    ここにはデータの部品(帯・横棒・縦棒・カレンダー・凡例)だけを置く。色は4カテゴリ＋未分類(全ペアで見分けられる組み合わせ)。 */
 :root { --c-study:#2a78d6; --c-dev:#eda100; --c-life:#1baf7a; --c-media:#e87ba4; --c-other:#b4b2a9; --c-hatch:repeating-linear-gradient(45deg,#b4b2a9 0 2px,transparent 2px 5px); }
 .daily-report-workspace .dr-hero { background:linear-gradient(120deg,#f7fbff,#e3eefb); }
-@media (min-width:901px) { .daily-report-workspace .dr-hero .hero-grid { grid-template-columns:1.3fr repeat(4,1fr); } }
+@media (min-width:901px) { .daily-report-workspace .dr-hero .hero-grid { grid-template-columns:minmax(0,2fr) repeat(3,minmax(0,1fr)); } }
+/* スマホ: 主数値の下に補助3つを1行で(縦に積むと1画面を使い切る) */
+@media (max-width:600px) { .daily-report-workspace .dr-hero .hero-grid { grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px 10px; } .daily-report-workspace .dr-hero .hero-grid>div:first-child { grid-column:1/-1; } .daily-report-workspace .dr-hero .hero-metric { padding:10px 0 0; border-top:1px solid rgba(60,60,67,.16); border-left:0; } .daily-report-workspace .dr-hero .hero-metric strong { font-size:13px; } }
 @media (min-width:601px) and (max-width:900px) { .daily-report-workspace .dr-hero .hero-grid { grid-template-columns:repeat(3,minmax(0,1fr)); } .daily-report-workspace .dr-hero .hero-grid>div:first-child { grid-column:1/-1; } }
 .dr-grid { display:grid; gap:16px; margin-bottom:16px; }
 .dr-panel .panel-heading h2 { font-size:18px; }
@@ -433,7 +435,6 @@ h1,h2,h3 { color:var(--ink); } h1 { margin:0; font-size:30px; line-height:1.1; l
 .dr-legend i,.dr-note i { display:inline-block; width:12px; height:12px; border-radius:3px; }
 .dr-hatch { background:var(--c-hatch); box-shadow:inset 0 0 0 1px var(--line-strong); }
 .dr-dash { border:1px dashed var(--line-strong); }
-.dr-tick { width:2px!important; height:14px!important; border-radius:0!important; background:var(--ink); }
 
 /* 帯 */
 .dr-timeline { margin-bottom:12px; }
@@ -453,50 +454,58 @@ h1,h2,h3 { color:var(--ink); } h1 { margin:0; font-size:30px; line-height:1.1; l
 .dr-weekrow>em { color:var(--muted); font-style:normal; text-align:right; font-variant-numeric:tabular-nums; }
 .dr-weekrow.is-future { opacity:.45; }
 
-/* 100%横棒・ブレット */
-.dr-shares { display:grid; gap:8px; margin-bottom:18px; }
-.dr-share-row { display:grid; grid-template-columns:52px minmax(0,1fr); align-items:center; gap:10px; font-size:12px; color:var(--muted); }
-.dr-share-bar { display:flex; gap:2px; height:24px; }
-.dr-share-bar>span { display:flex; align-items:center; justify-content:center; overflow:hidden; border-radius:3px; color:#fff; font-size:11px; font-weight:700; font-variant-numeric:tabular-nums; text-shadow:0 0 2px rgba(0,0,0,.35); }
+/* ヒーロー: 週次・月次は合計と1日平均を同じ大きさで並べる(設計書 §6.2) */
+.dr-hero-figures { display:flex; flex-wrap:wrap; gap:4px 36px; }
+.dr-hero-figures p { margin:0; }
+
+/* 概要: 左に活動時間、右に配分(Manage Asset の asset-dashboard-grid と同じ 1.35fr : 1fr) */
+.dr-overview { display:grid; gap:16px; margin-bottom:16px; }
+@media (min-width:1100px) { .dr-overview { grid-template-columns:minmax(0,1.35fr) minmax(0,1fr); align-items:start; } }
+
+/* 活動時間の図: 1色の縦棒・縦軸と目盛り線(Manage Asset の資産推移と同じ線・文字) */
+.dr-bars { padding:8px 18px 14px; }
+.dr-bars svg { display:block; width:100%; height:auto; overflow:visible; }
+.dr-bars text { fill:var(--faint); font-variant-numeric:tabular-nums; }
+.dr-bars-grid { stroke:var(--line); stroke-width:1; }
+.dr-bars-base { stroke:var(--line-strong); stroke-width:1; }
+.dr-bar { fill:var(--blue); transition:opacity 160ms ease-out; }
+.dr-bars g.is-link { cursor:pointer; }
+.dr-bars g.is-link:hover .dr-bar { opacity:.8; }
+.dr-bar-missing { stroke:var(--line-strong); stroke-width:3; stroke-linecap:round; }
+.dr-bars .dr-bar-missing-text { fill:var(--faint); }
+
+/* 配分の表 */
+.dr-alloc th,.dr-alloc td { text-align:right; white-space:nowrap; }
+.dr-alloc th:first-child,.dr-alloc td:first-child { text-align:left; width:46%; }
+.dr-alloc thead th { color:var(--muted); font-size:12px; font-weight:600; }
+.dr-alloc-row th { padding-top:10px; padding-bottom:10px; font-weight:400; }
+.dr-alloc-row button { display:inline-flex; align-items:center; gap:8px; border:0; background:transparent; padding:0; color:var(--ink); font-size:14px; font-weight:700; cursor:pointer; }
+.dr-alloc-caret { width:10px; height:10px; color:var(--muted); transition:transform 160ms ease-out; }
+.dr-alloc-row button[aria-expanded="true"] .dr-alloc-caret { transform:rotate(90deg); }
+.dr-alloc-row button i { width:10px; height:10px; border-radius:3px; }
+.dr-alloc-pct { color:var(--muted); font-size:12px; font-weight:600; font-variant-numeric:tabular-nums; }
+.dr-alloc-bar { display:block; height:4px; margin:6px 0 0 18px; border-radius:2px; background:rgba(60,60,67,.08); }
+.dr-alloc-bar>span { display:block; height:100%; border-radius:2px; }
+.dr-alloc td { font-size:14px; }
+.dr-alloc td small { display:block; color:var(--muted); font-size:11px; }
+.dr-alloc .dr-alloc-base { color:var(--muted); }
+.dr-alloc-tag th { padding-left:40px; color:var(--muted); font-size:13px; font-weight:400; }
+.dr-alloc-tag td { font-size:13px; }
+.dr-alloc-note { margin:0; padding:10px 22px 16px; }
+
+/* 横棒(曜日別・アプリ。1色) */
 .dr-bullet-row { display:grid; grid-template-columns:140px minmax(0,1fr) 68px; align-items:center; gap:10px; min-height:28px; font-size:13px; }
-.dr-bullet-head { min-height:18px; color:var(--muted); font-size:11px; }
-.dr-bullet-head>span:last-child { text-align:right; }
-.dr-bullet-row.is-category { margin-top:8px; font-weight:700; }
-.dr-bullet-row:not(.is-category) .dr-bullet-label { padding-left:14px; color:var(--muted); }
 .dr-bullet-label small { margin-left:6px; color:var(--faint); font-size:11px; font-weight:400; }
 .dr-bullet-track { position:relative; display:block; height:100%; min-height:28px; }
 .dr-bullet-bar { position:absolute; left:0; top:50%; height:10px; margin-top:-5px; border-radius:0 4px 4px 0; min-width:2px; }
-.dr-bullet-row.is-category .dr-bullet-bar { height:16px; margin-top:-8px; }
-.dr-bullet-bar.is-neutral { background:var(--blue); opacity:.75; }
-.dr-bullet-tick { position:absolute; top:4px; bottom:4px; width:2px; margin-left:-1px; background:var(--ink); }
-.dr-bullet-tick.is-tentative { background:repeating-linear-gradient(180deg,var(--ink) 0 3px,transparent 3px 5px); }
+.dr-bullet-bar.is-neutral { background:var(--blue); }
 .dr-bullet-value { text-align:right; font-variant-numeric:tabular-nums; }
 
-/* 縦棒・時刻別 */
-.dr-columns { display:grid; gap:8px; align-items:end; height:190px; }
-.dr-columns.is-dense { gap:3px; }
-.dr-col { display:grid; grid-template-rows:18px minmax(0,1fr) 18px; height:100%; color:var(--muted); font-size:11px; text-align:center; text-decoration:none; }
-a.dr-col:hover .dr-col-stack { outline:2px solid var(--blue); outline-offset:2px; }
-.dr-col-value { font-variant-numeric:tabular-nums; white-space:nowrap; }
-.dr-col-stack { display:flex; flex-direction:column-reverse; gap:2px; width:min(100%,32px); height:100%; margin:0 auto; border-radius:4px; }
+/* 時刻別の平均(カテゴリの積み上げ) */
+.dr-col-stack { display:flex; flex-direction:column-reverse; gap:2px; width:100%; height:100%; margin:0 auto; border-radius:4px; }
 .dr-col-stack>span { border-radius:2px; min-height:2px; }
-.dr-col-stack.is-missing { border:1px dashed var(--line-strong); }
-.dr-col-stack.is-future { opacity:0; }
-.dr-col-label.is-weekend { color:var(--ink); font-weight:700; }
-.dr-columns.is-dense .dr-col-value { visibility:hidden; }
 .dr-profile-bars { display:grid; gap:3px; height:150px; margin-bottom:4px; border-bottom:1px solid var(--line); }
 .dr-profile-col { display:flex; align-items:flex-end; height:100%; }
-.dr-profile-col .dr-col-stack { width:100%; }
-
-/* 流れ(スモールマルチプル) */
-.dr-trends { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:16px; }
-.dr-trend { margin:0; }
-.dr-trend figcaption { display:flex; align-items:center; gap:6px; margin-bottom:4px; color:var(--muted); font-size:12px; }
-.dr-trend figcaption i { width:10px; height:10px; border-radius:2px; }
-.dr-trend figcaption b { margin-left:auto; color:var(--ink); font-variant-numeric:tabular-nums; }
-.dr-trend svg { display:block; width:100%; height:56px; }
-.dr-trend-base { stroke:var(--line-strong); stroke-width:1; }
-.dr-trend-range { grid-column:1/-1; margin-top:0; }
 
 /* 表・作業・知見・原本 */
 .dr-table-scroll { overflow-x:auto; }
@@ -519,6 +528,8 @@ a.dr-col:hover .dr-col-stack { outline:2px solid var(--blue); outline-offset:2px
 .dr-headings p { margin:2px 0 0; color:var(--muted); font-size:13px; line-height:1.6; }
 .dr-dates { display:inline-flex; flex-wrap:wrap; gap:4px; margin-left:8px; vertical-align:1px; }
 .dr-dates a,.dr-dates { font-size:11px; }
+.dr-dates.is-text { display:inline; color:var(--muted); }
+.dr-dates.is-text a { padding:0; background:transparent; }
 .dr-dates a { padding:0 6px; border-radius:99px; background:var(--blue-soft); color:var(--blue-strong); text-decoration:none; }
 .dr-more { margin-top:12px; }
 .dr-more summary { cursor:pointer; color:var(--blue-strong); font-size:13px; font-weight:700; }
@@ -536,9 +547,12 @@ a.dr-col:hover .dr-col-stack { outline:2px solid var(--blue); outline-offset:2px
   .dr-empty { padding:16px 14px; }
   .dr-calendar { left:0; width:min(300px,calc(100vw - 32px)); }
   .dr-bullet-row { grid-template-columns:104px minmax(0,1fr) 58px; gap:8px; font-size:12px; }
-  .dr-trends { grid-template-columns:repeat(2,minmax(0,1fr)); }
   .dr-week-axis { margin:0 56px 0 44px; }
   .dr-weekrow { grid-template-columns:36px minmax(0,1fr) 48px; }
   .dr-date-button { font-size:13px; padding:6px 10px; }
-  .dr-columns { height:160px; }
+  .dr-bars { padding:6px 8px 10px; }
+  .dr-alloc-note { padding:10px 14px 14px; }
+  .dr-alloc th:first-child,.dr-alloc td:first-child { width:auto; }
+  .dr-alloc-tag th { padding-left:28px; }
+  .dr-hero-figures { gap:4px 24px; }
 }
