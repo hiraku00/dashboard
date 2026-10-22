@@ -171,6 +171,8 @@ python sync_dashboard.py --reparse        # 規則を変えてデプロイした
 
 ## 8. 実装の順序
 
+進捗（2026-10-22）: 1〜4は実装済み。6のうちdashboardのdocsは3・4と一緒に更新した。5はauto-daily-report側で進める。
+
 1. パーサーとテスト（既存204件で `failed` 0件）
 2. タグ辞書の作り込み（既存204件の頻度から）とテスト
 3. migration `0017_daily_reports.sql`、`ensureSchema()`、`SCHEMA_VERSION`
