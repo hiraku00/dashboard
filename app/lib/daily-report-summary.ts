@@ -2,7 +2,7 @@
  *  (vitestの "node" project でテストする)。取り込み時に計算済みの値(タグ×日の分数、時間帯の行)を、
  *  画面で読みやすい形に並べ替えるだけで、タグ付けや時間の数え方は daily-report-tags.ts が正。 */
 
-import { DAILY_REPORT_TAGS, OTHER_TAG, type TagGroup } from "./daily-report-tags.ts";
+import { DAILY_REPORT_TAGS, OTHER_TAG, tagsForText, type TagGroup } from "./daily-report-tags.ts";
 
 // ---- カテゴリ(表示用の4分類＋未分類。タグ辞書のグループを寄せる) ----
 
@@ -430,74 +430,64 @@ export function weekdayAverages(columns: DayColumn[]): { weekday: string; minute
   });
 }
 
-// ---- 作業項目・アプリ・知見 ----
+// ---- 作業項目・知見 ----
 
 export type WorkItemInput = { reportDate: string; position: number; categoryPosition: number; category: string; itemPosition: number; text: string; tags: string[] };
-export type WorkItemGroup = { categoryPosition: number; category: string; items: { position: number; text: string; tags: string[] }[] };
 
-/** 1日分の作業項目を、`###` 見出しごとにまとめる(見出しの表記は日ごとに揺れるので名寄せはしない)。 */
-export function groupDayWorkItems(items: WorkItemInput[]): WorkItemGroup[] {
-  const groups = new Map<number, WorkItemGroup>();
-  for (const item of [...items].sort((a, b) => a.categoryPosition - b.categoryPosition || a.itemPosition - b.itemPosition)) {
-    let group = groups.get(item.categoryPosition);
-    if (!group) {
-      group = { categoryPosition: item.categoryPosition, category: item.category, items: [] };
-      groups.set(item.categoryPosition, group);
-    }
-    group.items.push({ position: item.position, text: item.text, tags: item.tags });
-  }
-  return [...groups.values()];
-}
+export type WorkTagRow = {
+  tag: string;
+  label: string;
+  /** タグ×日の分数の合計(時間帯から数えた時間)。時間帯に一度も出ないタグは null */
+  minutes: number | null;
+  /** 作業項目か時間帯にそのタグが出た日の数 */
+  days: number;
+  /** 作業項目(新しい順)。作業項目の無いタグは空 */
+  items: { reportDate: string; text: string }[];
+};
+export type WorkCategoryRow = { category: Category; label: string; minutes: number; tags: WorkTagRow[] };
 
-export type HeadingSummary = { heading: string; category: Category; dates: string[]; firstText: string; tags: string[] };
-
-/** 期間の作業項目を見出しの文字列でまとめる(週次・月次)。見出しの主カテゴリは、配下の項目に付いたタグの
- *  カテゴリで最も多いもの。並びはカテゴリの固定順→最初に出た日→見出し。 */
-export function headingSummaries(items: WorkItemInput[]): HeadingSummary[] {
-  const map = new Map<string, { heading: string; dates: Set<string>; firstText: string; firstDate: string; counts: Map<Category, number>; tags: Set<string> }>();
-  for (const item of [...items].sort((a, b) => a.reportDate.localeCompare(b.reportDate) || a.position - b.position)) {
-    const heading = item.category || "(見出しなし)";
-    let entry = map.get(heading);
-    if (!entry) {
-      entry = { heading, dates: new Set(), firstText: item.text, firstDate: item.reportDate, counts: new Map(), tags: new Set() };
-      map.set(heading, entry);
-    }
-    entry.dates.add(item.reportDate);
-    for (const tag of item.tags) {
-      entry.tags.add(tag);
-      entry.counts.set(categoryOfTag(tag), (entry.counts.get(categoryOfTag(tag)) ?? 0) + 1);
-    }
-  }
-  const mainCategory = (counts: Map<Category, number>): Category => {
-    let best: Category = "other";
-    let bestCount = 0;
-    for (const category of CATEGORY_ORDER) {
-      const count = counts.get(category) ?? 0;
-      if (count > bestCount) [best, bestCount] = [category, count];
-    }
-    return best;
+/** 作業内容タブの表(設計書 §4.4)。日報の `###` 見出しは日ごとに言い方が揺れてまとまらないので、タグの単位でまとめる。
+ *  カテゴリは固定順、タグは時間の多い順(時間の無いタグは最後)。タグの付かない作業項目は未分類(other)に入れる。 */
+export function workTable(items: WorkItemInput[], tagDays: TagDayRow[]): WorkCategoryRow[] {
+  const tags = new Map<string, { minutes: number | null; dates: Set<string>; items: { reportDate: string; text: string }[] }>();
+  const entry = (tag: string) => {
+    let value = tags.get(tag);
+    if (!value) tags.set(tag, (value = { minutes: null, dates: new Set(), items: [] }));
+    return value;
   };
-  return [...map.values()]
-    .map((entry) => ({ entry, category: mainCategory(entry.counts) }))
-    .sort((a, b) => CATEGORY_ORDER.indexOf(a.category) - CATEGORY_ORDER.indexOf(b.category) || a.entry.firstDate.localeCompare(b.entry.firstDate) || a.entry.heading.localeCompare(b.entry.heading))
-    .map(({ entry, category }) => ({ heading: entry.heading, category, dates: [...entry.dates], firstText: entry.firstText, tags: [...entry.tags] }));
+  for (const row of tagDays) {
+    if (row.minutes <= 0) continue;
+    const value = entry(row.tag);
+    value.minutes = (value.minutes ?? 0) + row.minutes;
+    value.dates.add(row.reportDate);
+  }
+  for (const item of items) {
+    for (const tag of item.tags.length ? item.tags : [OTHER_TAG]) {
+      const value = entry(tag);
+      value.dates.add(item.reportDate);
+      value.items.push({ reportDate: item.reportDate, text: item.text });
+    }
+  }
+  const categories = new Map<Category, WorkCategoryRow>();
+  for (const [tag, value] of tags) {
+    const category = categoryOfTag(tag);
+    let row = categories.get(category);
+    if (!row) categories.set(category, (row = { category, label: CATEGORY_LABELS[category], minutes: 0, tags: [] }));
+    row.minutes += value.minutes ?? 0;
+    row.tags.push({
+      tag,
+      label: tagLabel(tag),
+      minutes: value.minutes,
+      days: value.dates.size,
+      items: [...value.items].sort((a, b) => b.reportDate.localeCompare(a.reportDate)),
+    });
+  }
+  for (const row of categories.values()) row.tags.sort((a, b) => (b.minutes ?? -1) - (a.minutes ?? -1) || a.label.localeCompare(b.label));
+  return CATEGORY_ORDER.filter((category) => categories.has(category)).map((category) => categories.get(category)!);
 }
 
-export type AppUsageInput = { reportDate: string; appName: string; appKey: string; usageCount: number | null; usageCountRaw: string; usageIsMin: boolean; purpose: string };
-export type AppSummary = { appKey: string; name: string; dates: string[] };
-
-/** 期間のアプリを app_key でまとめ、使った日数の多い順に。表示名はその期間で最も多い名前の `／` の前。 */
-export function appSummaries(apps: AppUsageInput[], limit = 8): AppSummary[] {
-  const map = new Map<string, { dates: Set<string>; names: Map<string, number> }>();
-  for (const app of apps) {
-    const entry = map.get(app.appKey) ?? { dates: new Set<string>(), names: new Map<string, number>() };
-    entry.dates.add(app.reportDate);
-    const name = app.appName.split(/[／/]/)[0].trim() || app.appName;
-    entry.names.set(name, (entry.names.get(name) ?? 0) + 1);
-    map.set(app.appKey, entry);
-  }
-  return [...map.entries()]
-    .map(([appKey, entry]) => ({ appKey, name: [...entry.names.entries()].sort((a, b) => b[1] - a[1])[0][0], dates: [...entry.dates].sort() }))
-    .sort((a, b) => b.dates.length - a.dates.length || a.name.localeCompare(b.name))
-    .slice(0, limit);
+/** 知見の文のカテゴリ(設計書 §4.5)。タグ辞書を当てた最初のタグのカテゴリで、当たらなければ未分類。D1には保存しない。 */
+export function noteCategory(text: string): Category {
+  const [first] = tagsForText(text);
+  return first ? categoryOfTag(first) : "other";
 }

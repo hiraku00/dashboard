@@ -1,8 +1,8 @@
 import { describe, expect, test } from "vitest";
 import {
-  addDays, addMonths, allocationRows, appSummaries, axisRange, axisTicks, categoryOfTag, categoryShares, dailyColumns, defaultAnchor,
-  formatClock, formatMinutes, groupDayWorkItems, headingSummaries, hourProfile, lastReportIn, periodRange, perDayAverages,
-  shiftAnchor, signedMinutes, switchRange, tagLabel, timelineSegments, trendSeries, weekDates, weekdayAverages, weekdayIndex, weekdayLabel,
+  addDays, addMonths, allocationRows, axisRange, axisTicks, categoryOfTag, categoryShares, dailyColumns, defaultAnchor,
+  formatClock, formatMinutes, hourProfile, lastReportIn, noteCategory, periodRange, perDayAverages,
+  shiftAnchor, signedMinutes, switchRange, tagLabel, timelineSegments, trendSeries, weekDates, weekdayAverages, weekdayIndex, weekdayLabel, workTable,
 } from "../app/lib/daily-report-summary.ts";
 import { DAILY_REPORT_TAGS } from "../app/lib/daily-report-tags.ts";
 
@@ -219,29 +219,39 @@ describe("dailyColumns / weekdayAverages / trendSeries", () => {
 
 const item = (reportDate, position, categoryPosition, category, text, tags = []) => ({ reportDate, position, categoryPosition, category, itemPosition: position, text, tags });
 
-describe("work items and apps", () => {
-  test("groups one day's items by heading in report order", () => {
-    const groups = groupDayWorkItems([item("d", 2, 1, "ダッシュボード", "c"), item("d", 0, 0, "英語", "a"), item("d", 1, 0, "英語", "b")]);
-    expect(groups.map((group) => [group.category, group.items.map((entry) => entry.text)])).toEqual([["英語", ["a", "b"]], ["ダッシュボード", ["c"]]]);
-  });
-
-  test("summarises headings across days, ordered by main category then first date", () => {
-    const summaries = headingSummaries([
-      item("2026-10-20", 0, 0, "動画視聴", "YouTube", ["media"]),
-      item("2026-10-19", 0, 0, "英語学習", "Anki", ["english"]),
-      item("2026-10-21", 0, 0, "英語学習", "Gemini", ["english"]),
-      item("2026-10-21", 1, 1, "雑務", "整理"),
+describe("workTable", () => {
+  test("groups work items by tag under fixed-order categories, with time from the tag days and the newest item first", () => {
+    const rows = workTable(
+      [
+        item("2026-10-19", 0, 0, "英語学習", "Ankiで復習", ["english"]),
+        item("2026-10-21", 0, 0, "英語の勉強", "Geminiで構文", ["english"]),
+        item("2026-10-21", 1, 1, "電気工事士", "第二種の動画", ["electronics", "media"]),
+        item("2026-10-21", 2, 2, "雑務", "整理"),
+      ],
+      [
+        { reportDate: "2026-10-19", tag: "english", minutes: 90 },
+        { reportDate: "2026-10-21", tag: "english", minutes: 60 },
+        { reportDate: "2026-10-21", tag: "electronics", minutes: 30 },
+        { reportDate: "2026-10-20", tag: "dashboard", minutes: 45 },
+        { reportDate: "2026-10-21", tag: "other", minutes: 10 },
+      ],
+    );
+    expect(rows.map((row) => [row.category, row.minutes])).toEqual([["study", 180], ["dev", 45], ["media", 0], ["other", 10]]);
+    expect(rows[0].tags.map((tag) => [tag.tag, tag.minutes, tag.days, tag.items.map((entry) => entry.text)])).toEqual([
+      ["english", 150, 2, ["Geminiで構文", "Ankiで復習"]],
+      ["electronics", 30, 1, ["第二種の動画"]],
     ]);
-    expect(summaries.map((entry) => [entry.heading, entry.category, entry.dates, entry.firstText])).toEqual([
-      ["英語学習", "study", ["2026-10-19", "2026-10-21"], "Anki"],
-      ["動画視聴", "media", ["2026-10-20"], "YouTube"],
-      ["雑務", "other", ["2026-10-21"], "整理"],
-    ]);
+    // 時間帯にだけ出たタグは作業項目なし、作業項目にだけ出たタグは時間なし
+    expect(rows[1].tags[0]).toMatchObject({ tag: "dashboard", minutes: 45, items: [] });
+    expect(rows[2].tags[0]).toMatchObject({ tag: "media", minutes: null, days: 1 });
+    expect(rows[3].tags[0]).toMatchObject({ tag: "other", label: "未分類", minutes: 10, items: [{ reportDate: "2026-10-21", text: "整理" }] });
   });
+});
 
-  test("ranks apps by the number of days used, named by their most common name", () => {
-    const app = (reportDate, appName, appKey) => ({ reportDate, appName, appKey, usageCount: null, usageCountRaw: "", usageIsMin: false, purpose: "" });
-    const summaries = appSummaries([app("a", "Brave", "brave"), app("b", "Brave", "brave"), app("a", "Gemini／Anki", "gemini"), app("b", "Gemini", "gemini"), app("c", "Gemini", "gemini"), app("a", "X", "x")]);
-    expect(summaries.map((entry) => [entry.name, entry.dates.length])).toEqual([["Gemini", 3], ["Brave", 2], ["X", 1]]);
+describe("noteCategory", () => {
+  test("uses the first dictionary tag of the note, or other", () => {
+    expect(noteCategory("Ankiは新規を絞ると復習が溜まりにくい")).toBe("study");
+    expect(noteCategory("NISAの口座は年内に見直す")).toBe("life");
+    expect(noteCategory("特に無し")).toBe("other");
   });
 });

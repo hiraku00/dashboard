@@ -6,15 +6,13 @@ import {
   CATEGORY_LABELS,
   RANGES,
   allocationRows,
-  appSummaries,
   axisRange,
   categoryShares,
   dailyColumns,
   datesBetween,
   formatMinutes,
-  groupDayWorkItems,
-  headingSummaries,
   hourProfile,
+  noteCategory,
   perDayAverages,
   periodRange,
   shiftAnchor,
@@ -24,20 +22,18 @@ import {
   timelineSegments,
   trendSeries,
   weekdayAverages,
+  workTable,
   weekdayLabel,
   type AllocationRow,
-  type AppSummary,
-  type AppUsageInput,
   type Category,
   type CategoryShare,
-  type HeadingSummary,
   type PeriodRange,
   type Range,
   type TagDayRow,
   type TimeAxis,
   type TimelineBlockInput,
   type TimelineSegment,
-  type WorkItemGroup,
+  type WorkCategoryRow,
   type WorkItemInput,
 } from "./daily-report-summary.ts";
 
@@ -62,7 +58,6 @@ export type PeriodView = {
   /** from〜to の時間帯(タグ付き) */
   blocks: (TimelineBlockInput & { reportDate: string })[];
   workItems: WorkItemInput[];
-  apps: AppUsageInput[];
   notes: { reportDate: string; text: string }[];
   /** 日次のときだけ: その日の本文と解析時の警告 */
   original: { markdown: string; warnings: string[] } | null;
@@ -111,8 +106,6 @@ export type DailyReportModel = {
   day: {
     report: ReportRow | null;
     blocks: TimelineBlockInput[];
-    workGroups: WorkItemGroup[];
-    apps: AppUsageInput[];
   } | null;
   /** 週次: 7行の帯 */
   weekRows: { date: string; hasReport: boolean; future: boolean; active: number; segments: TimelineSegment[] }[];
@@ -122,17 +115,19 @@ export type DailyReportModel = {
   profileAxis: TimeAxis;
   /** 月次: 曜日別の平均 */
   weekdays: ReturnType<typeof weekdayAverages>;
-  headings: HeadingSummary[];
-  appRanking: AppSummary[];
-  notes: { reportDate: string; text: string }[];
+  /** 作業内容タブ: タグ単位の表(日次も同じ形) */
+  work: WorkCategoryRow[];
+  /** 知見・メモ: カテゴリは表示時にタグ辞書で決める */
+  notes: { reportDate: string; text: string; category: Category }[];
   /** 原本タブ: 日次は本文、週次・月次は日報の一覧 */
   original: { markdown: string; warnings: string[]; parseStatus: ReportRow["parseStatus"] } | null;
-  reportList: { date: string; active: number; parseStatus: ReportRow["parseStatus"] }[];
+  reportList: { date: string; active: number; recordStart: string | null; recordEnd: string | null; gapMinutes: number; parseStatus: ReportRow["parseStatus"] }[];
 };
 
 const BASELINE_LABEL: Record<Range, string> = { day: "直近28日の1日平均", week: "前週の1日平均", month: "前月の1日平均" };
 const BASELINE_SHORT: Record<Range, string> = { day: "直近28日", week: "前週", month: "前月" };
-const MONTH_DAY_LABELS = new Set([1, 5, 10, 15, 20, 25, 30]);
+// 軸の文字を14pxにしたので、月次の日付は4つだけ(設計書 §4.2)
+const MONTH_DAY_LABELS = new Set([1, 10, 20, 30]);
 
 const shortDate = (date: string) => `${Number(date.slice(5, 7))}/${Number(date.slice(8, 10))}`;
 
@@ -252,7 +247,7 @@ export function buildModel(view: PeriodView, period: PeriodRange, today: string)
     baseline: { days: baseDays, label: BASELINE_LABEL[range], shortLabel: BASELINE_SHORT[range] },
     activity: { days: activityDays, periods: activityPeriods, periodsLabel: range === "month" ? "最近12か月" : "最近12週" },
     day: range === "day"
-      ? { report, blocks: blocksByDate.get(from) ?? [], workGroups: groupDayWorkItems(view.workItems), apps: view.apps }
+      ? { report, blocks: blocksByDate.get(from) ?? [] }
       : null,
     weekRows: range === "week"
       ? periodDates.map((date) => ({ date, hasReport: reportSet.has(date), future: date > today, active: activeByDate.get(date) ?? 0, segments: segmentsByDate.get(date) ?? [] }))
@@ -261,10 +256,9 @@ export function buildModel(view: PeriodView, period: PeriodRange, today: string)
     profile: range === "day" ? [] : hourProfile(allSegments, sharedAxis),
     profileAxis: sharedAxis,
     weekdays: range === "month" ? weekdayAverages(columns) : [],
-    headings: range === "day" ? [] : headingSummaries(view.workItems),
-    appRanking: range === "day" ? [] : appSummaries(view.apps),
-    notes: view.notes,
+    work: workTable(view.workItems, currentTags),
+    notes: view.notes.map((note) => ({ ...note, category: noteCategory(note.text) })),
     original: range === "day" && view.original && report ? { ...view.original, parseStatus: report.parseStatus } : null,
-    reportList: current.map((row) => ({ date: row.reportDate, active: activeByDate.get(row.reportDate) ?? 0, parseStatus: row.parseStatus })).reverse(),
+    reportList: current.map((row) => ({ date: row.reportDate, active: activeByDate.get(row.reportDate) ?? 0, recordStart: row.recordStart, recordEnd: row.recordEnd, gapMinutes: row.gapMinutes, parseStatus: row.parseStatus })).reverse(),
   };
 }

@@ -36,7 +36,8 @@ function BarChart({ bars, tab, emptyLabel }: { bars: ActivityBar[]; tab: ReportT
   const containerRef = useRef<HTMLDivElement>(null);
   const width = 640, baseHeight = 220, baseLeft = 40, right = 8, baseTop = 14, baseBottom = 28;
   const scale = useSvgFontScale(containerRef, width, bars.length);
-  const fontSize = 11 / scale;
+  // 軸の文字は14px(DADS の最小。設計書 §11)
+  const fontSize = 14 / scale;
   const max = Math.max(240, ...bars.map((bar) => bar.value ?? 0));
   const top4h = Math.ceil(max / 240) * 240;
   const ticks = Array.from({ length: top4h / 240 + 1 }, (_, index) => index * 240);
@@ -84,14 +85,33 @@ function BarChart({ bars, tab, emptyLabel }: { bars: ActivityBar[]; tab: ReportT
               {/* 押しやすいよう、棒の列全体を当たり判定にする */}
               <rect x={left + slot * index} y={chartTop} width={slot} height={height - chartTop - bottom} fill="transparent" />
               {bar.value !== null && bar.value > 0 && (() => {
-                const top = y(bar.value);
-                const radius = Math.min(4, barWidth / 2, height - bottom - top);
-                return <path className="dr-bar" d={`M${x},${height - bottom} V${top + radius} a${radius},${radius} 0 0 1 ${radius},${-radius} h${barWidth - radius * 2} a${radius},${radius} 0 0 1 ${radius},${radius} V${height - bottom}Z`} />;
+                // カテゴリの積み上げ(下から学習・開発・生活・視聴・未分類)。区間の間に白い隙間、角丸は一番上の区間だけ
+                const gapPx = 1.5 / scale;
+                const parts = bar.breakdown.length ? bar.breakdown : [{ category: "other" as const, minutes: bar.value }];
+                let base = height - bottom;
+                return parts.map((part, partIndex) => {
+                  const segmentHeight = (part.minutes / top4h) * (height - chartTop - bottom);
+                  const top = base - segmentHeight;
+                  const last = partIndex === parts.length - 1;
+                  const drawnTop = top + (last ? 0 : gapPx / 2);
+                  const drawnBottom = base - (partIndex === 0 ? 0 : gapPx / 2);
+                  base = top;
+                  if (drawnBottom - drawnTop <= 0) return null;
+                  const radius = last ? Math.min(4, barWidth / 2, drawnBottom - drawnTop) : 0;
+                  return (
+                    <path
+                      key={part.category}
+                      className="dr-bar"
+                      style={{ fill: categoryColor(part.category) }}
+                      d={`M${x},${drawnBottom} V${drawnTop + radius} a${radius},${radius} 0 0 1 ${radius},${-radius} h${barWidth - radius * 2} a${radius},${radius} 0 0 1 ${radius},${radius} V${drawnBottom}Z`}
+                    />
+                  );
+                });
               })()}
               {bar.value === null && !bar.future && (
                 <>
                   <line className="dr-bar-missing" x1={center(index) - barWidth * 0.3} x2={center(index) + barWidth * 0.3} y1={height - bottom - 1.5} y2={height - bottom - 1.5} />
-                  {emptyLabel && <text x={center(index)} y={height - bottom - 6 / scale} textAnchor="middle" className="dr-bar-missing-text" style={{ fontSize: 10 / scale }}>なし</text>}
+                  {emptyLabel && <text x={center(index)} y={height - bottom - 8 / scale} textAnchor="middle" className="dr-bar-missing-text" style={{ fontSize }}>なし</text>}
                 </>
               )}
               {bar.label && <text x={center(index)} y={labelY} textAnchor="middle" style={{ fontSize }}>{bar.label}</text>}
@@ -100,6 +120,12 @@ function BarChart({ bars, tab, emptyLabel }: { bars: ActivityBar[]; tab: ReportT
         })}
       </svg>
       <ChartTooltip tooltip={tooltip} />
+      {/* 1列のときは隣の配分の表が見えないので、図の下に凡例(2列では CSS で隠す) */}
+      <ul className="dr-legend dr-bars-legend" aria-label="凡例">
+        {(["study", "dev", "life", "media"] as const).map((category) => (
+          <li key={category}><i aria-hidden="true" style={{ background: categoryColor(category) }} />{CATEGORY_LABELS[category]}</li>
+        ))}
+      </ul>
     </div>
   );
 }

@@ -379,21 +379,21 @@ h1,h2,h3 { color:var(--ink); } h1 { margin:0; font-size:30px; line-height:1.1; l
 /* 作業日報 (app/daily-report-app.tsx ほか): docs/daily-report-view-design.md §5・§6。
    枠組みは Manage Asset の asset-workspace / asset-tabs / page-toolbar / asset-hero / asset-panel をそのまま使い、
    ここにはデータの部品(帯・横棒・縦棒・カレンダー・凡例)だけを置く。色は4カテゴリ＋未分類(全ペアで見分けられる組み合わせ)。 */
-:root { --c-study:#2a78d6; --c-dev:#eda100; --c-life:#1baf7a; --c-media:#e87ba4; --c-other:#b4b2a9; --c-hatch:repeating-linear-gradient(45deg,#b4b2a9 0 2px,transparent 2px 5px); }
+:root { --c-study:#2d6fd0; --c-dev:#b35c00; --c-life:#16804f; --c-media:#b5418f; --c-other:#8a8a8e; --c-all:#4a5a70; --c-dim:#d6d8de; --c-hatch:repeating-linear-gradient(45deg,#b4b2a9 0 2px,transparent 2px 5px); }
 .daily-report-workspace .dr-hero { background:linear-gradient(120deg,#f7fbff,#e3eefb); }
 @media (min-width:901px) { .daily-report-workspace .dr-hero .hero-grid { grid-template-columns:minmax(0,2fr) repeat(3,minmax(0,1fr)); } }
 /* スマホ: 主数値の下に補助3つを1行で(縦に積むと1画面を使い切る) */
-@media (max-width:600px) { .daily-report-workspace .dr-hero .hero-grid { grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px 10px; } .daily-report-workspace .dr-hero .hero-grid>div:first-child { grid-column:1/-1; } .daily-report-workspace .dr-hero .hero-metric { padding:10px 0 0; border-top:1px solid rgba(60,60,67,.16); border-left:0; } .daily-report-workspace .dr-hero .hero-metric strong { font-size:13px; } }
+@media (max-width:600px) { .daily-report-workspace .dr-hero .hero-grid { grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px 10px; } .daily-report-workspace .dr-hero .hero-grid>div:first-child { grid-column:1/-1; } .daily-report-workspace .dr-hero .hero-metric { padding:10px 0 0; border-top:1px solid rgba(60,60,67,.16); border-left:0; } .daily-report-workspace .dr-hero .hero-metric strong { font-size:14px; } }
 @media (min-width:601px) and (max-width:900px) { .daily-report-workspace .dr-hero .hero-grid { grid-template-columns:repeat(3,minmax(0,1fr)); } .daily-report-workspace .dr-hero .hero-grid>div:first-child { grid-column:1/-1; } }
 .dr-grid { display:grid; gap:16px; margin-bottom:16px; }
 .dr-panel .panel-heading h2 { font-size:18px; }
 .dr-panel-body { padding:16px 22px 20px; }
 .dr-empty { margin:0; padding:20px 22px; color:var(--muted); line-height:1.7; }
-.dr-note { display:flex; align-items:center; gap:6px; margin:10px 0 0; color:var(--muted); font-size:12px; line-height:1.6; }
+.dr-note { display:flex; align-items:center; gap:6px; margin:10px 0 0; color:var(--muted); font-size:14px; line-height:1.6; }
 
 /* ツールバー */
 .dr-toolbar { justify-content:flex-start; flex-wrap:wrap; gap:10px; }
-.dr-range select { min-height:38px; border:1px solid var(--line-strong); border-radius:9px; background:#fff; padding:6px 30px 6px 12px; color:var(--ink); font-size:13px; font-weight:700; }
+.dr-range select { min-height:38px; border:1px solid var(--line-strong); border-radius:9px; background:#fff; padding:6px 30px 6px 12px; color:var(--ink); font-size:14px; font-weight:700; }
 .dr-datebox { position:relative; display:flex; align-items:center; gap:4px; }
 .dr-step { display:inline-grid; place-items:center; width:36px; height:38px; border:1px solid var(--line-strong); border-radius:9px; background:#fff; color:var(--ink); font-size:18px; text-decoration:none; }
 .dr-step:hover { background:var(--blue-soft); }
@@ -401,8 +401,8 @@ h1,h2,h3 { color:var(--ink); } h1 { margin:0; font-size:30px; line-height:1.1; l
 .dr-date-button { display:inline-flex; align-items:center; gap:8px; min-height:38px; border:1px solid var(--line-strong); border-radius:9px; background:#fff; padding:6px 12px; color:var(--ink); font-size:14px; font-weight:700; font-variant-numeric:tabular-nums; cursor:pointer; }
 .dr-date-button:hover,.dr-date-button[aria-expanded="true"] { border-color:var(--blue); }
 .dr-cal-icon { width:16px; height:16px; color:var(--blue-strong); }
-.dr-caret { color:var(--muted); font-size:11px; }
-.dr-current { font-size:13px; }
+.dr-caret { color:var(--muted); font-size:14px; }
+.dr-current { font-size:14px; }
 
 /* カレンダー */
 .dr-calendar { position:absolute; top:calc(100% + 6px); left:40px; z-index:50; width:300px; border:1px solid var(--line-strong); border-radius:14px; background:var(--surface-solid); padding:12px; box-shadow:0 14px 42px rgba(24,39,75,.16); }
@@ -412,8 +412,8 @@ h1,h2,h3 { color:var(--ink); } h1 { margin:0; font-size:30px; line-height:1.1; l
 .dr-cal-head button:disabled { color:var(--faint); cursor:default; }
 .dr-cal-head button:not(:disabled):hover { background:var(--blue-soft); }
 .dr-cal-row { display:grid; grid-template-columns:repeat(7,1fr); gap:2px; text-decoration:none; border-radius:8px; }
-.dr-cal-row>span,.dr-cal-row>a { position:relative; display:grid; place-items:center; height:34px; border-radius:8px; color:var(--ink); font-size:13px; font-variant-numeric:tabular-nums; text-decoration:none; }
-.dr-cal-weekdays>span { height:24px; color:var(--muted); font-size:11px; }
+.dr-cal-row>span,.dr-cal-row>a { position:relative; display:grid; place-items:center; height:34px; border-radius:8px; color:var(--ink); font-size:14px; font-variant-numeric:tabular-nums; text-decoration:none; }
+.dr-cal-weekdays>span { height:24px; color:var(--muted); font-size:14px; }
 .dr-cal-row .has-report::after { content:""; position:absolute; bottom:4px; width:4px; height:4px; border-radius:50%; background:var(--blue); }
 .dr-cal-row a.has-report:hover { background:var(--blue-soft); }
 .dr-cal-row .is-empty { color:var(--faint); }
@@ -422,14 +422,14 @@ h1,h2,h3 { color:var(--ink); } h1 { margin:0; font-size:30px; line-height:1.1; l
 .dr-cal-row.is-week:not(.is-disabled):hover { background:var(--blue-soft); }
 .dr-cal-row.is-disabled>span { color:var(--faint); }
 .dr-cal-months { display:grid; grid-template-columns:repeat(4,1fr); gap:4px; }
-.dr-cal-months>a,.dr-cal-months>span { display:grid; place-items:center; height:40px; border-radius:8px; color:var(--ink); font-size:13px; text-decoration:none; }
+.dr-cal-months>a,.dr-cal-months>span { display:grid; place-items:center; height:40px; border-radius:8px; color:var(--ink); font-size:14px; text-decoration:none; }
 .dr-cal-months>a:hover { background:var(--blue-soft); }
 .dr-cal-months>a.is-selected { background:var(--blue-soft); color:var(--blue-strong); font-weight:700; }
 .dr-cal-months>.is-empty { color:var(--faint); }
 
 /* 凡例 */
 .dr-legend-bar { margin:0 0 12px; }
-.dr-legend { display:flex; flex-wrap:wrap; gap:6px 18px; margin:0; padding:0; list-style:none; color:var(--muted); font-size:13px; }
+.dr-legend { display:flex; flex-wrap:wrap; gap:6px 18px; margin:0; padding:0; list-style:none; color:var(--muted); font-size:14px; }
 .dr-legend li { display:inline-flex; align-items:center; gap:6px; }
 .dr-legend b { color:var(--ink); font-weight:700; font-variant-numeric:tabular-nums; }
 .dr-legend i,.dr-note i { display:inline-block; width:12px; height:12px; border-radius:3px; }
@@ -438,19 +438,19 @@ h1,h2,h3 { color:var(--ink); } h1 { margin:0; font-size:30px; line-height:1.1; l
 
 /* 帯 */
 .dr-timeline { margin-bottom:12px; }
-.dr-axis { position:relative; height:18px; color:var(--faint); font-size:11px; font-variant-numeric:tabular-nums; }
+.dr-axis { position:relative; height:18px; color:var(--faint); font-size:14px; font-variant-numeric:tabular-nums; }
 .dr-axis span { position:absolute; top:0; transform:translateX(-50%); }
 .dr-band { position:relative; border-radius:5px; background:rgba(60,60,67,.05); }
-.dr-band.is-missing { display:flex; align-items:center; justify-content:center; border:1px dashed var(--line-strong); background:transparent; color:var(--faint); font-size:11px; }
+.dr-band.is-missing { display:flex; align-items:center; justify-content:center; border:1px dashed var(--line-strong); background:transparent; color:var(--faint); font-size:14px; }
 .dr-seg { position:absolute; top:0; bottom:0; display:flex; overflow:hidden; border-radius:3px; cursor:default; }
 .dr-seg>span { min-width:1px; }
 .dr-seg.is-gap { background:var(--c-hatch); }
 .dr-seg.is-active { outline:2px solid var(--ink); outline-offset:1px; z-index:1; }
 .dr-week-axis { margin:0 64px 0 52px; }
-.dr-weekrow { display:grid; grid-template-columns:44px minmax(0,1fr) 56px; align-items:center; gap:8px; min-height:30px; font-size:12px; }
+.dr-weekrow { display:grid; grid-template-columns:44px minmax(0,1fr) 56px; align-items:center; gap:8px; min-height:30px; font-size:14px; }
 .dr-weekrow>a,.dr-weekrow>span { display:flex; align-items:baseline; gap:4px; color:var(--muted); font-weight:700; text-decoration:none; }
 .dr-weekrow>a { color:var(--blue-strong); }
-.dr-weekrow small { color:var(--faint); font-size:11px; font-weight:400; }
+.dr-weekrow small { color:var(--faint); font-size:14px; font-weight:400; }
 .dr-weekrow>em { color:var(--muted); font-style:normal; text-align:right; font-variant-numeric:tabular-nums; }
 .dr-weekrow.is-future { opacity:.45; }
 
@@ -477,25 +477,25 @@ h1,h2,h3 { color:var(--ink); } h1 { margin:0; font-size:30px; line-height:1.1; l
 /* 配分の表 */
 .dr-alloc th,.dr-alloc td { text-align:right; white-space:nowrap; }
 .dr-alloc th:first-child,.dr-alloc td:first-child { text-align:left; width:46%; }
-.dr-alloc thead th { color:var(--muted); font-size:12px; font-weight:600; }
+.dr-alloc thead th { color:var(--muted); font-size:14px; font-weight:600; }
 .dr-alloc-row th { padding-top:10px; padding-bottom:10px; font-weight:400; }
 .dr-alloc-row button { display:inline-flex; align-items:center; gap:8px; border:0; background:transparent; padding:0; color:var(--ink); font-size:14px; font-weight:700; cursor:pointer; }
 .dr-alloc-caret { width:10px; height:10px; color:var(--muted); transition:transform 160ms ease-out; }
 .dr-alloc-row button[aria-expanded="true"] .dr-alloc-caret { transform:rotate(90deg); }
 .dr-alloc-row button i { width:10px; height:10px; border-radius:3px; }
-.dr-alloc-pct { color:var(--muted); font-size:12px; font-weight:600; font-variant-numeric:tabular-nums; }
+.dr-alloc-pct { color:var(--muted); font-size:14px; font-weight:600; font-variant-numeric:tabular-nums; }
 .dr-alloc-bar { display:block; height:4px; margin:6px 0 0 18px; border-radius:2px; background:rgba(60,60,67,.08); }
 .dr-alloc-bar>span { display:block; height:100%; border-radius:2px; }
 .dr-alloc td { font-size:14px; }
-.dr-alloc td small { display:block; color:var(--muted); font-size:11px; }
+.dr-alloc td small { display:block; color:var(--muted); font-size:14px; }
 .dr-alloc .dr-alloc-base { color:var(--muted); }
-.dr-alloc-tag th { padding-left:40px; color:var(--muted); font-size:13px; font-weight:400; }
-.dr-alloc-tag td { font-size:13px; }
+.dr-alloc-tag th { padding-left:40px; color:var(--muted); font-size:14px; font-weight:400; }
+.dr-alloc-tag td { font-size:14px; }
 .dr-alloc-note { margin:0; padding:10px 22px 16px; }
 
 /* 横棒(曜日別・アプリ。1色) */
-.dr-bullet-row { display:grid; grid-template-columns:140px minmax(0,1fr) 68px; align-items:center; gap:10px; min-height:28px; font-size:13px; }
-.dr-bullet-label small { margin-left:6px; color:var(--faint); font-size:11px; font-weight:400; }
+.dr-bullet-row { display:grid; grid-template-columns:140px minmax(0,1fr) 68px; align-items:center; gap:10px; min-height:28px; font-size:14px; }
+.dr-bullet-label small { margin-left:6px; color:var(--faint); font-size:14px; font-weight:400; }
 .dr-bullet-track { position:relative; display:block; height:100%; min-height:28px; }
 .dr-bullet-bar { position:absolute; left:0; top:50%; height:10px; margin-top:-5px; border-radius:0 4px 4px 0; min-width:2px; }
 .dr-bullet-bar.is-neutral { background:var(--blue); }
@@ -512,44 +512,94 @@ h1,h2,h3 { color:var(--ink); } h1 { margin:0; font-size:30px; line-height:1.1; l
 .daily-report-workspace .asset-table { min-width:0; }
 .daily-report-workspace .asset-table th,.daily-report-workspace .asset-table td { font-variant-numeric:tabular-nums; vertical-align:top; }
 .dr-blocks td:first-child,.dr-blocks td:nth-child(2) { white-space:nowrap; }
-.dr-blocks tr.is-gap td { color:var(--muted); background:repeating-linear-gradient(45deg,rgba(60,60,67,.06) 0 2px,transparent 2px 6px); }
 .dr-blocks tr.is-active td { background:var(--blue-soft); }
 .daily-report-workspace .asset-table td:first-child { position:static; box-shadow:none; background:transparent; }
-.dr-chips { display:flex; flex-wrap:wrap; gap:4px; margin-top:4px; }
-.dr-chip { display:inline-flex; align-items:center; gap:5px; padding:1px 8px; border-radius:99px; background:rgba(60,60,67,.07); color:var(--muted); font-size:11px; }
-.dr-chip i { width:8px; height:8px; border-radius:2px; }
-.dr-work h3 { margin:14px 0 6px; font-size:14px; }
-.dr-work:first-child h3 { margin-top:0; }
 .dr-work ul,.dr-notes { margin:0; padding-left:20px; font-size:14px; line-height:1.75; }
-.dr-headings { display:grid; gap:12px; margin:0; padding:0; list-style:none; }
-.dr-headings li { display:grid; grid-template-columns:10px minmax(0,1fr); gap:10px; }
-.dr-headings i { width:10px; height:10px; margin-top:5px; border-radius:2px; }
-.dr-headings strong { font-size:14px; }
-.dr-headings p { margin:2px 0 0; color:var(--muted); font-size:13px; line-height:1.6; }
-.dr-dates { display:inline-flex; flex-wrap:wrap; gap:4px; margin-left:8px; vertical-align:1px; }
-.dr-dates a,.dr-dates { font-size:11px; }
-.dr-dates.is-text { display:inline; color:var(--muted); }
-.dr-dates.is-text a { padding:0; background:transparent; }
-.dr-dates a { padding:0 6px; border-radius:99px; background:var(--blue-soft); color:var(--blue-strong); text-decoration:none; }
 .dr-more { margin-top:12px; }
-.dr-more summary { cursor:pointer; color:var(--blue-strong); font-size:13px; font-weight:700; }
+.dr-more summary { cursor:pointer; color:var(--blue-strong); font-size:14px; font-weight:700; }
 .dr-panel>.dr-more { margin:0; padding:16px 22px; }
 .dr-note-day + .dr-note-day { margin-top:14px; padding-top:14px; border-top:1px solid var(--line); }
-.dr-note-day .text-link { font-size:13px; }
-.dr-app-dots td i { display:inline-block; width:12px; height:12px; border-radius:50%; border:1px solid var(--line-strong); }
-.dr-app-dots td i.is-on { border-color:var(--blue); background:var(--blue); }
-.dr-app-dots th:not(:first-child),.dr-app-dots td:not(:first-child) { text-align:center; }
+.dr-note-day .text-link { font-size:14px; }
 .dr-raw { overflow-x:auto; }
+
+/* 第4版: DADS の文字の規則(本文・表の本文16px、補足・見出し・軸14px、14px未満は使わない、リンクは下線。設計書 §11) */
+.daily-report-workspace .panel-heading span,.daily-report-workspace .hero-metric span,.daily-report-workspace .hero-metric-sub,.daily-report-workspace .asset-hero p { font-size:14px; }
+.daily-report-workspace .asset-hero .hero-metric strong { font-size:16px; }
+.daily-report-workspace .asset-table thead th { font-size:14px; }
+.daily-report-workspace .asset-table td,.daily-report-workspace .asset-table tbody th { font-size:16px; line-height:1.3; }
+.daily-report-workspace .asset-table tbody th:first-child { position:static; box-shadow:none; background:transparent; color:var(--ink); font-weight:400; text-align:left; }
+.dr-timeline .dr-legend { margin-top:12px; }
+.daily-report-workspace .period-control button { min-height:34px; padding:4px 10px; font-size:14px; }
+.daily-report-workspace .asset-table a,.daily-report-workspace .dr-weekrow>a,.daily-report-workspace .text-link { color:var(--blue-strong); text-decoration:underline; text-underline-offset:3px; }
+.daily-report-workspace .is-num,.daily-report-workspace .asset-table .is-num { text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums; }
+.daily-report-workspace .is-muted { color:var(--muted); }
+.dr-stack { display:grid; gap:16px; margin-bottom:16px; }
+
+/* カテゴリの切り替え(凡例を兼ねる)。狭い画面では見出しの下に折り返す */
+.daily-report-workspace .dr-panel .panel-heading { flex-wrap:wrap; }
+.dr-filter { flex-wrap:wrap; max-width:100%; }
+@media (max-width:600px) { .dr-axis span:nth-child(even) { display:none; } }
+.dr-filter button { display:inline-flex; align-items:center; gap:6px; }
+.dr-filter i { width:10px; height:10px; border-radius:2px; }
+.dr-filter-pct { color:var(--muted); font-variant-numeric:tabular-nums; }
+
+/* 時間の使い方: 帯と時刻別の平均を同じ列幅で上下に揃える */
+.dr-weekgrid { display:grid; grid-template-columns:52px minmax(0,1fr) 64px; gap:8px; align-items:center; }
+.dr-week .dr-weekrow { grid-template-columns:52px minmax(0,1fr) 64px; min-height:32px; font-size:14px; }
+.dr-week .dr-weekrow small { font-size:14px; }
+.dr-week .dr-weekrow>em { font-size:14px; }
+.dr-profile-block { margin-top:18px; padding-top:14px; border-top:1px solid var(--line); }
+.dr-profile-title { margin:0 0 10px; color:var(--muted); font-size:14px; }
+.dr-profile-row { align-items:stretch; }
+.dr-profile-yaxis { position:relative; height:120px; color:var(--faint); font-size:14px; font-variant-numeric:tabular-nums; }
+.dr-profile-yaxis span { position:absolute; right:0; transform:translateY(-50%); line-height:1; }
+.dr-profile-yaxis span:nth-child(1) { top:0; } .dr-profile-yaxis span:nth-child(2) { top:50%; } .dr-profile-yaxis span:nth-child(3) { top:100%; }
+.dr-profile-plot { position:relative; height:120px; border-bottom:1px solid var(--line-strong); }
+.dr-profile-line { position:absolute; left:0; right:0; border-top:1px solid var(--line); }
+.dr-profile-line.is-60 { top:0; } .dr-profile-line.is-30 { top:50%; }
+.dr-profile-bar { position:absolute; bottom:0; border-radius:3px 3px 0 0; }
+.dr-time-legend { margin-top:16px; }
+
+/* 概要の活動時間: 1列のときだけ図の下に凡例 */
+.dr-bars-legend { margin:6px 0 0; padding:0 4px; }
+@media (min-width:1100px) { .dr-bars-legend { display:none; } }
+
+/* 作業内容: タグ単位の表 */
+.dr-work-category th,.dr-work-category td { background:rgba(60,60,67,.045); font-weight:700; }
+.daily-report-workspace .asset-table .dr-work-category th:first-child { background:rgba(60,60,67,.045); color:var(--ink); font-weight:700; }
+.dr-work-category th i,.dr-note-cat i { display:inline-block; width:10px; height:10px; margin-right:8px; border-radius:2px; vertical-align:0; }
+.dr-work-tag button { display:inline-flex; align-items:center; gap:8px; border:0; background:transparent; padding:0 0 0 14px; color:var(--ink); font-size:16px; text-align:left; cursor:pointer; }
+.dr-work-tag button:disabled { cursor:default; }
+.dr-work-tag button:disabled .dr-alloc-caret { visibility:hidden; }
+.dr-work-tag button[aria-expanded="true"] .dr-alloc-caret { transform:rotate(90deg); }
+.dr-work-latest { width:50%; max-width:0; }
+.dr-work-latest>span { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--muted); }
+.dr-work-latest time { margin-right:10px; color:var(--faint); font-size:14px; }
+.daily-report-workspace .asset-table .dr-work-items>td { padding:0 8px 12px 46px; background:transparent; }
+.dr-work-items table { width:100%; border-collapse:collapse; }
+.daily-report-workspace .dr-work-items th,.daily-report-workspace .dr-work-items td { padding:6px 8px; border:0; border-top:1px solid var(--line); font-size:16px; line-height:1.7; font-weight:400; text-align:left; vertical-align:top; }
+.daily-report-workspace .dr-work-items th { width:96px; white-space:nowrap; }
+
+/* 日次の時間帯の表: ログなしの行は文字を灰にするだけ */
+.daily-report-workspace .asset-table.dr-blocks tr.is-gap>* { color:var(--muted); }
+
+/* 知見・メモ */
+.dr-notes-tools { display:flex; flex-wrap:wrap; align-items:center; gap:10px; padding:14px 22px 6px; }
+.dr-search input { width:min(320px,100%); min-height:40px; border:1px solid var(--line-strong); border-radius:9px; background:#fff; padding:8px 12px; color:var(--ink); font-size:16px; }
+.daily-report-workspace .dr-notes-table tbody th { width:104px; white-space:nowrap; }
+.dr-notes-table tr.is-new-day>* { border-top:1px solid var(--line-strong); }
+.daily-report-workspace .dr-note-text { line-height:1.7; }
+.dr-note-cat { width:1%; white-space:nowrap; }
 
 @media (min-width:1100px) { .dr-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } .dr-grid>.dr-panel:only-child { grid-column:1/-1; } }
 @media (max-width:760px) {
   .dr-panel-body { padding:14px 14px 16px; }
   .dr-empty { padding:16px 14px; }
   .dr-calendar { left:0; width:min(300px,calc(100vw - 32px)); }
-  .dr-bullet-row { grid-template-columns:104px minmax(0,1fr) 58px; gap:8px; font-size:12px; }
+  .dr-bullet-row { grid-template-columns:104px minmax(0,1fr) 58px; gap:8px; font-size:14px; }
   .dr-week-axis { margin:0 56px 0 44px; }
   .dr-weekrow { grid-template-columns:36px minmax(0,1fr) 48px; }
-  .dr-date-button { font-size:13px; padding:6px 10px; }
+  .dr-date-button { font-size:14px; padding:6px 10px; }
   .dr-bars { padding:6px 8px 10px; }
   .dr-alloc-note { padding:10px 14px 14px; }
   .dr-alloc th:first-child,.dr-alloc td:first-child { width:auto; }

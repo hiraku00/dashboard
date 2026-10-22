@@ -1,12 +1,10 @@
 import {
   CATEGORY_LABELS,
   axisTicks,
-  categoryOfTag,
   formatClock,
   formatMinutes,
   tagLabel,
   weekdayLabel,
-  type AppSummary,
   type Category,
   type CategoryShare,
   type Range,
@@ -35,15 +33,6 @@ export function reportHref(range: Range, date: string, tab: ReportTab): string {
 }
 
 export const shortDate = (date: string) => `${Number(date.slice(5, 7))}/${Number(date.slice(8, 10))}(${weekdayLabel(date)})`;
-
-export function Chip({ tag }: { tag: string }) {
-  return (
-    <span className="dr-chip">
-      <i aria-hidden="true" style={{ background: categoryColor(categoryOfTag(tag)) }} />
-      {tagLabel(tag)}
-    </span>
-  );
-}
 
 /** カテゴリの凡例。割合を添えて直接ラベルを兼ねる。ログなしは模様で示す。 */
 export function CategoryLegend({ shares, showGap = true, showMissing = false }: { shares: CategoryShare[]; showGap?: boolean; showMissing?: boolean }) {
@@ -88,19 +77,28 @@ function segmentTitle(segment: TimelineSegment) {
   return `${range}${duration} ${segment.activity}\n${tags}${segment.parts.length > 1 ? "(複数のタグは等分)" : ""}`;
 }
 
-/** 1日の時間帯の帯。色=カテゴリ、斜線=ログなし。複数のタグが付いた時間帯は等分して塗る。 */
+/** 帯の区間の色。highlight 無し=カテゴリの4色、"all"=活動を1色、カテゴリ=そのカテゴリだけ色でほかは薄い灰(設計書 §4.3)。 */
+function partColor(category: Category, highlight: Category | "all" | undefined) {
+  if (!highlight) return categoryColor(category);
+  if (highlight === "all") return "var(--c-all)";
+  return category === highlight ? categoryColor(category) : "var(--c-dim)";
+}
+
+/** 1日の時間帯の帯。斜線=ログなし。複数のタグが付いた時間帯は等分して塗る。 */
 export function DayBand({
   segments,
   axis,
   height = 28,
   activePosition = null,
   onActive,
+  highlight,
 }: {
   segments: TimelineSegment[];
   axis: TimeAxis;
   height?: number;
   activePosition?: number | null;
   onActive?: (position: number | null) => void;
+  highlight?: Category | "all";
 }) {
   const origin = axis.startHour * 60;
   const span = (axis.endHour - axis.startHour) * 60;
@@ -120,31 +118,11 @@ export function DayBand({
             onClick={onActive ? () => onActive(activePosition === segment.position ? null : segment.position) : undefined}
           >
             {segment.parts.map((part) => (
-              <span key={part.tag} style={{ flex: part.fraction, background: categoryColor(part.category) }} />
+              <span key={part.tag} style={{ flex: part.fraction, background: partColor(part.category, highlight) }} />
             ))}
           </div>
         );
       })}
-    </div>
-  );
-}
-
-/** 時刻別の平均(1時間ごとの積み上げ縦棒)。縦軸は0〜60分で固定。 */
-export function HourProfile({ hours, axis }: { hours: { hour: number; minutes: Partial<Record<Category, number>>; daysWithRecord: number }[]; axis: TimeAxis }) {
-  const order: Category[] = ["study", "dev", "life", "media", "other"];
-  return (
-    <div className="dr-profile">
-      <div className="dr-profile-bars" style={{ gridTemplateColumns: `repeat(${hours.length}, minmax(0, 1fr))` }}>
-        {hours.map((slot) => (
-          <div key={slot.hour} className="dr-profile-col" title={`${slot.hour}時台 ${order.filter((category) => slot.minutes[category]).map((category) => `${CATEGORY_LABELS[category]} ${Math.round(slot.minutes[category] ?? 0)}分`).join("・") || "記録なし"}(記録のあった日 ${slot.daysWithRecord}日)`}>
-            <span className="dr-col-stack">
-              {order.map((category) => (slot.minutes[category] ? <span key={category} style={{ height: `${((slot.minutes[category] ?? 0) / 60) * 100}%`, background: categoryColor(category) }} /> : null))}
-            </span>
-          </div>
-        ))}
-      </div>
-      <DayAxis axis={axis} />
-      <p className="dr-note">縦軸はその1時間の平均(0〜60分)。ログなしの時間は数えない。</p>
     </div>
   );
 }
@@ -165,38 +143,3 @@ export function WeekdayBars({ weekdays }: { weekdays: { weekday: string; minutes
   );
 }
 
-/** 週次のアプリ: アプリ×7日の点の行列(使った日を塗る)。 */
-export function AppDots({ apps, dates }: { apps: AppSummary[]; dates: string[] }) {
-  return (
-    <table className="asset-table dr-app-dots">
-      <thead>
-        <tr><th scope="col">アプリ</th>{dates.map((date) => <th scope="col" key={date}>{weekdayLabel(date)}</th>)}<th scope="col">日数</th></tr>
-      </thead>
-      <tbody>
-        {apps.map((app) => (
-          <tr key={app.appKey}>
-            <td>{app.name}</td>
-            {dates.map((date) => <td key={date}><i className={app.dates.includes(date) ? "is-on" : ""} aria-label={app.dates.includes(date) ? "使用" : "なし"} /></td>)}
-            <td>{app.dates.length}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  );
-}
-
-/** 月次のアプリ: 使った日数の横棒。 */
-export function AppBars({ apps }: { apps: AppSummary[] }) {
-  const max = Math.max(1, ...apps.map((app) => app.dates.length));
-  return (
-    <div className="dr-bullet">
-      {apps.map((app) => (
-        <div className="dr-bullet-row" key={app.appKey}>
-          <span className="dr-bullet-label">{app.name}</span>
-          <span className="dr-bullet-track"><span className="dr-bullet-bar is-neutral" style={{ width: `${(app.dates.length / max) * 100}%` }} /></span>
-          <span className="dr-bullet-value">{app.dates.length}日</span>
-        </div>
-      ))}
-    </div>
-  );
-}

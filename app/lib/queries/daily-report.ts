@@ -44,11 +44,10 @@ export async function periodView(period: PeriodRange): Promise<PeriodView> {
     db.prepare(`SELECT w.report_date, w.position, w.category_position, w.category, w.item_position, w.text,
         (SELECT group_concat(t.tag) FROM daily_report_item_tags t WHERE t.report_date=w.report_date AND t.source='work' AND t.position=w.position) AS tags
       FROM daily_report_work_items w WHERE w.report_date BETWEEN ? AND ? ORDER BY w.report_date, w.position`).bind(from, to),
-    db.prepare("SELECT report_date, app_name, app_key, usage_count, usage_count_raw, usage_is_min, purpose FROM daily_report_app_usage WHERE report_date BETWEEN ? AND ? ORDER BY report_date, position").bind(from, to),
     db.prepare("SELECT report_date, text FROM daily_report_notes WHERE report_date BETWEEN ? AND ? ORDER BY report_date DESC, position").bind(from, to),
   ];
   if (period.range === "day") statements.push(db.prepare("SELECT markdown, parse_warnings FROM daily_reports WHERE report_date=?").bind(from));
-  const [dates, reports, tagDays, blocks, workItems, apps, notes, original] = await db.batch<Row>(statements);
+  const [dates, reports, tagDays, blocks, workItems, notes, original] = await db.batch<Row>(statements);
 
   const head = original?.results?.[0];
   return {
@@ -82,15 +81,6 @@ export async function periodView(period: PeriodRange): Promise<PeriodView> {
       itemPosition: Number(row.item_position),
       text: String(row.text ?? ""),
       tags: splitTags(row.tags),
-    })),
-    apps: (apps.results ?? []).map((row) => ({
-      reportDate: String(row.report_date),
-      appName: String(row.app_name),
-      appKey: String(row.app_key),
-      usageCount: toNumber(row.usage_count),
-      usageCountRaw: String(row.usage_count_raw ?? ""),
-      usageIsMin: Number(row.usage_is_min) === 1,
-      purpose: String(row.purpose ?? ""),
     })),
     notes: (notes.results ?? []).map((row) => ({ reportDate: String(row.report_date), text: String(row.text) })),
     original: head ? { markdown: String(head.markdown ?? ""), warnings: parseWarnings(head.parse_warnings) } : null,
