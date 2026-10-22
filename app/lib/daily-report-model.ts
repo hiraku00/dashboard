@@ -95,7 +95,7 @@ export type DailyReportModel = {
   reportCount: number;
   /** ヒーロー: 週次・月次は合計と1日平均を同じ大きさで並べる(§6.2) */
   hero: { figures: { label: string; value: string }[]; caption: string | null; items: HeroItem[] };
-  /** 時間の使い方タブの凡例(期間のカテゴリ別の割合) */
+  /** 時間帯タブタブの凡例(期間のカテゴリ別の割合) */
   legend: CategoryShare[];
   /** 概要の配分の表 */
   allocation: AllocationRow[];

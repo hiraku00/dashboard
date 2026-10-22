@@ -22,9 +22,9 @@ export type ReportTab = "summary" | "time" | "work" | "notes" | "original";
 /** 機能内タブ。サーバーのページ(URLの tab の検証)とクライアントのワークスペースの両方が使うので、ここに置く */
 export const REPORT_TABS: [ReportTab, string][] = [
   ["summary", "概要"],
-  ["time", "時間の使い方"],
-  ["work", "作業内容"],
-  ["notes", "知見・メモ"],
+  ["time", "時間帯"],
+  ["work", "作業"],
+  ["notes", "知見"],
   ["original", "原本"],
 ];
 

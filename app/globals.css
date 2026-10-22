@@ -460,11 +460,15 @@ h1,h2,h3 { color:var(--ink); } h1 { margin:0; font-size:30px; line-height:1.1; l
 
 /* 概要: 左に活動時間、右に配分(Manage Asset の asset-dashboard-grid と同じ 1.35fr : 1fr) */
 .dr-overview { display:grid; gap:16px; margin-bottom:16px; }
-@media (min-width:1100px) { .dr-overview { grid-template-columns:minmax(0,1.35fr) minmax(0,1fr); align-items:start; } }
+@media (min-width:1100px) { .dr-overview { grid-template-columns:minmax(0,1.35fr) minmax(0,1fr); align-items:stretch; } }
 
 /* 活動時間の図: 1色の縦棒・縦軸と目盛り線(Manage Asset の資産推移と同じ線・文字) */
 .dr-bars { padding:8px 18px 14px; }
-.dr-bars svg { display:block; width:100%; height:auto; overflow:visible; }
+.dr-activity { display:flex; flex-direction:column; }
+.dr-activity .dr-bars { display:flex; flex:1; flex-direction:column; }
+/* 箱は2列のとき配分の表の高さまで伸び、図はその高さで描く(設計書 §4.1) */
+.dr-bars-box { position:relative; flex:1; min-height:250px; }
+.dr-bars-box svg { position:absolute; inset:0; display:block; width:100%; height:100%; overflow:visible; }
 .dr-bars text { fill:var(--faint); font-variant-numeric:tabular-nums; }
 .dr-bars-grid { stroke:var(--line); stroke-width:1; }
 .dr-bars-base { stroke:var(--line-strong); stroke-width:1; }
@@ -543,7 +547,7 @@ h1,h2,h3 { color:var(--ink); } h1 { margin:0; font-size:30px; line-height:1.1; l
 .dr-filter i { width:10px; height:10px; border-radius:2px; }
 .dr-filter-pct { color:var(--muted); font-variant-numeric:tabular-nums; }
 
-/* 時間の使い方: 帯と時刻別の平均を同じ列幅で上下に揃える */
+/* 時間帯タブ: 帯と時刻別の平均を同じ列幅で上下に揃える */
 .dr-weekgrid { display:grid; grid-template-columns:52px minmax(0,1fr) 64px; gap:8px; align-items:center; }
 .dr-week .dr-weekrow { grid-template-columns:52px minmax(0,1fr) 64px; min-height:32px; font-size:14px; }
 .dr-week .dr-weekrow small { font-size:14px; }
@@ -557,7 +561,8 @@ h1,h2,h3 { color:var(--ink); } h1 { margin:0; font-size:30px; line-height:1.1; l
 .dr-profile-plot { position:relative; height:120px; border-bottom:1px solid var(--line-strong); }
 .dr-profile-line { position:absolute; left:0; right:0; border-top:1px solid var(--line); }
 .dr-profile-line.is-60 { top:0; } .dr-profile-line.is-30 { top:50%; }
-.dr-profile-bar { position:absolute; bottom:0; border-radius:3px 3px 0 0; }
+.dr-profile-bar { position:absolute; bottom:0; display:flex; flex-direction:column-reverse; gap:1px; overflow:hidden; border-radius:3px 3px 0 0; }
+.dr-profile-bar>span { min-height:0; }
 .dr-time-legend { margin-top:16px; }
 
 /* 概要の活動時間: 1列のときだけ図の下に凡例 */

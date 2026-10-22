@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { Fragment, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState, type RefObject } from "react";
 import { ChartTooltip, axisLayout, useChartHoverTooltip, useSvgFontScale, type ChartHoverPoint } from "./manage-asset-chart-tooltip";
 import { categoryColor, reportHref, type ReportTab } from "./daily-report-ui";
 import { CATEGORY_LABELS, formatMinutes, signedMinutes, type AllocationRow, type Range } from "./lib/daily-report-summary";
@@ -15,7 +15,7 @@ export function ActivityChart({ days, periods, periodsLabel, tab }: { days: Acti
   const [mode, setMode] = useState<"days" | "periods">("days");
   const bars = mode === "days" ? days : periods;
   return (
-    <section className="asset-panel dr-panel">
+    <section className="asset-panel dr-panel dr-activity">
       <div className="panel-heading">
         <div>
           <h2>活動時間</h2>
@@ -31,18 +31,36 @@ export function ActivityChart({ days, periods, periodsLabel, tab }: { days: Acti
   );
 }
 
+/** 箱の実際の高さ(px)。2列のとき隣の配分の表に合わせて伸びた高さを、図の高さに使う。 */
+function useBoxHeight(ref: RefObject<HTMLDivElement | null>) {
+  const [height, setHeight] = useState(0);
+  useEffect(() => {
+    const element = ref.current;
+    if (!element) return;
+    const update = () => setHeight(element.getBoundingClientRect().height);
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [ref]);
+  return height;
+}
+
 function BarChart({ bars, tab, emptyLabel }: { bars: ActivityBar[]; tab: ReportTab; emptyLabel: boolean }) {
   const router = useRouter();
   const containerRef = useRef<HTMLDivElement>(null);
+  const boxRef = useRef<HTMLDivElement>(null);
   const width = 640, baseHeight = 220, baseLeft = 40, right = 8, baseTop = 14, baseBottom = 28;
-  const scale = useSvgFontScale(containerRef, width, bars.length);
+  const scale = useSvgFontScale(boxRef, width, bars.length);
+  const boxHeight = useBoxHeight(boxRef);
   // 軸の文字は14px(DADS の最小。設計書 §11)
   const fontSize = 14 / scale;
   const max = Math.max(240, ...bars.map((bar) => bar.value ?? 0));
   const top4h = Math.ceil(max / 240) * 240;
   const ticks = Array.from({ length: top4h / 240 + 1 }, (_, index) => index * 240);
   const { left, gap, vk } = axisLayout(baseLeft, 6, scale, ticks.map((tick) => ({ text: tick ? `${tick / 60}h` : "0", fontSize })));
-  const height = baseHeight * vk, chartTop = baseTop * vk, bottom = baseBottom * vk;
+  // 図の高さは箱の高さに合わせる(パネルの高さを配分の表と揃えるため)。箱がまだ測れないうちは既定の高さ
+  const height = Math.max(baseHeight * vk, boxHeight > 0 ? boxHeight / scale : 0), chartTop = baseTop * vk, bottom = baseBottom * vk;
   const plot = width - left - right;
   const slot = plot / Math.max(1, bars.length);
   const barWidth = Math.min(slot * 0.6, 28);
@@ -64,8 +82,10 @@ function BarChart({ bars, tab, emptyLabel }: { bars: ActivityBar[]; tab: ReportT
 
   return (
     <div className="asset-chart-wrap dr-bars" ref={containerRef}>
+      <div className="dr-bars-box" ref={boxRef}>
       <svg
         viewBox={`0 0 ${width} ${height}`}
+        preserveAspectRatio="xMidYMin meet"
         role="img"
         aria-label={`活動時間: ${bars.filter((bar) => !bar.future).map((bar) => `${bar.title} ${bar.value === null ? "日報なし" : formatMinutes(bar.value)}`).join("、")}`}
         onPointerMove={handlePointerMove}
@@ -119,6 +139,7 @@ function BarChart({ bars, tab, emptyLabel }: { bars: ActivityBar[]; tab: ReportT
           );
         })}
       </svg>
+      </div>
       <ChartTooltip tooltip={tooltip} />
       {/* 1列のときは隣の配分の表が見えないので、図の下に凡例(2列では CSS で隠す) */}
       <ul className="dr-legend dr-bars-legend" aria-label="凡例">
