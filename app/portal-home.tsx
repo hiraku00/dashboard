@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { PortalHeader } from "./portal-nav";
 import { formatPostedAt } from "./lib/openchat-query.ts";
-import { weekdayLabel } from "./lib/daily-report-summary.ts";
+import { formatMinutes, weekdayLabel } from "./lib/daily-report-summary.ts";
 
 type DashboardState = {
   watch: { total: number; completed: number };
@@ -12,7 +12,7 @@ type DashboardState = {
   assets: { totalUsd: number; totalJpy: number; latestAt: string | null; sourceCount: number };
   todo: { total: number; completed: number };
   openchat?: { total: number; latestPostedAt: string | null };
-  dailyReport?: { total: number; latestDate: string | null };
+  dailyReport?: { total: number; latestDate: string | null; weekDays?: number; weekMinutes?: number };
 };
 
 /** `2026-10-21` → `10/21(水)`。日付の文字列だけで計算する(タイムゾーンの影響を受けない)。 */
@@ -65,7 +65,7 @@ export function PortalHome({
       <Link className="portal-card portal-card-text" href="/text-tube" prefetch={false}><h2>TextTube</h2><strong>{state?.textTube.total ?? "—"}<small> 本</small></strong><p>{state?.textTube.latest?.title ?? (state ? "" : "読み込み中")}</p></Link>
       <Link className="portal-card portal-card-asset" href="/manage-asset" prefetch={false}><h2>Manage Asset</h2><strong>{state ? usd.format(state.assets.totalUsd) : "—"}</strong><p>{state ? `${yen.format(state.assets.totalJpy)}円` : "読み込み中"}</p></Link>
       <Link className="portal-card portal-card-todo" href="/todo" prefetch={false}><h2>To Do</h2><strong>{state?.todo.total ?? "—"}<small> 件</small></strong><p>{state ? `${state.todo.completed}件完了` : "読み込み中"}</p></Link>
-      <Link className="portal-card portal-card-daily" href="/daily-report" prefetch={false}><h2>日報</h2><strong>{state?.dailyReport?.total ?? "—"}<small> 日</small></strong><p>{state ? (state.dailyReport?.latestDate ? `最新 ${shortReportDate(state.dailyReport.latestDate)}` : "取り込み待ち") : "読み込み中"}</p></Link>
+      <Link className="portal-card portal-card-daily" href="/daily-report" prefetch={false}><h2>日報</h2><strong>{state?.dailyReport?.weekDays ? formatMinutes((state.dailyReport.weekMinutes ?? 0) / state.dailyReport.weekDays) : "—"}<small> /日</small></strong><p>{state ? (state.dailyReport?.latestDate ? `今週 ${state.dailyReport.weekDays ?? 0}日分の1日平均・最新 ${shortReportDate(state.dailyReport.latestDate)}` : "取り込み待ち") : "読み込み中"}</p></Link>
       <Link className="portal-card" href="/settings/storage" prefetch={false}><h2>使用量</h2><strong>R2 / D1</strong><p>保存容量・DB利用量・TextTube字幕API</p></Link>
     </section>
   </main>;

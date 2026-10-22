@@ -11,8 +11,8 @@ export type PortalSummary = {
   todo: { total: number; completed: number };
   /** ちきりんオプチャ: 一覧に載る番組(ちきりんが関わるノート)の数と、その最新の投稿日時。 */
   openchat: { total: number; latestPostedAt: string | null };
-  /** 作業日報: 取り込み済みの日数と、最新の日付(YYYY-MM-DD)。 */
-  dailyReport: { total: number; latestDate: string | null };
+  /** 作業日報: 取り込み済みの日数、最新の日付(YYYY-MM-DD)、今週(月曜始まり)の日報の日数と活動時間の合計(分)。 */
+  dailyReport: { total: number; latestDate: string | null; weekDays: number; weekMinutes: number };
 };
 
 /** The home page's asset totals, by the SAME definition Manage Asset uses, so the

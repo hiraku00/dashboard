@@ -1,31 +1,36 @@
-/** 作業日報の表示用の集計(docs/daily-report-view-design.md §9.2)。D1には触れない純粋なロジック
+/** 作業日報の表示用の集計(docs/daily-report-view-design.md §5・§7)。D1には触れない純粋なロジック
  *  (vitestの "node" project でテストする)。取り込み時に計算済みの値(タグ×日の分数、時間帯の行)を、
  *  画面で読みやすい形に並べ替えるだけで、タグ付けや時間の数え方は daily-report-tags.ts が正。 */
 
 import { DAILY_REPORT_TAGS, OTHER_TAG, type TagGroup } from "./daily-report-tags.ts";
 
-export type DisplayGroup = TagGroup | "other";
+// ---- カテゴリ(表示用の4分類＋未分類。タグ辞書のグループを寄せる) ----
 
-/** 配分の並び順(色の割り当てもこの順。固定で、順位では変えない) */
-export const GROUP_ORDER: DisplayGroup[] = ["study", "dev", "money", "life", "media", "other"];
+export type Category = "study" | "dev" | "life" | "media" | "other";
 
-export const GROUP_LABELS: Record<DisplayGroup, string> = {
+/** 並び順と色の割り当て(固定。順位では変えない) */
+export const CATEGORY_ORDER: Category[] = ["study", "dev", "life", "media", "other"];
+
+export const CATEGORY_LABELS: Record<Category, string> = {
   study: "学習",
   dev: "開発",
-  money: "お金",
   life: "生活",
   media: "視聴",
-  other: "その他",
+  other: "未分類",
 };
+
+/** 「お金」は単独では数%で帯の上では細い線にしかならないので、生活に入れる(設計書 §5.1) */
+const GROUP_TO_CATEGORY: Record<TagGroup, Category> = { study: "study", dev: "dev", money: "life", life: "life", media: "media" };
 
 const TAG_INDEX = new Map(DAILY_REPORT_TAGS.map((tag) => [tag.key, tag]));
 
-export function groupOfTag(tag: string): DisplayGroup {
-  return TAG_INDEX.get(tag)?.group ?? "other";
+export function categoryOfTag(tag: string): Category {
+  const group = TAG_INDEX.get(tag)?.group;
+  return group ? GROUP_TO_CATEGORY[group] : "other";
 }
 
 export function tagLabel(tag: string): string {
-  if (tag === OTHER_TAG) return GROUP_LABELS.other;
+  if (tag === OTHER_TAG) return CATEGORY_LABELS.other;
   return TAG_INDEX.get(tag)?.label ?? tag;
 }
 
@@ -38,7 +43,7 @@ export function formatMinutes(minutes: number): string {
   return `${hours}h${String(rest).padStart(2, "0")}m`;
 }
 
-/** `HH:MM` を0時からの分に(`start_minute` と同じ単位)。 */
+/** 0時からの分を `HH:MM` に(`start_minute` と同じ単位)。 */
 export function formatClock(minute: number): string {
   const wrapped = Math.max(0, Math.round(minute));
   return `${String(Math.floor(wrapped / 60) % 24).padStart(2, "0")}:${String(wrapped % 60).padStart(2, "0")}`;
@@ -51,6 +56,12 @@ const WEEKDAYS = ["日", "月", "火", "水", "木", "金", "土"];
 export function addDays(date: string, days: number): string {
   const value = new Date(`${date}T00:00:00Z`);
   value.setUTCDate(value.getUTCDate() + days);
+  return value.toISOString().slice(0, 10);
+}
+
+export function addMonths(date: string, months: number): string {
+  const value = new Date(`${date.slice(0, 7)}-01T00:00:00Z`);
+  value.setUTCMonth(value.getUTCMonth() + months);
   return value.toISOString().slice(0, 10);
 }
 
@@ -67,47 +78,125 @@ export function daysBetween(from: string, to: string): number {
   return Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000);
 }
 
+export function datesBetween(from: string, to: string): string[] {
+  const dates: string[] = [];
+  for (let date = from; date <= to; date = addDays(date, 1)) dates.push(date);
+  return dates;
+}
+
 /** その日を含む週(月曜始まり)の7日 */
 export function weekDates(date: string): string[] {
   const monday = addDays(date, -weekdayIndex(date));
   return Array.from({ length: 7 }, (_, index) => addDays(monday, index));
 }
 
+export function isReportDateString(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const parsed = new Date(`${value}T00:00:00Z`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+}
+
+// ---- 期間(日次・週次・月次) ----
+
+export type Range = "day" | "week" | "month";
+export const RANGES: [Range, string][] = [["day", "日次"], ["week", "週次"], ["month", "月次"]];
+
+export function isRange(value: unknown): value is Range {
+  return value === "day" || value === "week" || value === "month";
+}
+
 export type PeriodRange = {
-  range: "week" | "month";
+  range: Range;
+  /** 期間を代表する日(日次=その日、週次=月曜、月次=1日)。URLの date に入る */
+  anchor: string;
   from: string;
   to: string;
+  /** 比べる相手。週次・月次は前の期間、日次は直前28日 */
   prevFrom: string;
   prevTo: string;
-  /** 期間の日数 */
+  /** 流れ(週次は12週、月次は12か月)を読む最初の日。日次は prevFrom と同じ */
+  trendFrom: string;
   days: number;
-  /** 期間のうち、today までに過ぎた日数(今週・今月が途中のときだけ days より小さい) */
+  /** 期間のうち today までに過ぎた日数 */
   elapsedDays: number;
 };
 
-/** 週は `date` を含む月曜〜日曜、月は `date`(`YYYY-MM` か `YYYY-MM-DD`)の暦月。 */
-export function periodRange(range: "week" | "month", date: string, today: string): PeriodRange {
+/** 日次の「比べる相手」にする直前の日数 */
+export const BASELINE_DAYS = 28;
+export const TREND_PERIODS = 12;
+
+export function periodRange(range: Range, date: string, today: string): PeriodRange {
   let from: string;
   let to: string;
   let prevFrom: string;
   let prevTo: string;
-  if (range === "week") {
+  let trendFrom: string;
+  if (range === "day") {
+    from = to = date;
+    prevFrom = addDays(date, -BASELINE_DAYS);
+    prevTo = addDays(date, -1);
+    trendFrom = prevFrom;
+  } else if (range === "week") {
     from = addDays(date, -weekdayIndex(date));
     to = addDays(from, 6);
     prevFrom = addDays(from, -7);
     prevTo = addDays(from, -1);
+    trendFrom = addDays(from, -7 * (TREND_PERIODS - 1));
   } else {
-    const month = date.slice(0, 7);
-    from = `${month}-01`;
-    const next = new Date(`${from}T00:00:00Z`);
-    next.setUTCMonth(next.getUTCMonth() + 1);
-    to = addDays(next.toISOString().slice(0, 10), -1);
+    from = `${date.slice(0, 7)}-01`;
+    to = addDays(addMonths(from, 1), -1);
+    prevFrom = addMonths(from, -1);
     prevTo = addDays(from, -1);
-    prevFrom = `${prevTo.slice(0, 7)}-01`;
+    trendFrom = addMonths(from, -(TREND_PERIODS - 1));
   }
   const days = daysBetween(from, to) + 1;
   const elapsedDays = today < from ? 0 : Math.min(days, daysBetween(from, today) + 1);
-  return { range, from, to, prevFrom, prevTo, days, elapsedDays };
+  return { range, anchor: from, from, to, prevFrom, prevTo, trendFrom, days, elapsedDays };
+}
+
+/** 既定の表示: 今日を含む期間に日報があればそこ、無ければ最新の日報を含む期間。日報が1件も無ければ今日。 */
+export function defaultAnchor(range: Range, reportDates: string[], today: string): string {
+  const latest = reportDates.at(-1);
+  if (!latest) return periodRange(range, today, today).anchor;
+  if (range === "day") return latest;
+  const current = periodRange(range, today, today);
+  const hasCurrent = reportDates.some((date) => date >= current.from && date <= current.to);
+  return hasCurrent ? current.anchor : periodRange(range, latest, today).anchor;
+}
+
+/** 期間の中で最後に日報がある日。無ければ null。 */
+export function lastReportIn(reportDates: string[], from: string, to: string): string | null {
+  for (let index = reportDates.length - 1; index >= 0; index -= 1) {
+    const date = reportDates[index];
+    if (date < from) break;
+    if (date <= to) return date;
+  }
+  return null;
+}
+
+/** 単位を替えたときの日付(設計書 §3.1)。下位(日次)へは、その期間の最後の日報のある日へ降りる。 */
+export function switchRange(current: PeriodRange, to: Range, reportDates: string[], today: string): string {
+  if (to === "day") {
+    return lastReportIn(reportDates, current.from, current.to) ?? reportDates.filter((date) => date <= current.to).at(-1) ?? reportDates[0] ?? current.from;
+  }
+  return periodRange(to, current.anchor, today).anchor;
+}
+
+/** 前後の期間の日付。日次は日報のある日へ飛ぶ。週次・月次は日報の範囲と今日の期間を越えない。行き先が無ければ null。 */
+export function shiftAnchor(current: PeriodRange, direction: -1 | 1, reportDates: string[], today: string): string | null {
+  if (current.range === "day") {
+    if (direction < 0) return reportDates.filter((date) => date < current.anchor).at(-1) ?? null;
+    return reportDates.find((date) => date > current.anchor) ?? null;
+  }
+  const first = reportDates[0];
+  if (!first) return null;
+  const next = direction < 0
+    ? current.range === "week" ? addDays(current.from, -7) : addMonths(current.from, -1)
+    : current.range === "week" ? addDays(current.from, 7) : addMonths(current.from, 1);
+  const target = periodRange(current.range, next, today);
+  if (direction < 0 && target.to < first) return null;
+  if (direction > 0 && target.from > today) return null;
+  return target.anchor;
 }
 
 // ---- 時間帯の帯 ----
@@ -123,7 +212,7 @@ export type TimelineBlockInput = {
   tags: string[];
 };
 
-export type TimelinePart = { tag: string; group: DisplayGroup; fraction: number };
+export type TimelinePart = { tag: string; category: Category; fraction: number };
 
 export type TimelineSegment = {
   position: number;
@@ -136,7 +225,7 @@ export type TimelineSegment = {
   parts: TimelinePart[];
 };
 
-/** 開始・終了が読めた時間帯だけを、帯に描く形にする。タグが無ければ other(灰)、ログなしは parts なし。 */
+/** 開始・終了が読めた時間帯だけを、帯に描く形にする。タグが無ければ未分類(灰)、ログなしは parts なし。 */
 export function timelineSegments(blocks: TimelineBlockInput[]): TimelineSegment[] {
   const segments: TimelineSegment[] = [];
   for (const block of blocks) {
@@ -149,7 +238,7 @@ export function timelineSegments(blocks: TimelineBlockInput[]): TimelineSegment[
       activity: block.activity,
       durationMinutes: block.durationMinutes,
       isGap: block.isGap,
-      parts: tags.map((tag) => ({ tag, group: groupOfTag(tag), fraction: 1 / tags.length })),
+      parts: tags.map((tag) => ({ tag, category: categoryOfTag(tag), fraction: 1 / tags.length })),
     });
   }
   return segments;
@@ -178,61 +267,159 @@ export function axisTicks(axis: TimeAxis): number[] {
   return ticks;
 }
 
-// ---- 配分(グループ→タグ) ----
+export type CategoryMinutes = Partial<Record<Category, number>>;
+
+/** 時刻別の平均(設計書 §4「時間の使い方」)。各時間帯を1時間の区切りに重なった分だけ配り、日報のある日数で割る。
+ *  ログなしは数えない。daysWithRecord は「その1時間に何らかの記録(ログなしを含む)があった日」の数。 */
+export function hourProfile(days: TimelineSegment[][], axis: TimeAxis): { hour: number; minutes: CategoryMinutes; daysWithRecord: number }[] {
+  const count = days.length;
+  const hours = Array.from({ length: axis.endHour - axis.startHour }, (_, index) => ({ hour: axis.startHour + index, minutes: {} as CategoryMinutes, daysWithRecord: 0 }));
+  for (const segments of days) {
+    const recorded = new Set<number>();
+    for (const segment of segments) {
+      for (const slot of hours) {
+        const overlap = Math.min(segment.endMinute, (slot.hour + 1) * 60) - Math.max(segment.startMinute, slot.hour * 60);
+        if (overlap <= 0) continue;
+        recorded.add(slot.hour);
+        for (const part of segment.parts) slot.minutes[part.category] = (slot.minutes[part.category] ?? 0) + overlap * part.fraction;
+      }
+    }
+    for (const slot of hours) if (recorded.has(slot.hour)) slot.daysWithRecord += 1;
+  }
+  if (count) for (const slot of hours) for (const key of Object.keys(slot.minutes) as Category[]) slot.minutes[key] = (slot.minutes[key] ?? 0) / count;
+  return hours;
+}
+
+// ---- 配分(カテゴリ→タグ) ----
 
 export type BreakdownTag = { tag: string; label: string; minutes: number; baselineMinutes: number | null };
-export type BreakdownGroup = {
-  group: DisplayGroup;
+export type BreakdownCategory = {
+  category: Category;
   label: string;
   minutes: number;
   baselineMinutes: number | null;
   tags: BreakdownTag[];
 };
 
-/** タグ別の分数を、グループの見出しの下にタグを並べた形にする。グループもタグも分数の多い順で、
- *  other(その他)は最後。分数が0のタグは出さない。baseline(比べる相手)が無ければ目盛りは null。 */
-export function breakdown(current: Record<string, number>, baseline: Record<string, number> | null): BreakdownGroup[] {
-  const groups = new Map<DisplayGroup, BreakdownGroup>();
+/** タグ別の分数を、カテゴリの見出しの下にタグを並べた形にする。カテゴリもタグも分数の多い順で、
+ *  未分類は最後。分数が0のタグは出さない。baseline(比べる相手)が無ければ目盛りは null。 */
+export function breakdown(current: Record<string, number>, baseline: Record<string, number> | null): BreakdownCategory[] {
+  const categories = new Map<Category, BreakdownCategory>();
   for (const [tag, minutes] of Object.entries(current)) {
     if (minutes <= 0) continue;
-    const group = groupOfTag(tag);
-    let entry = groups.get(group);
+    const category = categoryOfTag(tag);
+    let entry = categories.get(category);
     if (!entry) {
-      entry = { group, label: GROUP_LABELS[group], minutes: 0, baselineMinutes: baseline ? 0 : null, tags: [] };
-      groups.set(group, entry);
+      entry = { category, label: CATEGORY_LABELS[category], minutes: 0, baselineMinutes: baseline ? 0 : null, tags: [] };
+      categories.set(category, entry);
     }
     const baselineMinutes = baseline ? (baseline[tag] ?? 0) : null;
     entry.minutes += minutes;
-    if (baselineMinutes !== null) entry.baselineMinutes = (entry.baselineMinutes ?? 0) + baselineMinutes;
     entry.tags.push({ tag, label: tagLabel(tag), minutes, baselineMinutes });
   }
-  for (const entry of groups.values()) entry.tags.sort((a, b) => b.minutes - a.minutes);
-  return [...groups.values()].sort((a, b) => {
-    if (a.group === "other") return 1;
-    if (b.group === "other") return -1;
+  // カテゴリの目盛りは、今期に出たタグだけでなく、そのカテゴリの相手の合計で引く
+  if (baseline) {
+    for (const [tag, minutes] of Object.entries(baseline)) {
+      const entry = categories.get(categoryOfTag(tag));
+      if (entry) entry.baselineMinutes = (entry.baselineMinutes ?? 0) + minutes;
+    }
+  }
+  for (const entry of categories.values()) entry.tags.sort((a, b) => b.minutes - a.minutes);
+  return [...categories.values()].sort((a, b) => {
+    if (a.category === "other") return 1;
+    if (b.category === "other") return -1;
     return b.minutes - a.minutes;
   });
 }
 
+export type TagDayRow = { reportDate: string; tag: string; minutes: number };
+
 /** 日ごとのタグ別の分数から、タグごとの「日報のある日の1日平均」を出す。日報のある日が0日なら null。 */
-export function perDayAverages(rows: { reportDate: string; tag: string; minutes: number }[]): { days: number; minutes: Record<string, number> } | null {
-  const dates = new Set(rows.map((row) => row.reportDate));
-  if (!dates.size) return null;
+export function perDayAverages(rows: TagDayRow[], reportDays?: number): { days: number; minutes: Record<string, number> } | null {
+  const days = reportDays ?? new Set(rows.map((row) => row.reportDate)).size;
+  if (!days) return null;
   const minutes: Record<string, number> = {};
   for (const row of rows) minutes[row.tag] = (minutes[row.tag] ?? 0) + row.minutes;
-  for (const tag of Object.keys(minutes)) minutes[tag] /= dates.size;
-  return { days: dates.size, minutes };
+  for (const tag of Object.keys(minutes)) minutes[tag] /= days;
+  return { days, minutes };
 }
 
-/** グループ別の割合(100%横棒)。分母は活動時間(タグの合計)で、欠落は入れない。 */
-export function groupShares(groups: Pick<BreakdownGroup, "group" | "label" | "minutes">[]): { group: DisplayGroup; label: string; minutes: number; percent: number }[] {
-  const total = groups.reduce((sum, entry) => sum + entry.minutes, 0);
-  return groups.map((entry) => ({ group: entry.group, label: entry.label, minutes: entry.minutes, percent: total ? (entry.minutes / total) * 100 : 0 }));
+export type CategoryShare = { category: Category; label: string; minutes: number; percent: number };
+
+/** カテゴリ別の割合(100%横棒・凡例)。分母は活動時間(タグの合計)で、欠落は入れない。並びは固定順。 */
+export function categoryShares(tagMinutes: Record<string, number>): CategoryShare[] {
+  const totals = new Map<Category, number>();
+  for (const [tag, minutes] of Object.entries(tagMinutes)) totals.set(categoryOfTag(tag), (totals.get(categoryOfTag(tag)) ?? 0) + minutes);
+  const total = [...totals.values()].reduce((sum, value) => sum + value, 0);
+  return CATEGORY_ORDER.filter((category) => (totals.get(category) ?? 0) > 0).map((category) => ({
+    category,
+    label: CATEGORY_LABELS[category],
+    minutes: totals.get(category) ?? 0,
+    percent: total ? ((totals.get(category) ?? 0) / total) * 100 : 0,
+  }));
 }
 
-// ---- 作業項目 ----
+export function sumTags(rows: TagDayRow[]): Record<string, number> {
+  const minutes: Record<string, number> = {};
+  for (const row of rows) minutes[row.tag] = (minutes[row.tag] ?? 0) + row.minutes;
+  return minutes;
+}
 
-export type WorkItemInput = { position: number; categoryPosition: number; category: string; itemPosition: number; text: string; tags: string[] };
+export type DayColumn = { date: string; hasReport: boolean; total: number; parts: { category: Category; minutes: number }[] };
+
+/** 日ごとの積み上げ縦棒(週次・月次の概要)。日報の無い日は空き枠。 */
+export function dailyColumns(dates: string[], rows: TagDayRow[], reportDates: Set<string>): DayColumn[] {
+  const byDate = new Map<string, Map<Category, number>>();
+  for (const row of rows) {
+    const day = byDate.get(row.reportDate) ?? new Map<Category, number>();
+    day.set(categoryOfTag(row.tag), (day.get(categoryOfTag(row.tag)) ?? 0) + row.minutes);
+    byDate.set(row.reportDate, day);
+  }
+  return dates.map((date) => {
+    const day = byDate.get(date) ?? new Map<Category, number>();
+    const parts = CATEGORY_ORDER.filter((category) => (day.get(category) ?? 0) > 0).map((category) => ({ category, minutes: day.get(category) ?? 0 }));
+    return { date, hasReport: reportDates.has(date), total: parts.reduce((sum, part) => sum + part.minutes, 0), parts };
+  });
+}
+
+export type TrendPoint = { from: string; to: string; label: string; days: number; minutes: CategoryMinutes | null };
+
+/** 最近12期間の、カテゴリ別の1日平均(週次=12週、月次=12か月)。日報の無い期間は minutes が null。 */
+export function trendSeries(period: PeriodRange, rows: TagDayRow[], reportDates: string[]): TrendPoint[] {
+  if (period.range === "day") return [];
+  const points: TrendPoint[] = [];
+  for (let index = TREND_PERIODS - 1; index >= 0; index -= 1) {
+    const from = period.range === "week" ? addDays(period.from, -7 * index) : addMonths(period.from, -index);
+    const to = period.range === "week" ? addDays(from, 6) : addDays(addMonths(from, 1), -1);
+    const days = reportDates.filter((date) => date >= from && date <= to).length;
+    const label = period.range === "week" ? `${Number(from.slice(5, 7))}/${Number(from.slice(8, 10))}` : `${Number(from.slice(5, 7))}月`;
+    if (!days) {
+      points.push({ from, to, label, days, minutes: null });
+      continue;
+    }
+    const minutes: CategoryMinutes = {};
+    for (const row of rows) {
+      if (row.reportDate < from || row.reportDate > to) continue;
+      const category = categoryOfTag(row.tag);
+      minutes[category] = (minutes[category] ?? 0) + row.minutes / days;
+    }
+    points.push({ from, to, label, days, minutes });
+  }
+  return points;
+}
+
+/** 曜日別の平均活動時間(月次の「時間の使い方」)。日報のある日だけで平均する。 */
+export function weekdayAverages(columns: DayColumn[]): { weekday: string; minutes: number | null; days: number }[] {
+  const labels = ["月", "火", "水", "木", "金", "土", "日"];
+  return labels.map((weekday, index) => {
+    const days = columns.filter((column) => column.hasReport && weekdayIndex(column.date) === index);
+    return { weekday, days: days.length, minutes: days.length ? days.reduce((sum, column) => sum + column.total, 0) / days.length : null };
+  });
+}
+
+// ---- 作業項目・アプリ・知見 ----
+
+export type WorkItemInput = { reportDate: string; position: number; categoryPosition: number; category: string; itemPosition: number; text: string; tags: string[] };
 export type WorkItemGroup = { categoryPosition: number; category: string; items: { position: number; text: string; tags: string[] }[] };
 
 /** 1日分の作業項目を、`###` 見出しごとにまとめる(見出しの表記は日ごとに揺れるので名寄せはしない)。 */
@@ -247,4 +434,57 @@ export function groupDayWorkItems(items: WorkItemInput[]): WorkItemGroup[] {
     group.items.push({ position: item.position, text: item.text, tags: item.tags });
   }
   return [...groups.values()];
+}
+
+export type HeadingSummary = { heading: string; category: Category; dates: string[]; firstText: string; tags: string[] };
+
+/** 期間の作業項目を見出しの文字列でまとめる(週次・月次)。見出しの主カテゴリは、配下の項目に付いたタグの
+ *  カテゴリで最も多いもの。並びはカテゴリの固定順→最初に出た日→見出し。 */
+export function headingSummaries(items: WorkItemInput[]): HeadingSummary[] {
+  const map = new Map<string, { heading: string; dates: Set<string>; firstText: string; firstDate: string; counts: Map<Category, number>; tags: Set<string> }>();
+  for (const item of [...items].sort((a, b) => a.reportDate.localeCompare(b.reportDate) || a.position - b.position)) {
+    const heading = item.category || "(見出しなし)";
+    let entry = map.get(heading);
+    if (!entry) {
+      entry = { heading, dates: new Set(), firstText: item.text, firstDate: item.reportDate, counts: new Map(), tags: new Set() };
+      map.set(heading, entry);
+    }
+    entry.dates.add(item.reportDate);
+    for (const tag of item.tags) {
+      entry.tags.add(tag);
+      entry.counts.set(categoryOfTag(tag), (entry.counts.get(categoryOfTag(tag)) ?? 0) + 1);
+    }
+  }
+  const mainCategory = (counts: Map<Category, number>): Category => {
+    let best: Category = "other";
+    let bestCount = 0;
+    for (const category of CATEGORY_ORDER) {
+      const count = counts.get(category) ?? 0;
+      if (count > bestCount) [best, bestCount] = [category, count];
+    }
+    return best;
+  };
+  return [...map.values()]
+    .map((entry) => ({ entry, category: mainCategory(entry.counts) }))
+    .sort((a, b) => CATEGORY_ORDER.indexOf(a.category) - CATEGORY_ORDER.indexOf(b.category) || a.entry.firstDate.localeCompare(b.entry.firstDate) || a.entry.heading.localeCompare(b.entry.heading))
+    .map(({ entry, category }) => ({ heading: entry.heading, category, dates: [...entry.dates], firstText: entry.firstText, tags: [...entry.tags] }));
+}
+
+export type AppUsageInput = { reportDate: string; appName: string; appKey: string; usageCount: number | null; usageCountRaw: string; usageIsMin: boolean; purpose: string };
+export type AppSummary = { appKey: string; name: string; dates: string[] };
+
+/** 期間のアプリを app_key でまとめ、使った日数の多い順に。表示名はその期間で最も多い名前の `／` の前。 */
+export function appSummaries(apps: AppUsageInput[], limit = 8): AppSummary[] {
+  const map = new Map<string, { dates: Set<string>; names: Map<string, number> }>();
+  for (const app of apps) {
+    const entry = map.get(app.appKey) ?? { dates: new Set<string>(), names: new Map<string, number>() };
+    entry.dates.add(app.reportDate);
+    const name = app.appName.split(/[／/]/)[0].trim() || app.appName;
+    entry.names.set(name, (entry.names.get(name) ?? 0) + 1);
+    map.set(app.appKey, entry);
+  }
+  return [...map.entries()]
+    .map(([appKey, entry]) => ({ appKey, name: [...entry.names.entries()].sort((a, b) => b[1] - a[1])[0][0], dates: [...entry.dates].sort() }))
+    .sort((a, b) => b.dates.length - a.dates.length || a.name.localeCompare(b.name))
+    .slice(0, limit);
 }
