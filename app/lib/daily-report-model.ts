@@ -3,29 +3,33 @@
  *  docs/daily-report-view-design.md §4・§6.2。 */
 
 import {
+  CATEGORY_LABELS,
   RANGES,
+  allocationRows,
   appSummaries,
   axisRange,
-  breakdown,
   categoryShares,
   dailyColumns,
   datesBetween,
+  formatMinutes,
   groupDayWorkItems,
   headingSummaries,
   hourProfile,
   perDayAverages,
   periodRange,
   shiftAnchor,
+  signedMinutes,
   sumTags,
   switchRange,
   timelineSegments,
   trendSeries,
   weekdayAverages,
+  weekdayLabel,
+  type AllocationRow,
   type AppSummary,
   type AppUsageInput,
-  type BreakdownCategory,
+  type Category,
   type CategoryShare,
-  type DayColumn,
   type HeadingSummary,
   type PeriodRange,
   type Range,
@@ -33,7 +37,6 @@ import {
   type TimeAxis,
   type TimelineBlockInput,
   type TimelineSegment,
-  type TrendPoint,
   type WorkItemGroup,
   type WorkItemInput,
 } from "./daily-report-summary.ts";
@@ -67,6 +70,20 @@ export type PeriodView = {
 
 export type HeroItem = { label: string; value: string; sub?: string };
 
+/** 活動時間の図の棒1本(設計書 §4.2)。value が null は日報なし。 */
+export type ActivityBar = {
+  key: string;
+  /** 横軸のラベル(空なら出さない) */
+  label: string;
+  /** ツールチップの1行目 */
+  title: string;
+  value: number | null;
+  future: boolean;
+  breakdown: { category: Category; minutes: number }[];
+  /** 押したときの行き先 */
+  target: { range: Range; date: string } | null;
+};
+
 export type DailyReportModel = {
   period: PeriodRange;
   today: string;
@@ -81,16 +98,15 @@ export type DailyReportModel = {
   };
   /** 期間内の日報の日数 */
   reportCount: number;
-  hero: { label: string; value: string; items: HeroItem[] };
-  /** 凡例を兼ねる、期間のカテゴリ別の割合 */
+  /** ヒーロー: 週次・月次は合計と1日平均を同じ大きさで並べる(§6.2) */
+  hero: { figures: { label: string; value: string }[]; caption: string | null; items: HeroItem[] };
+  /** 時間の使い方タブの凡例(期間のカテゴリ別の割合) */
   legend: CategoryShare[];
-  /** 100%横棒(日次は1本、週次・月次は今期と前期) */
-  shareRows: { label: string; shares: CategoryShare[] }[];
-  breakdown: BreakdownCategory[];
-  baseline: { days: number; label: string };
-  /** 週次・月次: 日ごとの積み上げ縦棒 */
-  columns: DayColumn[];
-  trend: TrendPoint[];
+  /** 概要の配分の表 */
+  allocation: AllocationRow[];
+  baseline: { days: number; label: string; shortLabel: string };
+  /** 週次・月次: 活動時間の図(日ごと / 最近12週・12か月) */
+  activity: { days: ActivityBar[]; periods: ActivityBar[]; periodsLabel: string };
   /** 日次: その日の時間帯・日報・作業・アプリ */
   day: {
     report: ReportRow | null;
@@ -115,14 +131,25 @@ export type DailyReportModel = {
 };
 
 const BASELINE_LABEL: Record<Range, string> = { day: "直近28日の1日平均", week: "前週の1日平均", month: "前月の1日平均" };
-const PREVIOUS_LABEL: Record<Range, string> = { day: "直近28日", week: "前週", month: "前月" };
-const CURRENT_LABEL: Record<Range, string> = { day: "この日", week: "今週", month: "今月" };
+const BASELINE_SHORT: Record<Range, string> = { day: "直近28日", week: "前週", month: "前月" };
+const MONTH_DAY_LABELS = new Set([1, 5, 10, 15, 20, 25, 30]);
 
-const minutesText = (minutes: number) => {
-  const total = Math.max(0, Math.round(minutes));
-  const hours = Math.floor(total / 60);
-  return hours ? `${hours}h${String(total % 60).padStart(2, "0")}m` : `${total % 60}m`;
-};
+const shortDate = (date: string) => `${Number(date.slice(5, 7))}/${Number(date.slice(8, 10))}`;
+
+/** 比べる相手との差の補足(`+42m/日`)。相手の日報が3日未満なら参考扱い、0日なら「日報なし」 */
+function diffNote(current: number, base: number | null, baseDays: number, perDay: boolean): string {
+  if (base === null || baseDays === 0) return "日報なし";
+  return `${signedMinutes(current - base)}${perDay ? "/日" : ""}${baseDays < 3 ? "(参考)" : ""}`;
+}
+
+/** 期間がまだ途中のときの「木〜日はまだ」「23日〜31日はまだ」 */
+function remainingNote(period: PeriodRange): string | undefined {
+  if (period.elapsedDays >= period.days) return undefined;
+  const dates = datesBetween(period.from, period.to).slice(period.elapsedDays);
+  if (!dates.length) return undefined;
+  const label = (date: string) => (period.range === "week" ? weekdayLabel(date) : `${Number(date.slice(8, 10))}日`);
+  return dates.length === 1 ? `${label(dates[0])}はまだ` : `${label(dates[0])}〜${label(dates.at(-1)!)}はまだ`;
+}
 
 export function buildModel(view: PeriodView, period: PeriodRange, today: string): DailyReportModel {
   const { range, from, to } = period;
@@ -137,43 +164,66 @@ export function buildModel(view: PeriodView, period: PeriodRange, today: string)
   const recorded = current.reduce((sum, row) => sum + (row.recordedMinutes ?? 0), 0);
   const base = perDayAverages(previousTags, previous.length || undefined);
   const baseActive = base ? Object.values(base.minutes).reduce((sum, value) => sum + value, 0) : null;
-  const gapText = `${minutesText(gap)}${recorded ? `(記録の${Math.round((gap / recorded) * 100)}%)` : ""}`;
+  const baseDays = base?.days ?? 0;
+  const gapItem: HeroItem = { label: "ログなし", value: current.length ? formatMinutes(gap) : "—", sub: recorded ? `記録の${Math.round((gap / recorded) * 100)}%` : undefined };
 
   let hero: DailyReportModel["hero"];
   if (range === "day") {
     const report = current[0];
     hero = {
-      label: "活動時間",
-      value: report ? minutesText(active) : "—",
+      figures: [{ label: "活動時間", value: report ? formatMinutes(active) : "—" }],
+      caption: report?.recordStart && report.recordEnd ? `記録 ${report.recordStart}〜${report.recordEnd}${report.recordedMinutes ? `(${formatMinutes(report.recordedMinutes)})` : ""}` : null,
       items: [
-        { label: "記録", value: report?.recordStart && report.recordEnd ? `${report.recordStart}〜${report.recordEnd}` : "—", sub: report?.recordedMinutes ? minutesText(report.recordedMinutes) : undefined },
-        { label: "ログなし", value: report ? gapText : "—" },
+        { label: BASELINE_LABEL.day, value: baseActive === null ? "—" : formatMinutes(baseActive), sub: report ? diffNote(active, baseActive, baseDays, false) : undefined },
+        gapItem,
         { label: "キャプチャ", value: report?.captureCount != null ? `${report.captureCount}回${report.captureCountIsMin ? "以上" : ""}` : "—" },
-        { label: BASELINE_LABEL.day, value: baseActive === null ? "—" : minutesText(baseActive), sub: base ? `${base.days}日分` : "日報なし" },
       ],
     };
   } else {
     const days = current.length;
+    const average = days ? active / days : 0;
     hero = {
-      label: "1日平均の活動時間",
-      value: days ? minutesText(active / days) : "—",
+      figures: [
+        { label: "合計", value: days ? formatMinutes(active) : "—" },
+        { label: "1日平均", value: days ? formatMinutes(average) : "—" },
+      ],
+      caption: null,
       items: [
-        { label: "合計", value: days ? minutesText(active) : "—" },
-        { label: "ログなし", value: days ? gapText : "—" },
-        { label: "日報", value: `${days}/${period.days}日`, sub: period.elapsedDays < period.days ? `${period.elapsedDays}日目まで` : undefined },
-        { label: BASELINE_LABEL[range], value: baseActive === null ? "—" : minutesText(baseActive), sub: base ? `${base.days}日分` : "日報なし" },
+        { label: BASELINE_LABEL[range], value: baseActive === null ? "—" : formatMinutes(baseActive), sub: days ? diffNote(average, baseActive, baseDays, true) : undefined },
+        gapItem,
+        { label: "日報", value: `${days}/${period.days}日`, sub: remainingNote(period) },
       ],
     };
   }
 
-  // 配分の横棒: 日次はその日の分数、週次・月次は1日平均(期間の日数が違っても比べられるように)
-  const breakdownCurrent = range === "day" ? currentSum : perDayAverages(currentTags, current.length || undefined)?.minutes ?? {};
-  const shareRows = [{ label: CURRENT_LABEL[range], shares: categoryShares(currentSum) }];
-  if (range !== "day" && previousTags.length) shareRows.push({ label: PREVIOUS_LABEL[range], shares: categoryShares(sumTags(previousTags)) });
-
   const reportSet = new Set(reportDates);
   const periodDates = datesBetween(from, to);
   const columns = range === "day" ? [] : dailyColumns(periodDates, currentTags, reportSet);
+
+  const activityDays: ActivityBar[] = columns.map((column) => ({
+    key: column.date,
+    label: range === "week" ? weekdayLabel(column.date) : MONTH_DAY_LABELS.has(Number(column.date.slice(8, 10))) ? String(Number(column.date.slice(8, 10))) : "",
+    title: `${shortDate(column.date)}(${weekdayLabel(column.date)})`,
+    value: column.hasReport ? column.total : null,
+    future: column.date > today,
+    breakdown: column.parts,
+    target: column.hasReport ? { range: "day", date: column.date } : null,
+  }));
+  const activityPeriods: ActivityBar[] = trendSeries(period, view.tagDays, reportDates).map((point, index, points) => {
+    const minutes = point.minutes;
+    const total = minutes ? Object.values(minutes).reduce((sum, value) => sum + (value ?? 0), 0) : null;
+    // 横軸は12本すべてに書くと詰まるので、最新から2本おき(週ごと)・全部(月ごと)
+    const showLabel = range === "month" || (points.length - 1 - index) % 2 === 0;
+    return {
+      key: point.from,
+      label: showLabel ? point.label : "",
+      title: range === "week" ? `${shortDate(point.from)}〜${shortDate(point.to)}の週(1日平均・${point.days}日分)` : `${Number(point.from.slice(0, 4))}年${Number(point.from.slice(5, 7))}月(1日平均・${point.days}日分)`,
+      value: total,
+      future: point.from > today,
+      breakdown: minutes ? (Object.keys(CATEGORY_LABELS) as Category[]).filter((category) => minutes[category]).map((category) => ({ category, minutes: minutes[category] ?? 0 })) : [],
+      target: total === null ? null : { range, date: point.from },
+    };
+  });
 
   const blocksByDate = new Map<string, TimelineBlockInput[]>();
   for (const block of view.blocks) blocksByDate.set(block.reportDate, [...(blocksByDate.get(block.reportDate) ?? []), block]);
@@ -198,11 +248,9 @@ export function buildModel(view: PeriodView, period: PeriodRange, today: string)
     reportCount: current.length,
     hero,
     legend: categoryShares(currentSum),
-    shareRows,
-    breakdown: breakdown(breakdownCurrent, base ? base.minutes : null),
-    baseline: { days: base?.days ?? 0, label: BASELINE_LABEL[range] },
-    columns,
-    trend: trendSeries(period, view.tagDays, reportDates),
+    allocation: allocationRows(currentSum, current.length, base ? base.minutes : null),
+    baseline: { days: baseDays, label: BASELINE_LABEL[range], shortLabel: BASELINE_SHORT[range] },
+    activity: { days: activityDays, periods: activityPeriods, periodsLabel: range === "month" ? "最近12か月" : "最近12週" },
     day: range === "day"
       ? { report, blocks: blocksByDate.get(from) ?? [], workGroups: groupDayWorkItems(view.workItems), apps: view.apps }
       : null,

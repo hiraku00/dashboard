@@ -1,8 +1,8 @@
 import { describe, expect, test } from "vitest";
 import {
-  addDays, addMonths, appSummaries, axisRange, axisTicks, breakdown, categoryOfTag, categoryShares, dailyColumns, defaultAnchor,
+  addDays, addMonths, allocationRows, appSummaries, axisRange, axisTicks, categoryOfTag, categoryShares, dailyColumns, defaultAnchor,
   formatClock, formatMinutes, groupDayWorkItems, headingSummaries, hourProfile, lastReportIn, periodRange, perDayAverages,
-  shiftAnchor, switchRange, tagLabel, timelineSegments, trendSeries, weekDates, weekdayAverages, weekdayIndex, weekdayLabel,
+  shiftAnchor, signedMinutes, switchRange, tagLabel, timelineSegments, trendSeries, weekDates, weekdayAverages, weekdayIndex, weekdayLabel,
 } from "../app/lib/daily-report-summary.ts";
 import { DAILY_REPORT_TAGS } from "../app/lib/daily-report-tags.ts";
 
@@ -162,20 +162,28 @@ const tagRows = [
   { reportDate: "2026-10-21", tag: "media", minutes: 90 },
 ];
 
-describe("breakdown / shares / averages", () => {
-  test("orders categories and tags by minutes, drops zero tags, and puts other last", () => {
-    const groups = breakdown({ english: 90, electronics: 30, dashboard: 120, media: 0, other: 20, communication: 54, money: 6 }, null);
-    expect(groups.map((entry) => entry.category)).toEqual(["study", "dev", "life", "other"]);
-    expect(groups[0]).toMatchObject({ minutes: 120, baselineMinutes: null });
-    expect(groups[2].tags.map((tag) => tag.tag)).toEqual(["communication", "money"]);
+describe("allocation table / shares / averages", () => {
+  test("rows come in the fixed category order with total, per-day average and share; zero tags are dropped", () => {
+    const rows = allocationRows({ media: 60, english: 90, electronics: 30, dashboard: 120, other: 0, communication: 54, money: 6 }, 2, null);
+    expect(rows.map((row) => [row.category, row.total, row.average, Math.round(row.percent)])).toEqual([
+      ["study", 120, 60, 33], ["dev", 120, 60, 33], ["life", 60, 30, 17], ["media", 60, 30, 17],
+    ]);
+    expect(rows[0].baselineAverage).toBeNull();
+    expect(rows[2].tags.map((tag) => [tag.tag, tag.total, tag.average])).toEqual([["communication", 54, 27], ["money", 6, 3]]);
   });
 
-  test("the category tick counts every baseline tag of that category, the tag tick only its own", () => {
-    const groups = breakdown({ english: 90, dashboard: 120 }, { english: 60, electronics: 45, dashboard: 150, media: 10 });
-    const study = groups.find((entry) => entry.category === "study");
-    expect(study.baselineMinutes).toBe(105);
-    expect(study.tags).toEqual([{ tag: "english", label: "英語学習", minutes: 90, baselineMinutes: 60 }]);
-    expect(groups.find((entry) => entry.category === "dev").baselineMinutes).toBe(150);
+  test("a category's baseline counts every baseline tag of that category, a tag's only its own", () => {
+    const rows = allocationRows({ english: 90, dashboard: 120 }, 1, { english: 60, electronics: 45, dashboard: 150, media: 10 });
+    const study = rows.find((row) => row.category === "study");
+    expect(study.baselineAverage).toBe(105);
+    expect(study.tags).toEqual([{ tag: "english", label: "英語学習", total: 90, average: 90, baselineAverage: 60 }]);
+    expect(rows.find((row) => row.category === "dev").baselineAverage).toBe(150);
+  });
+
+  test("signedMinutes writes the change without colour", () => {
+    expect(signedMinutes(42)).toBe("+42m");
+    expect(signedMinutes(-78)).toBe("−1h18m");
+    expect(signedMinutes(0.4)).toBe("±0m");
   });
 
   test("averages over the days that have a report", () => {

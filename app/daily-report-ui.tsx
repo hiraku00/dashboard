@@ -1,4 +1,3 @@
-import Link from "next/link";
 import {
   CATEGORY_LABELS,
   axisTicks,
@@ -8,14 +7,11 @@ import {
   tagLabel,
   weekdayLabel,
   type AppSummary,
-  type BreakdownCategory,
   type Category,
   type CategoryShare,
-  type DayColumn,
   type Range,
   type TimeAxis,
   type TimelineSegment,
-  type TrendPoint,
 } from "./lib/daily-report-summary";
 
 /** 作業日報の共通部品(docs/daily-report-view-design.md §5・§6)。色・模様・時間の表記は全タブでここに揃える。
@@ -129,124 +125,6 @@ export function DayBand({
           </div>
         );
       })}
-    </div>
-  );
-}
-
-/** カテゴリ別の割合の100%横棒(1本または今期・前期の2本を左端を揃えて)。分母は活動時間。 */
-export function ShareBars({ rows }: { rows: { label: string; shares: CategoryShare[] }[] }) {
-  return (
-    <div className="dr-shares">
-      {rows.map((row) => (
-        <div className="dr-share-row" key={row.label}>
-          <span>{row.label}</span>
-          <div className="dr-share-bar" role="img" aria-label={`${row.label}: ${row.shares.map((share) => `${share.label} ${Math.round(share.percent)}%`).join("、")}`}>
-            {row.shares.map((share) => (
-              <span key={share.category} style={{ flex: share.minutes, background: categoryColor(share.category) }} title={`${share.label} ${Math.round(share.percent)}% ${formatMinutes(share.minutes)}`}>
-                {share.percent >= 12 ? `${Math.round(share.percent)}%` : ""}
-              </span>
-            ))}
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-/** カテゴリの見出しの下にタグを並べた横棒。縦線の目盛りが「比べる相手」。
- *  相手の日数が3日未満なら目盛りを点線にして参考扱いにし、0日なら出さない。 */
-export function BulletRows({ categories, baselineDays, baselineLabel, valueLabel }: { categories: BreakdownCategory[]; baselineDays: number; baselineLabel: string; valueLabel: string }) {
-  const max = Math.max(1, ...categories.flatMap((entry) => [entry.minutes, entry.baselineMinutes ?? 0, ...entry.tags.flatMap((tag) => [tag.minutes, tag.baselineMinutes ?? 0])]));
-  const showTick = baselineDays > 0;
-  const tentative = baselineDays > 0 && baselineDays < 3;
-  const row = (key: string, label: string, minutes: number, baseline: number | null, color: string, isCategory: boolean) => (
-    <div className={`dr-bullet-row${isCategory ? " is-category" : ""}`} key={key}>
-      <span className="dr-bullet-label">{label}</span>
-      <span className="dr-bullet-track">
-        <span className="dr-bullet-bar" style={{ background: color, width: `${(minutes / max) * 100}%` }} />
-        {showTick && baseline !== null && <span className={`dr-bullet-tick${tentative ? " is-tentative" : ""}`} style={{ left: `${(baseline / max) * 100}%` }} title={`${baselineLabel} ${formatMinutes(baseline)}`} />}
-      </span>
-      <span className="dr-bullet-value">{formatMinutes(minutes)}</span>
-    </div>
-  );
-  return (
-    <div className="dr-bullet">
-      <div className="dr-bullet-row dr-bullet-head"><span /><span /><span>{valueLabel}</span></div>
-      {categories.map((entry) => [
-        row(`c-${entry.category}`, entry.label, entry.minutes, entry.baselineMinutes, categoryColor(entry.category), true),
-        ...(entry.category === "other" ? [] : entry.tags.map((tag) => row(`t-${tag.tag}`, tag.label, tag.minutes, tag.baselineMinutes, categoryColor(entry.category), false))),
-      ])}
-      <p className="dr-note">
-        {showTick ? <><i className="dr-tick" aria-hidden="true" />{baselineLabel}({baselineDays}日分{tentative ? "・参考" : ""})</> : `${baselineLabel}: 日報が無いため比較なし`}
-      </p>
-    </div>
-  );
-}
-
-/** 日ごとの積み上げ縦棒(週次・月次)。押すとその日の日次へ。日報の無い日は破線の空き枠。 */
-export function DayColumns({ columns, tab, today }: { columns: DayColumn[]; tab: ReportTab; today: string }) {
-  const max = Math.max(60, ...columns.map((column) => column.total));
-  return (
-    <div className={`dr-columns${columns.length > 7 ? " is-dense" : ""}`} style={{ gridTemplateColumns: `repeat(${columns.length}, minmax(0, 1fr))` }}>
-      {columns.map((column) => {
-        const label = columns.length > 7 ? String(Number(column.date.slice(8, 10))) : weekdayLabel(column.date);
-        const weekend = ["土", "日"].includes(weekdayLabel(column.date));
-        const body = (
-          <>
-            <span className="dr-col-value">{column.hasReport ? `${Math.round(column.total / 60)}h` : ""}</span>
-            <span className={`dr-col-stack${column.hasReport ? "" : column.date > today ? " is-future" : " is-missing"}`}>
-              {column.parts.map((part) => (
-                <span key={part.category} style={{ height: `${(part.minutes / max) * 100}%`, background: categoryColor(part.category) }} />
-              ))}
-            </span>
-            <span className={`dr-col-label${weekend ? " is-weekend" : ""}`}>{label}</span>
-          </>
-        );
-        return column.hasReport ? (
-          <Link key={column.date} className="dr-col" href={reportHref("day", column.date, tab === "summary" ? "summary" : tab)} prefetch={false} title={`${shortDate(column.date)} ${formatMinutes(column.total)}`}>{body}</Link>
-        ) : (
-          <div key={column.date} className="dr-col" title={`${shortDate(column.date)} 日報なし`}>{body}</div>
-        );
-      })}
-    </div>
-  );
-}
-
-/** 最近12期間の流れ。カテゴリごとの小さな折れ線を、縦軸を共通にして並べる(スモールマルチプル)。 */
-export function TrendMultiples({ points }: { points: TrendPoint[] }) {
-  const categories: Category[] = ["study", "dev", "life", "media"];
-  const max = Math.max(60, ...points.flatMap((point) => categories.map((category) => point.minutes?.[category] ?? 0)));
-  const width = 160;
-  const height = 56;
-  const x = (index: number) => 4 + (index / Math.max(1, points.length - 1)) * (width - 8);
-  const y = (minutes: number) => height - 4 - (minutes / max) * (height - 8);
-  return (
-    <div className="dr-trends">
-      {categories.map((category) => {
-        const latest = points.at(-1)?.minutes?.[category];
-        const segments: string[] = [];
-        let current: string[] = [];
-        points.forEach((point, index) => {
-          if (!point.minutes) {
-            if (current.length) segments.push(current.join(" "));
-            current = [];
-            return;
-          }
-          current.push(`${x(index).toFixed(1)},${y(point.minutes[category] ?? 0).toFixed(1)}`);
-        });
-        if (current.length) segments.push(current.join(" "));
-        return (
-          <figure key={category} className="dr-trend">
-            <figcaption><i aria-hidden="true" style={{ background: categoryColor(category) }} />{CATEGORY_LABELS[category]}<b>{latest == null ? "—" : `${formatMinutes(latest)}/日`}</b></figcaption>
-            <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`${CATEGORY_LABELS[category]}の1日平均の推移: ${points.map((point) => `${point.label} ${point.minutes ? formatMinutes(point.minutes[category] ?? 0) : "日報なし"}`).join("、")}`}>
-              <line x1="0" x2={width} y1={height - 4} y2={height - 4} className="dr-trend-base" />
-              {segments.map((line, index) => <polyline key={index} points={line} fill="none" stroke={categoryColor(category)} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />)}
-              {latest != null && <circle cx={x(points.length - 1)} cy={y(latest)} r="3.5" fill={categoryColor(category)} stroke="#fff" strokeWidth="2" />}
-            </svg>
-          </figure>
-        );
-      })}
-      <p className="dr-note dr-trend-range">{points[0]?.label}〜{points.at(-1)?.label}・縦軸は4つ共通(最大 {formatMinutes(max)}/日)・途切れは日報の無い期間</p>
     </div>
   );
 }

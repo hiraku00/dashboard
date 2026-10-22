@@ -3,18 +3,15 @@
 import Link from "next/link";
 import { useState, type ReactNode } from "react";
 import { PortalHeader } from "./portal-nav";
+import { ActivityChart, AllocationTable } from "./daily-report-charts";
 import {
   AppBars,
   AppDots,
-  BulletRows,
   CategoryLegend,
   Chip,
   DayAxis,
   DayBand,
-  DayColumns,
   HourProfile,
-  ShareBars,
-  TrendMultiples,
   WeekdayBars,
   REPORT_TABS,
   categoryColor,
@@ -25,7 +22,7 @@ import {
 import { DayTimeline } from "./daily-report-day-view";
 import { DailyReportToolbar } from "./daily-report-toolbar";
 import { MarkdownRenderer } from "./text-tube/markdown-renderer";
-import { CATEGORY_LABELS, formatMinutes, weekdayLabel } from "./lib/daily-report-summary";
+import { CATEGORY_LABELS, axisRange, formatMinutes, timelineSegments, weekdayLabel, type TimelineBlockInput } from "./lib/daily-report-summary";
 import type { DailyReportModel } from "./lib/daily-report-model";
 
 /** /daily-report のワークスペース(docs/daily-report-view-design.md §3・§4・§6)。Manage Asset と同じく、
@@ -33,7 +30,6 @@ import type { DailyReportModel } from "./lib/daily-report-model";
  *  期間(日次・週次・月次と日付)はツールバーのリンクで替え、サーバーが読み直す。 */
 
 const PERIOD_NOUN = { day: "この日", week: "この週", month: "この月" } as const;
-const TREND_LABEL = { day: "", week: "最近12週の流れ", month: "最近12か月の流れ" } as const;
 
 function Panel({ title, sub, children, actions }: { title: string; sub?: string; children: ReactNode; actions?: ReactNode }) {
   return (
@@ -106,13 +102,21 @@ function LegendBar({ model, showMissing = false }: { model: DailyReportModel; sh
   );
 }
 
+/** ヒーロー: Manage Asset の asset-hero と同じ並び。週次・月次は合計と1日平均を同じ大きさで並べる(§6.2)。 */
 function Hero({ model }: { model: DailyReportModel }) {
   return (
     <section className="asset-hero dr-hero">
       <div className="hero-grid">
         <div>
-          <p>{model.hero.label}</p>
-          <strong>{model.hero.value}</strong>
+          <div className="dr-hero-figures">
+            {model.hero.figures.map((figure) => (
+              <div key={figure.label}>
+                <p>{figure.label}</p>
+                <strong>{figure.value}</strong>
+              </div>
+            ))}
+          </div>
+          {model.hero.caption ? <p>{model.hero.caption}</p> : null}
           {model.day?.report?.parseStatus === "partial" ? <p>一部を解析できなかった行があります(原本タブで確認)</p> : null}
           {model.day?.report?.parseStatus === "failed" ? <p>この日報は解析できませんでした(原本タブで確認)</p> : null}
         </div>
@@ -128,29 +132,48 @@ function Hero({ model }: { model: DailyReportModel }) {
   );
 }
 
+/** 概要: ヒーロー＋2枚のパネル(左に活動時間、右に配分)。Manage Asset の資産概要と同じ並び(§4.1)。
+ *  日次は活動時間の図を出さない(1日の時間は「時間の使い方」の帯で読む)。 */
 function SummaryTab({ model }: { model: DailyReportModel }) {
   const { period } = model;
+  const allocation = <AllocationTable rows={model.allocation} range={period.range} reportDays={model.reportCount} baseline={model.baseline} />;
   return (
     <>
-      <LegendBar model={model} />
       <Hero model={model} />
-      <div className="dr-grid">
-        <Panel title="時間の配分" sub={period.range === "day" ? "活動時間に対する割合" : "割合は期間の合計、横棒は1日平均"}>
-          <ShareBars rows={model.shareRows} />
-          <BulletRows categories={model.breakdown} baselineDays={model.baseline.days} baselineLabel={model.baseline.label} valueLabel={period.range === "day" ? "時間" : "1日平均"} />
-        </Panel>
-        {period.range !== "day" && (
-          <Panel title="日ごとの活動時間" sub="棒を押すとその日へ">
-            <DayColumns columns={model.columns} tab="summary" today={model.today} />
-          </Panel>
-        )}
-        {period.range !== "day" && (
-          <Panel title={TREND_LABEL[period.range]} sub="カテゴリ別の1日平均">
-            <TrendMultiples points={model.trend} />
-          </Panel>
-        )}
-      </div>
+      {period.range === "day" ? (
+        // 日次は左に1日の帯だけ(表は「時間の使い方」)。週次・月次と同じ「左に時間、右に配分」の並びにする
+        <div className="dr-overview">
+          <section className="asset-panel dr-panel">
+            <div className="panel-heading">
+              <div>
+                <h2>1日のタイムライン</h2>
+                <span>色は配分の表と同じ・斜線はログなし</span>
+              </div>
+            </div>
+            <div className="dr-panel-body">
+              {model.day && model.day.blocks.length ? <DayOverviewBand blocks={model.day.blocks} /> : <p className="dr-empty">時間帯の記録がありません。</p>}
+            </div>
+          </section>
+          {allocation}
+        </div>
+      ) : (
+        <div className="dr-overview">
+          <ActivityChart days={model.activity.days} periods={model.activity.periods} periodsLabel={model.activity.periodsLabel} tab="summary" />
+          {allocation}
+        </div>
+      )}
     </>
+  );
+}
+
+function DayOverviewBand({ blocks }: { blocks: TimelineBlockInput[] }) {
+  const segments = timelineSegments(blocks);
+  const axis = axisRange(segments);
+  return (
+    <div className="dr-timeline">
+      <DayAxis axis={axis} />
+      <DayBand segments={segments} axis={axis} height={36} />
+    </div>
   );
 }
 
@@ -244,9 +267,18 @@ function WorkTab({ model }: { model: DailyReportModel }) {
               <i aria-hidden="true" style={{ background: categoryColor(entry.category) }} title={CATEGORY_LABELS[entry.category]} />
               <div>
                 <strong>{entry.heading}</strong>
-                <span className="dr-dates">
-                  {entry.dates.map((date) => <Link key={date} href={reportHref("day", date, "work")} prefetch={false}>{period.range === "week" ? weekdayLabel(date) : shortDate(date)}</Link>)}
-                </span>
+                {period.range === "week" ? (
+                  <span className="dr-dates">
+                    {entry.dates.map((date) => <Link key={date} href={reportHref("day", date, "work")} prefetch={false}>{weekdayLabel(date)}</Link>)}
+                  </span>
+                ) : (
+                  // 月次は日付を全部チップにすると行が埋まるので、日数と範囲だけ(§4)
+                  <span className="dr-dates is-text">
+                    {entry.dates.length}日・
+                    <Link href={reportHref("day", entry.dates[0], "work")} prefetch={false}>{shortDate(entry.dates[0])}</Link>
+                    {entry.dates.length > 1 ? <>〜<Link href={reportHref("day", entry.dates.at(-1)!, "work")} prefetch={false}>{shortDate(entry.dates.at(-1)!)}</Link></> : null}
+                  </span>
+                )}
                 <p>{entry.firstText}</p>
               </div>
             </li>
@@ -256,7 +288,7 @@ function WorkTab({ model }: { model: DailyReportModel }) {
       </Panel>
       <Panel title="アプリ" sub="使った日数(上位8)">
         {period.range === "week"
-          ? <div className="dr-table-scroll"><AppDots apps={model.appRanking} dates={model.weekRows.length ? model.weekRows.map((row) => row.date) : model.columns.map((column) => column.date)} /></div>
+          ? <div className="dr-table-scroll"><AppDots apps={model.appRanking} dates={model.weekRows.map((row) => row.date)} /></div>
           : <AppBars apps={model.appRanking} />}
       </Panel>
     </div>

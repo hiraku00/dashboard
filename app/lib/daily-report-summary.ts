@@ -292,44 +292,57 @@ export function hourProfile(days: TimelineSegment[][], axis: TimeAxis): { hour: 
 
 // ---- 配分(カテゴリ→タグ) ----
 
-export type BreakdownTag = { tag: string; label: string; minutes: number; baselineMinutes: number | null };
-export type BreakdownCategory = {
+/** 1日平均の差を `+42m` `−18m` `±0m` に(色は付けずに書く。設計書 §4.1) */
+export function signedMinutes(diff: number): string {
+  const rounded = Math.round(diff);
+  if (rounded === 0) return "±0m";
+  return `${rounded > 0 ? "+" : "−"}${formatMinutes(Math.abs(rounded))}`;
+}
+
+export type AllocationTagRow = { tag: string; label: string; total: number; average: number; baselineAverage: number | null };
+export type AllocationRow = {
   category: Category;
   label: string;
-  minutes: number;
-  baselineMinutes: number | null;
-  tags: BreakdownTag[];
+  /** 活動時間(タグの合計)に対する割合。欠落は分母に入れない */
+  percent: number;
+  total: number;
+  /** 日報のある日の1日平均 */
+  average: number;
+  /** 比べる相手の1日平均。相手の日報が0日なら null */
+  baselineAverage: number | null;
+  tags: AllocationTagRow[];
 };
 
-/** タグ別の分数を、カテゴリの見出しの下にタグを並べた形にする。カテゴリもタグも分数の多い順で、
- *  未分類は最後。分数が0のタグは出さない。baseline(比べる相手)が無ければ目盛りは null。 */
-export function breakdown(current: Record<string, number>, baseline: Record<string, number> | null): BreakdownCategory[] {
-  const categories = new Map<Category, BreakdownCategory>();
+/** 概要の「配分の表」(設計書 §4.1)。行はカテゴリの固定順(0分のカテゴリは出さない)、タグは合計の多い順。
+ *  baseline は比べる相手のタグ別の1日平均(perDayAverages の minutes)。 */
+export function allocationRows(current: Record<string, number>, reportDays: number, baseline: Record<string, number> | null): AllocationRow[] {
+  const days = Math.max(1, reportDays);
+  const total = Object.values(current).reduce((sum, value) => sum + value, 0);
+  const rows = new Map<Category, AllocationRow>();
   for (const [tag, minutes] of Object.entries(current)) {
     if (minutes <= 0) continue;
     const category = categoryOfTag(tag);
-    let entry = categories.get(category);
-    if (!entry) {
-      entry = { category, label: CATEGORY_LABELS[category], minutes: 0, baselineMinutes: baseline ? 0 : null, tags: [] };
-      categories.set(category, entry);
+    let row = rows.get(category);
+    if (!row) {
+      row = { category, label: CATEGORY_LABELS[category], percent: 0, total: 0, average: 0, baselineAverage: baseline ? 0 : null, tags: [] };
+      rows.set(category, row);
     }
-    const baselineMinutes = baseline ? (baseline[tag] ?? 0) : null;
-    entry.minutes += minutes;
-    entry.tags.push({ tag, label: tagLabel(tag), minutes, baselineMinutes });
+    row.total += minutes;
+    row.tags.push({ tag, label: tagLabel(tag), total: minutes, average: minutes / days, baselineAverage: baseline ? (baseline[tag] ?? 0) : null });
   }
-  // カテゴリの目盛りは、今期に出たタグだけでなく、そのカテゴリの相手の合計で引く
+  // カテゴリの相手は、今期に出たタグだけでなく、そのカテゴリの相手の合計で引く
   if (baseline) {
     for (const [tag, minutes] of Object.entries(baseline)) {
-      const entry = categories.get(categoryOfTag(tag));
-      if (entry) entry.baselineMinutes = (entry.baselineMinutes ?? 0) + minutes;
+      const row = rows.get(categoryOfTag(tag));
+      if (row) row.baselineAverage = (row.baselineAverage ?? 0) + minutes;
     }
   }
-  for (const entry of categories.values()) entry.tags.sort((a, b) => b.minutes - a.minutes);
-  return [...categories.values()].sort((a, b) => {
-    if (a.category === "other") return 1;
-    if (b.category === "other") return -1;
-    return b.minutes - a.minutes;
-  });
+  for (const row of rows.values()) {
+    row.average = row.total / days;
+    row.percent = total ? (row.total / total) * 100 : 0;
+    row.tags.sort((a, b) => b.total - a.total);
+  }
+  return CATEGORY_ORDER.filter((category) => rows.has(category)).map((category) => rows.get(category)!);
 }
 
 export type TagDayRow = { reportDate: string; tag: string; minutes: number };
