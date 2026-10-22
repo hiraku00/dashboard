@@ -209,6 +209,8 @@ async function D1AnalyticsPanel({ d1Query }: { d1Query: D1BackedUsage }) {
         <div className="usage-row"><span>TextTubeの動画</span><strong>{count.format(d1Query.databaseRecords.textTube)} 件</strong></div>
         <div className="usage-row"><span>ちきりんオプチャのノート</span><strong>{count.format(d1Query.databaseRecords.openchatNotes)} 件</strong></div>
         <div className="usage-row"><span>ちきりんオプチャのコメント</span><strong>{count.format(d1Query.databaseRecords.openchatComments)} 件</strong></div>
+        <div className="usage-row"><span>To Doのタスク</span><strong>{count.format(d1Query.databaseRecords.todoTasks)} 件</strong></div>
+        <div className="usage-row"><span>作業日報</span><strong>{count.format(d1Query.databaseRecords.dailyReports)} 日分</strong></div>
       </div>
     </section>
   );

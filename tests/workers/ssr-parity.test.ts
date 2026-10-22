@@ -273,7 +273,7 @@ describe("Storage usage page", () => {
     await seedOneItem();
     const [pageResponse, apiBody] = await Promise.all([
       SELF.fetch(`${BASE}/settings/storage`),
-      SELF.fetch(`${BASE}/api/settings/storage`).then((response) => response.json() as Promise<{ databaseRecords: { watchList: number; openchatNotes: number; openchatComments: number } }>),
+      SELF.fetch(`${BASE}/api/settings/storage`).then((response) => response.json() as Promise<{ databaseRecords: { watchList: number; openchatNotes: number; openchatComments: number; todoTasks: number; dailyReports: number } }>),
     ]);
     const html = await pageResponse.text();
     expect(html).toContain("主な保存データ");
@@ -287,6 +287,9 @@ describe("Storage usage page", () => {
     // ちきりんオプチャ(D1のノート・コメント)も保存データとして数える
     expect(Number(html.match(/ちきりんオプチャのノート<\/span><strong>(\d+)/)?.[1])).toBe(apiBody.databaseRecords.openchatNotes);
     expect(Number(html.match(/ちきりんオプチャのコメント<\/span><strong>(\d+)/)?.[1])).toBe(apiBody.databaseRecords.openchatComments);
+    // To Do のタスクと作業日報も保存データとして数える
+    expect(Number(html.match(/To Doのタスク<\/span><strong>(\d+)/)?.[1])).toBe(apiBody.databaseRecords.todoTasks);
+    expect(Number(html.match(/作業日報<\/span><strong>(\d+)/)?.[1])).toBe(apiBody.databaseRecords.dailyReports);
   });
 
   // The functional tests above would all still pass even if someone

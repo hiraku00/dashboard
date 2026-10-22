@@ -24,7 +24,7 @@ export type D1BackedUsage = {
   usage: { bytes: number; count: number };
   categories: Record<string, unknown>[];
   latest: Record<string, unknown> | null;
-  databaseRecords: { watchList: number; manageAsset: number; textTube: number; openchatNotes: number; openchatComments: number };
+  databaseRecords: { watchList: number; manageAsset: number; textTube: number; openchatNotes: number; openchatComments: number; todoTasks: number; dailyReports: number };
   transcriptUsage: { credits: number; attempts: number; lastUsedAt: string | null };
 };
 
@@ -32,7 +32,7 @@ const emptyD1Records: Omit<D1BackedUsage, "ok" | "error"> = {
   usage: { bytes: 0, count: 0 },
   categories: [],
   latest: null,
-  databaseRecords: { watchList: 0, manageAsset: 0, textTube: 0, openchatNotes: 0, openchatComments: 0 },
+  databaseRecords: { watchList: 0, manageAsset: 0, textTube: 0, openchatNotes: 0, openchatComments: 0, todoTasks: 0, dailyReports: 0 },
   transcriptUsage: { credits: 0, attempts: 0, lastUsedAt: null },
 };
 
@@ -50,7 +50,7 @@ export async function d1BackedUsage(month: string): Promise<D1BackedUsage> {
     // Promise.all), which cost a round trip each, ~100-300ms apiece from the
     // Worker. A failure in any statement rejects the batch, so it still lands
     // in the catch below and yields the same { ok: false } as before.
-    const [bytes, categories, latest, watchList, manageAsset, textTube, transcript, openchatNotes, openchatComments] = await env.DB.batch<Record<string, unknown>>([
+    const [bytes, categories, latest, watchList, manageAsset, textTube, transcript, openchatNotes, openchatComments, todoTasks, dailyReports] = await env.DB.batch<Record<string, unknown>>([
       env.DB.prepare(STORAGE_BYTES_SQL),
       env.DB.prepare("SELECT category, COUNT(*) AS count, COALESCE(SUM(size_bytes),0) AS bytes FROM storage_objects WHERE deleted_at IS NULL GROUP BY category ORDER BY bytes DESC"),
       env.DB.prepare("SELECT * FROM storage_usage_daily ORDER BY usage_date DESC LIMIT 1"),
@@ -60,6 +60,10 @@ export async function d1BackedUsage(month: string): Promise<D1BackedUsage> {
       env.DB.prepare("SELECT COALESCE(SUM(credits),0) AS credits, COUNT(*) AS attempts, MAX(created_at) AS last_used_at FROM text_tube_api_usage WHERE provider='supadata' AND substr(created_at,1,7)=?").bind(month),
       env.DB.prepare("SELECT COUNT(*) AS count FROM openchat_notes WHERE deleted_at IS NULL"),
       env.DB.prepare("SELECT COUNT(*) AS count FROM openchat_comments WHERE deleted_at IS NULL"),
+      // To Do のタスク(繰り返しタスクから作った日ごとのカードを含む)
+      env.DB.prepare("SELECT COUNT(*) AS count FROM todo_tasks WHERE deleted_at IS NULL"),
+      // 作業日報(1日1行。正規化・タグの行はこの日数に従って増える)
+      env.DB.prepare("SELECT COUNT(*) AS count FROM daily_reports"),
     ]);
     const transcriptUsage = (transcript.results?.[0] as { credits?: number; attempts?: number; last_used_at?: string | null } | undefined) ?? { credits: 0, attempts: 0, last_used_at: null };
     return {
@@ -74,6 +78,8 @@ export async function d1BackedUsage(month: string): Promise<D1BackedUsage> {
         textTube: Number(textTube.results?.[0]?.count ?? 0),
         openchatNotes: Number(openchatNotes.results?.[0]?.count ?? 0),
         openchatComments: Number(openchatComments.results?.[0]?.count ?? 0),
+        todoTasks: Number(todoTasks.results?.[0]?.count ?? 0),
+        dailyReports: Number(dailyReports.results?.[0]?.count ?? 0),
       },
       transcriptUsage: {
         credits: Number(transcriptUsage.credits ?? 0),
