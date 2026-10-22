@@ -59,19 +59,25 @@ const worker = {
   async scheduled(controller: ScheduledController, env: Env, _ctx: ExecutionContext) {
     void _ctx;
     if (!env.DB) return;
-    // wrangler.jsonc's `triggers.crons` has two independent schedules
-    // firing this same handler; `controller.cron` says which one woke it.
-    // "0 17 * * *" = UTC 17:00 = Asia/Bangkok 00:00 (todoDate()'s timezone),
-    // i.e. right after the To Do board's day rolls over -- see Issue #71 for
-    // why this materialization was moved out of GET /api/todos/board.
-    if (controller.cron === "0 17 * * *") {
+    void controller;
+    // wrangler.jsonc has a single schedule, "0 17 * * *" = UTC 17:00 = Asia/Bangkok 00:00
+    // (todoDate()'s timezone), i.e. right after the app's day rolls over. Every daily job
+    // runs here, each guarded on its own so one failing does not skip the others.
+    //
+    // 1. To Do: materialize today's recurring tasks (moved out of GET /api/todos/board, Issue #71).
+    try {
       await initTodo();
       await materializeRoutines(todoDate());
-      return;
+    } catch (error) {
+      console.error("materializeRoutines failed", error);
     }
-    if (env.FILES) await reconcileStorageUsage(env.FILES, env.DB, "scheduled-r2-list");
-    // D1 のテーブルごとの容量の概算(使用量画面の「主な保存データ」)。全テーブルを全件読むので1日1回だけ。
-    // 失敗しても R2 の記録は済んでいるので、ログに残すだけにする。
+    // 2. R2: walk the bucket and record the day's object count and size.
+    try {
+      if (env.FILES) await reconcileStorageUsage(env.FILES, env.DB, "scheduled-r2-list");
+    } catch (error) {
+      console.error("reconcileStorageUsage failed", error);
+    }
+    // 3. D1 のテーブルごとの容量の概算(使用量画面の「主な保存データ」)。全テーブルを全件読むので1日1回だけ。
     try {
       await ensureSchema({ seed: false });
       await measureD1Tables(env.DB);

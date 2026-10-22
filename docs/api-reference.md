@@ -83,7 +83,8 @@ auto-daily-report の送信スクリプトから呼ぶ。どれもCloudflare Acc
 | ---------------------------------- | ------------------------------------ |
 | `GET /api/portal/summary`          | ポータルホーム用の機能概要・最新状態 |
 | `GET /api/settings/storage`        | D1/R2利用量、カテゴリ、上限警告      |
-| `POST /api/cron/reconcile-storage` | R2台帳と利用量の日次照合             |
+| `POST /api/cron/reconcile-storage` | R2台帳と利用量の照合と、D1のテーブルごとの容量の計測（手動。日次は毎日0時(バンコク時間)のcronで同じことを行う） |
+| `POST /api/settings/storage/measure` | 使用量画面の「今日の分を計測」。D1のテーブルごとの容量を、今日(バンコク時間)の分が無いときだけ計測する。計測済みなら409 |
 
 ## 認証の扱い
 

@@ -57,7 +57,7 @@ auto-daily-report が生成する1日1件の作業日報（`migrations/0017_dail
 
 - `storage_objects`: R2オブジェクトの論理台帳
 - `storage_usage_daily`: 日次使用量とカテゴリ別集計
-- `d1_table_usage_daily`: D1のテーブルごとの行数と容量の概算（値の長さの合計。索引・ページの余白は含まない）を1日1回記録。D1は `dbstat` を使えないため（2026-10-23に本番で確認）この概算にしている。日次のcron（UTC 02:17）と `POST /api/cron/reconcile-storage` で計測し、使用量画面は記録を読むだけ（`app/lib/d1-table-usage.ts`）
+- `d1_table_usage_daily`: D1のテーブルごとの行数と容量の概算（値の長さの合計。索引・ページの余白は含まない）を1日1回記録。D1は `dbstat` を使えないため（2026-10-23に本番で確認）この概算にしている。毎日0時（バンコク時間、UTC 17:00）のcron、使用量画面の「今日の分を計測」ボタン（その日に計測済みなら測らない）、`POST /api/cron/reconcile-storage` で計測し、使用量画面は記録を読むだけ。日付はバンコク時間の日付（`app/lib/d1-table-usage.ts`）
 
 正確な列定義は `db/index.ts` の `ensureSchema()` を正とします（新規DB向けのCREATE文一式）。既存DBへ適用済みの変更は `migrations/` のSQLに残っています。スキーマ変更時は `migrations/` に連番のSQLを追加し（`wrangler d1 migrations apply` で適用）、同じ変更を `ensureSchema()` にも反映します。既存データを壊す変更はバックアップとロールバック手順を先に用意します。
 

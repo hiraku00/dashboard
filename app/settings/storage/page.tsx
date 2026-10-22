@@ -3,7 +3,8 @@ import { PortalHeader } from "../../portal-nav";
 import { dailyResetWindows } from "../../lib/usage-window";
 import { R2_SOFT_LIMIT_BYTES } from "@/app/lib/r2-storage";
 import { cloudflareAnalyticsUsage, d1BackedUsage, type D1BackedUsage } from "@/app/lib/queries/storage-usage";
-import { TODO_TIMEZONE } from "@/app/lib/todo-date";
+import { TODO_TIMEZONE, todoDate } from "@/app/lib/todo-date";
+import { MeasureButton } from "./measure-button";
 import { formatBytes, formatBytesDelta, type TableUsageSummary, type UsageGroupKey } from "@/app/lib/d1-table-usage";
 
 const D1_DAILY_ROWS_READ_LIMIT = 5_000_000;
@@ -220,12 +221,14 @@ async function D1AnalyticsPanel({ d1Query }: { d1Query: D1BackedUsage }) {
           {tableUsage.date ? (
             <>
               <span>容量の合計 {formatBytes(tableUsage.totalBytes)}{tableUsage.baseDate && tableUsage.baseTotalBytes !== null ? `(${tableUsage.days}日で ${formatBytesDelta(tableUsage.totalBytes - tableUsage.baseTotalBytes)})` : ""}・{tableUsage.date} の計測</span>
-              <span className="usage-window-caveat">容量は1日1回(UTC 02:17)の計測で、各テーブルの値の長さを足した概算です。索引やページの余白は含まないため、上のD1全体の容量より小さく出ます。</span>
+              <span className="usage-window-caveat">容量は毎日0時(バンコク時間)の計測で、各テーブルの値の長さを足した概算です。索引やページの余白は含まないため、上のD1全体の容量より小さく出ます。</span>
             </>
           ) : (
-            <span>容量は1日1回(UTC 02:17)計測します。まだ計測の記録がありません。</span>
+            <span>容量は毎日0時(バンコク時間)に計測します。まだ計測の記録がありません。</span>
           )}
         </p>
+        {/* 計測が無いとき(デプロイ直後など)や今日の分がまだのときに、その場で測る。今日の分があれば押せない */}
+        <div className="usage-measure-row"><MeasureButton measuredToday={tableUsage.date === todoDate()} /></div>
         {tableUsage.date && (
           <details className="usage-table-details">
             <summary>テーブル別の内訳</summary>

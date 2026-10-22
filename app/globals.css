@@ -622,4 +622,9 @@ h1,h2,h3 { color:var(--ink); } h1 { margin:0; font-size:30px; line-height:1.1; l
 .usage-table-breakdown th,.usage-table-breakdown td { padding:6px 8px; border-bottom:1px solid var(--line); text-align:right; }
 .usage-table-breakdown th:first-child { text-align:left; font-weight:500; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; }
 .usage-table-breakdown thead th { color:var(--muted); font-family:inherit; font-weight:600; }
-@media(max-width:760px){ .usage-table-details { padding:0 20px 16px; } }
+.database-breakdown>.usage-measure-row { grid-column:1/-1; padding:0 26px 14px; }
+.usage-measure { display:inline-flex; flex-wrap:wrap; align-items:center; gap:10px; }
+.usage-measure-button.secondary-button { min-height:36px; margin:0; }
+.usage-measure-button:disabled { cursor:default; opacity:.6; }
+.usage-measure-error { color:var(--danger); font-size:13px; }
+@media(max-width:760px){ .usage-table-details { padding:0 20px 16px; } .database-breakdown>.usage-measure-row { padding:0 20px 12px; } }
