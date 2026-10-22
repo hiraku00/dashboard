@@ -1,24 +1,43 @@
-import { redirect } from "next/navigation";
 import { PortalHeader } from "../portal-nav";
-import { latestReportDate } from "@/app/lib/queries/daily-report";
+import { DailyReportApp } from "../daily-report-app";
+import { REPORT_TABS, type ReportTab } from "../daily-report-ui";
+import { listReportDates, periodView } from "@/app/lib/queries/daily-report";
+import { buildModel, type DailyReportModel } from "@/app/lib/daily-report-model";
+import { defaultAnchor, isRange, isReportDateString, periodRange, type Range } from "@/app/lib/daily-report-summary";
+import { todoDate } from "@/app/lib/todo-date";
 
-// 週・月のダッシュボードができるまでの入口: 最新の日報の「1日の詳細」へ移る
-// (docs/daily-report-view-design.md §10 の段階4で、この場所がダッシュボードになる)。
-export default async function DailyReportIndexPage() {
-  let latest: string | null = null;
-  let failed = false;
+type Params = { range?: string | string[]; date?: string | string[]; tab?: string | string[] };
+const first = (value: string | string[] | undefined) => (Array.isArray(value) ? value[0] : value);
+
+// Server Component: 期間(?range=&date=)の分を D1 から1回の batch で読み(app/lib/queries/daily-report.ts)、
+// 画面の形に組み立てて(app/lib/daily-report-model.ts)クライアントのワークスペースへ渡す。
+// date が無ければ既定の期間(今の期間に日報があればそこ、無ければ最新の日報の期間)を開く。
+export default async function DailyReportPage({ searchParams }: { searchParams?: Promise<Params> }) {
+  const params = (await searchParams) ?? {};
+  const rawRange = first(params.range);
+  const range: Range = isRange(rawRange) ? rawRange : "week";
+  const rawTab = first(params.tab);
+  const tab: ReportTab = REPORT_TABS.some(([id]) => id === rawTab) ? (rawTab as ReportTab) : "summary";
+  const rawDate = first(params.date);
+  const today = todoDate();
+
+  let model: DailyReportModel | null = null;
   try {
-    latest = await latestReportDate();
+    const date = rawDate && isReportDateString(rawDate) ? rawDate : defaultAnchor(range, await listReportDates(), today);
+    const period = periodRange(range, date, today);
+    model = buildModel(await periodView(period), period, today);
   } catch {
-    failed = true;
+    model = null;
   }
-  if (latest) redirect(`/daily-report/${latest}`);
-  return (
-    <main className="portal-shell">
-      <PortalHeader title="作業日報" active="/daily-report" />
-      <section className="tube-panel dr-card">
-        <p className="dr-empty">{failed ? "日報を読み込めませんでした。時間をおいて開き直してください。" : "取り込み済みの日報がありません。"}</p>
-      </section>
-    </main>
-  );
+
+  if (!model) {
+    return (
+      <main className="portal-shell asset-workspace daily-report-workspace">
+        <PortalHeader title="作業日報" active="/daily-report" />
+        <section className="asset-panel dr-panel"><p className="dr-empty">日報を読み込めませんでした。時間をおいて開き直してください。</p></section>
+      </main>
+    );
+  }
+  // 期間が変わるたびに状態(開いているタブ以外)を作り直す
+  return <DailyReportApp key={`${model.period.range}-${model.period.anchor}`} model={model} initialTab={tab} />;
 }
