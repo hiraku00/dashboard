@@ -4,11 +4,14 @@
  *  そこで各テーブルの全列の値の長さ(`length(CAST(列 AS BLOB))`)を足した**概算**を使う。索引・ページの余白・
  *  行の管理領域は含まないので、Cloudflare Analytics の D1 全体の容量より小さく出る。
  *
- *  全テーブルを全件読むので、画面を開くたびではなく、1日1回の cron(worker/index.ts)と手動の
- *  /api/cron/reconcile-storage でだけ計測する。画面は記録を読むだけ(D1 の1日の読み取り上限を消費しないため)。
+ *  全テーブルを全件読むので、画面を開くたびではなく、毎日0時(バンコク時間、UTC 17:00)の cron(worker/index.ts)、
+ *  使用量画面の「今日の分を計測」ボタン(その日に計測済みなら測らない)、手動の /api/cron/reconcile-storage でだけ計測する。
+ *  画面は記録を読むだけ(D1 の1日の読み取り上限を消費しないため)。記録の日付はアプリの1日の区切りと同じバンコク時間の日付。
  *
  *  worker/index.ts の scheduled からも呼ぶので、"cloudflare:workers" は import せず D1Database を受け取る
  *  (app/lib/storage-usage.ts と同じ理由)。グループ分けなどの純粋な部分は vitest の node project でテストする。 */
+
+import { todoDate } from "./todo-date.ts";
 
 export type TableUsageRow = { usageDate: string; tableName: string; rowCount: number; payloadBytes: number };
 
@@ -19,7 +22,7 @@ function isMeasuredTable(name: string) {
 
 /** 全テーブルの行数と値の長さの合計を測り、その日の行として記録する。D1 への呼び出しは3回+記録の1回。 */
 export async function measureD1Tables(db: D1Database, now = new Date()): Promise<{ date: string; tables: TableUsageRow[] }> {
-  const date = now.toISOString().slice(0, 10);
+  const date = todoDate(now);
   const list = await db.prepare("PRAGMA table_list").all<{ schema: string; name: string; type: string }>();
   const tables = (list.results ?? []).filter((row) => row.schema === "main" && row.type === "table" && isMeasuredTable(row.name)).map((row) => row.name).sort();
   if (!tables.length) return { date, tables: [] };
@@ -42,6 +45,12 @@ export async function measureD1Tables(db: D1Database, now = new Date()): Promise
     .prepare("INSERT INTO d1_table_usage_daily (usage_date,table_name,row_count,payload_bytes,measured_at) VALUES (?,?,?,?,?) ON CONFLICT(usage_date,table_name) DO UPDATE SET row_count=excluded.row_count,payload_bytes=excluded.payload_bytes,measured_at=excluded.measured_at")
     .bind(row.usageDate, row.tableName, row.rowCount, row.payloadBytes, measuredAt)));
   return { date, tables: rows };
+}
+
+/** 今日(バンコク時間の日付)の計測がもう記録されているか。「今日の分を計測」ボタンの可否に使う。 */
+export async function measuredToday(db: D1Database, now = new Date()): Promise<boolean> {
+  const row = await db.prepare("SELECT 1 AS found FROM d1_table_usage_daily WHERE usage_date = ? LIMIT 1").bind(todoDate(now)).first<{ found: number }>();
+  return Boolean(row);
 }
 
 // ---- 画面用のまとめ(純粋) ----
