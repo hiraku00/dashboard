@@ -46,8 +46,8 @@ describe("d1BackedUsage (result that must not change)", () => {
       error: null,
       usage: { bytes: 3500, count: 3 },
       categories: [
-        { category: "manage-asset/raw", count: 2, bytes: 3000 },
-        { category: "text-tube/videos", count: 1, bytes: 500 },
+        { category: "manage-asset/raw", count: 2, bytes: 3000, bytes_30d_ago: 3000 },
+        { category: "text-tube/videos", count: 1, bytes: 500, bytes_30d_ago: 500 },
       ],
       latest: { usage_date: "2026-09-20", object_count: 3, payload_bytes: 3600, class_a_estimate: 6, class_b_estimate: 7, source: "ledger", updated_at: T0 },
       databaseRecords: { watchList: 2, manageAsset: 2, textTube: 1, openchatNotes: 0, openchatComments: 0, todoTasks: 0, dailyReports: 0 },
@@ -107,6 +107,20 @@ describe("measureD1Tables (1日1回の容量の計測)", () => {
     const watchList = usage.tableUsage.groups.find((group) => group.key === "watchList")!;
     expect(watchList.bytes).toBeGreaterThan(watchList.baseBytes ?? Infinity);
     expect(watchList.tables.find((table) => table.name === "items")?.rows).toBe(4);
+  });
+});
+
+describe("R2 のカテゴリごとの30日前の容量", () => {
+  test("is read from the ledger: files added within 30 days are not counted, files deleted within 30 days still are", async () => {
+    // 2026-10-20 に Manage Asset の原本を1つ追加、2026-10-21 に k1(1000)を削除
+    await run("INSERT INTO storage_objects (object_key, category, size_bytes, sha256, content_type, created_at) VALUES ('k5', 'manage-asset/raw', 700, 'sha', 'text/plain', '2026-10-20T00:00:00.000Z')");
+    await run("UPDATE storage_objects SET deleted_at='2026-10-21T00:00:00.000Z' WHERE object_key='k1'");
+    const usage = await d1BackedUsage("2026-10", new Date("2026-10-23T00:00:00.000Z"));
+    const raw = usage.categories.find((row) => row.category === "manage-asset/raw");
+    // 今: k2(2000)+k5(700)。30日前(9/23): k1(1000)+k2(2000)
+    expect(raw).toEqual({ category: "manage-asset/raw", count: 2, bytes: 2700, bytes_30d_ago: 3000 });
+    await run("DELETE FROM storage_objects WHERE object_key='k5'");
+    await run("UPDATE storage_objects SET deleted_at=NULL WHERE object_key='k1'");
   });
 });
 

@@ -613,18 +613,22 @@ h1,h2,h3 { color:var(--ink); } h1 { margin:0; font-size:30px; line-height:1.1; l
 }
 
 /* 使用量: 主な保存データの容量(1日1回の計測の概算。app/lib/d1-table-usage.ts) */
-.usage-row strong .usage-size { display:block; margin-top:3px; color:var(--muted); font-size:12px; font-weight:500; font-variant-numeric:tabular-nums; }
-.database-breakdown>.usage-window-note,.database-breakdown>.usage-table-details { grid-column:1/-1; }
-.database-breakdown>.usage-window-note { padding-top:12px; }
+.usage-row strong .usage-size { margin-left:8px; color:var(--muted); font-size:12px; font-weight:500; font-variant-numeric:tabular-nums; white-space:nowrap; }
+/* 保存データの行は「件数 · 容量 増え方」を1行に。行の高さも詰めて、スクロールを減らす */
+.usage-panel .database-breakdown .usage-row,.usage-panel .r2-breakdown .usage-row { min-height:0; padding-block:9px; }
+.usage-panel .database-breakdown .usage-row strong,.usage-panel .r2-breakdown .usage-row strong { white-space:nowrap; text-align:right; }
+@media(max-width:760px){ .usage-panel .database-breakdown .usage-row strong,.usage-panel .r2-breakdown .usage-row strong { white-space:normal; } }
+.database-breakdown>.usage-table-details { grid-column:1/-1; }
 .usage-table-details { padding:0 26px 18px; }
 .usage-table-details summary { cursor:pointer; color:var(--blue-strong); font-size:13px; font-weight:700; }
 .usage-table-breakdown { width:100%; margin-top:10px; border-collapse:collapse; font-size:13px; font-variant-numeric:tabular-nums; }
 .usage-table-breakdown th,.usage-table-breakdown td { padding:6px 8px; border-bottom:1px solid var(--line); text-align:right; }
 .usage-table-breakdown th:first-child { text-align:left; font-weight:500; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; }
 .usage-table-breakdown thead th { color:var(--muted); font-family:inherit; font-weight:600; }
-.database-breakdown>.usage-measure-row { grid-column:1/-1; padding:0 26px 14px; }
+.database-breakdown>.usage-measure-row { grid-column:1/-1; display:flex; align-items:center; justify-content:space-between; gap:12px; padding:10px 24px; }
+.usage-measure-note { margin:0; min-width:0; overflow:hidden; color:var(--muted); font-size:12px; text-overflow:ellipsis; white-space:nowrap; font-variant-numeric:tabular-nums; }
 .usage-measure { display:inline-flex; flex-wrap:wrap; align-items:center; gap:10px; }
-.usage-measure-button.secondary-button { min-height:36px; margin:0; }
+.usage-measure-button.secondary-button { flex:none; min-height:32px; margin:0; padding:4px 10px; }
 .usage-measure-button:disabled { cursor:default; opacity:.6; }
 .usage-measure-error { color:var(--danger); font-size:13px; }
-@media(max-width:760px){ .usage-table-details { padding:0 20px 16px; } .database-breakdown>.usage-measure-row { padding:0 20px 12px; } }
+@media(max-width:760px){ .usage-table-details { padding:0 20px 16px; } .database-breakdown>.usage-measure-row { padding:8px 20px; } .usage-measure-note { white-space:normal; } }

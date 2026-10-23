@@ -63,7 +63,8 @@ export default async function StoragePage() {
                 <div className="usage-row" key={row.category as string}>
                   <span>{storageCategoryName(row.category as string)}</span>
                   <strong>
-                    {(Number(row.bytes) / 1024 / 1024).toFixed(2)} MB · {row.count as number} 件
+                    {count.format(Number(row.count))} 件 · {formatBytes(Number(row.bytes))}
+                    <small className="usage-size">30日で {formatBytesDelta(Number(row.bytes) - Number(row.bytes_30d_ago ?? row.bytes))}</small>
                   </strong>
                 </div>
               ))
@@ -217,18 +218,18 @@ async function D1AnalyticsPanel({ d1Query }: { d1Query: D1BackedUsage }) {
         {tableUsage.date && (
           <div className="usage-row"><span>台帳・同期の記録など</span><strong>{formatBytes(tableUsage.groups.find((group) => group.key === "system")?.bytes ?? 0)}<TableSize usage={tableUsage} group="system" onlyGrowth /></strong></div>
         )}
-        <p className="usage-window-note">
-          {tableUsage.date ? (
-            <>
-              <span>容量の合計 {formatBytes(tableUsage.totalBytes)}{tableUsage.baseDate && tableUsage.baseTotalBytes !== null ? `(${tableUsage.days}日で ${formatBytesDelta(tableUsage.totalBytes - tableUsage.baseTotalBytes)})` : ""}・{tableUsage.date} の計測</span>
-              <span className="usage-window-caveat">容量は毎日0時(バンコク時間)の計測で、各テーブルの値の長さを足した概算です。索引やページの余白は含まないため、上のD1全体の容量より小さく出ます。</span>
-            </>
-          ) : (
-            <span>容量は毎日0時(バンコク時間)に計測します。まだ計測の記録がありません。</span>
-          )}
-        </p>
-        {/* 計測が無いとき(デプロイ直後など)や今日の分がまだのときに、その場で測る。今日の分があれば押せない */}
-        <div className="usage-measure-row"><MeasureButton measuredToday={tableUsage.date === todoDate()} /></div>
+        {/* 合計・計測日・概算の注記を1行に、右に「今日の分を計測」(今日の分があれば押せない)。縦に積まない */}
+        <div className="usage-measure-row">
+          <p
+            className="usage-measure-note"
+            title="毎日0時(バンコク時間)に計測。各テーブルの値の長さを足した概算で、索引やページの余白は含まないため、D1全体の容量より小さく出ます。"
+          >
+            {tableUsage.date
+              ? `合計 ${formatBytes(tableUsage.totalBytes)}${tableUsage.baseDate && tableUsage.baseTotalBytes !== null ? `(${tableUsage.days}日で ${formatBytesDelta(tableUsage.totalBytes - tableUsage.baseTotalBytes)})` : ""} · ${tableUsage.date} 0時の計測 · 値の長さの概算(索引は含まない)`
+              : "容量は毎日0時(バンコク時間)に計測します。まだ記録がありません。"}
+          </p>
+          <MeasureButton measuredToday={tableUsage.date === todoDate()} />
+        </div>
         {tableUsage.date && (
           <details className="usage-table-details">
             <summary>テーブル別の内訳</summary>
@@ -258,7 +259,11 @@ function TableSize({ usage, group, onlyGrowth = false }: { usage: TableUsageSumm
   const entry = usage.groups.find((candidate) => candidate.key === group);
   const bytes = entry?.bytes ?? 0;
   const growth = usage.baseDate && entry?.baseBytes != null ? `${usage.days}日で ${formatBytesDelta(bytes - entry.baseBytes)}` : null;
-  const parts = [onlyGrowth ? null : formatBytes(bytes), growth].filter(Boolean);
-  if (!parts.length) return null;
-  return <small className="usage-size">{parts.join(" · ")}</small>;
+  // 1行に「件数 · 容量」を太字、増え方を灰色で続ける(縦に積まない)
+  return (
+    <>
+      {onlyGrowth ? null : ` · ${formatBytes(bytes)}`}
+      {growth ? <small className="usage-size">{growth}</small> : null}
+    </>
+  );
 }
