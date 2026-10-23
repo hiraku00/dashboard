@@ -151,103 +151,113 @@ async function D1AnalyticsPanel({ d1Query }: { d1Query: D1BackedUsage }) {
         </div>
         <span>{d1.configured ? `本日 ${d1.today.date}` : "未設定"}</span>
       </div>
-      {d1.configured ? (
-        <>
-          {!d1Query.ok && (
-            <p className="notice" role="alert">
-              D1への直接クエリが失敗しています（{d1Query.error ?? "原因不明"}）。無料枠の日次上限を使い切っている可能性があります。以下のCloudflare Analytics由来の数値は影響を受けません。
-            </p>
-          )}
-          <div className="usage-primary">
-            <strong>{(d1.storageBytes / 1024 / 1024).toFixed(2)} MB</strong>
-            <span>使用率 {d1StoragePct.toFixed(2)}%</span>
-          </div>
-          <div className="usage-meter" aria-label={`D1データベース容量 ${d1StoragePct.toFixed(2)}%`}>
-            <div className="usage-bar"><span style={{ width: `${d1StoragePct}%` }} /></div>
-            <p>保存対象: Watch List、Manage Asset、TextTube、ちきりんオプチャ、To Do、作業日報のデータと履歴。</p>
-            <p>無料枠: 5 GB · 読取500万行/日 · 書込10万行/日</p>
-          </div>
-          <div className="usage-section-label">本日の利用状況（日次上限との対比）</div>
-          {/* The counters reset at UTC 00:00, which is the middle of the
-              morning here. Spelling the window out in local time is what
-              makes a near-zero reading readable: just after the boundary
-              almost nothing has been counted yet, and the overnight
-              collector sync lands in the PREVIOUS day. */}
-          <p className="usage-window-note">
-            集計期間: {d1.today.date}（UTC 00:00〜24:00）
-            {dailyResetWindows(d1.today.date).map((window) => (
-              <span key={window.label}>
-                {window.label}時間（{window.offsetLabel}）{window.start} 〜 {window.end}
-              </span>
-            ))}
-            <span className="usage-window-caveat">
-              コレクタの同期もUTC基準（00:00〜02:30）で動くため、必ずこの集計期間の中に入ります。
-            </span>
-          </p>
-          <div className="usage-meter" aria-label={`本日の読み取り行数 ${todayReadPct.toFixed(2)}%`}>
-            <div className="usage-bar"><span style={{ width: `${todayReadPct}%` }} /></div>
-            <p>読み取り {count.format(todayRowsRead)} / 5,000,000 行（{todayReadPct.toFixed(2)}%）</p>
-          </div>
-          <div className="usage-meter" aria-label={`本日の書き込み行数 ${todayWrittenPct.toFixed(2)}%`}>
-            <div className="usage-bar"><span style={{ width: `${todayWrittenPct}%` }} /></div>
-            <p>書き込み {count.format(todayRowsWritten)} / 100,000 行（{todayWrittenPct.toFixed(2)}%）</p>
-          </div>
-          <div className="usage-metrics-grid" aria-label="直近30日のD1利用状況（参考値・日次上限とは対比不可）">
-            <div><span>読み取り行数（30日累計）</span><strong>{count.format(d1.last30Days.rowsRead)}</strong></div>
-            <div><span>書き込み行数（30日累計）</span><strong>{count.format(d1.last30Days.rowsWritten)}</strong></div>
-            <div><span>読み取りクエリ（30日累計）</span><strong>{count.format(d1.last30Days.readQueries)}</strong></div>
-            <div><span>書き込みクエリ（30日累計）</span><strong>{count.format(d1.last30Days.writeQueries)}</strong></div>
-          </div>
-        </>
-      ) : (
-        <p className="muted-copy">Cloudflare Analyticsの読み取り専用トークンを設定すると、D1容量と直近30日の読み書き量を表示します。</p>
+      {d1.configured && !d1Query.ok && (
+        <p className="notice" role="alert">
+          D1への直接クエリが失敗しています（{d1Query.error ?? "原因不明"}）。無料枠の日次上限を使い切っている可能性があります。以下のCloudflare Analytics由来の数値は影響を受けません。
+        </p>
       )}
-      {/* Issue #100: Watch List/Manage Asset/TextTube/ちきりんオプチャの件数はD1BackedUsage()
-          由来の純粋なD1データで、Cloudflare Analyticsの設定有無とは無関係。
-          以前はd1.configuredの分岐の内側に入れ子になっており、Analytics未
-          設定の環境(ローカル開発・テスト)ではこの件数表示ごと消えていた。 */}
-      <div className="usage-breakdown database-breakdown">
-        <div className="usage-section-label">主な保存データ</div>
-        <div className="usage-row"><span>Watch List</span><strong>{count.format(d1Query.databaseRecords.watchList)} 件<TableSize usage={tableUsage} group="watchList" /></strong></div>
-        <div className="usage-row"><span>Manage Assetのスナップショット</span><strong>{count.format(d1Query.databaseRecords.manageAsset)} 件<TableSize usage={tableUsage} group="manageAsset" /></strong></div>
-        <div className="usage-row"><span>TextTubeの動画</span><strong>{count.format(d1Query.databaseRecords.textTube)} 件<TableSize usage={tableUsage} group="textTube" /></strong></div>
-        <div className="usage-row"><span>ちきりんオプチャのノート</span><strong>{count.format(d1Query.databaseRecords.openchatNotes)} 件<TableSize usage={tableUsage} group="openchatNotes" /></strong></div>
-        <div className="usage-row"><span>ちきりんオプチャのコメント</span><strong>{count.format(d1Query.databaseRecords.openchatComments)} 件<TableSize usage={tableUsage} group="openchatComments" /></strong></div>
-        <div className="usage-row"><span>To Doのタスク</span><strong>{count.format(d1Query.databaseRecords.todoTasks)} 件<TableSize usage={tableUsage} group="todoTasks" /></strong></div>
-        <div className="usage-row"><span>作業日報</span><strong>{count.format(d1Query.databaseRecords.dailyReports)} 日分<TableSize usage={tableUsage} group="dailyReports" /></strong></div>
-        {tableUsage.date && (
-          <div className="usage-row"><span>台帳・同期の記録など</span><strong>{formatBytes(tableUsage.groups.find((group) => group.key === "system")?.bytes ?? 0)}<TableSize usage={tableUsage} group="system" onlyGrowth /></strong></div>
-        )}
-        {/* 合計・計測日・概算の注記を1行に、右に「今日の分を計測」(今日の分があれば押せない)。縦に積まない */}
-        <div className="usage-measure-row">
-          <p
-            className="usage-measure-note"
-            title="毎日0時(バンコク時間)に計測。各テーブルの値の長さを足した概算で、索引やページの余白は含まないため、D1全体の容量より小さく出ます。"
-          >
-            {tableUsage.date
-              ? `合計 ${formatBytes(tableUsage.totalBytes)}${tableUsage.baseDate && tableUsage.baseTotalBytes !== null ? `(${tableUsage.days}日で ${formatBytesDelta(tableUsage.totalBytes - tableUsage.baseTotalBytes)})` : ""} · ${tableUsage.date} 0時の計測 · 値の長さの概算(索引は含まない)`
-              : "容量は毎日0時(バンコク時間)に計測します。まだ記録がありません。"}
-          </p>
-          <MeasureButton measuredToday={tableUsage.date === todoDate()} />
+      {/* PC幅ではこのカードだけ中身が多いので、左=容量と本日の上限対比、右=30日累計と
+          主な保存データ の2列に分けて縦を詰める。スマホでは従来どおりこの順に縦積み。 */}
+      <div className="d1-usage-body">
+        <div className="d1-usage-today">
+          {d1.configured ? (
+            <>
+              <div className="usage-primary">
+                <strong>{(d1.storageBytes / 1024 / 1024).toFixed(2)} MB</strong>
+                <span>使用率 {d1StoragePct.toFixed(2)}%</span>
+              </div>
+              <div className="usage-meter" aria-label={`D1データベース容量 ${d1StoragePct.toFixed(2)}%`}>
+                <div className="usage-bar"><span style={{ width: `${d1StoragePct}%` }} /></div>
+                <p>保存対象: Watch List、Manage Asset、TextTube、ちきりんオプチャ、To Do、作業日報のデータと履歴。</p>
+                <p>無料枠: 5 GB · 読取500万行/日 · 書込10万行/日</p>
+              </div>
+              <div className="usage-section-label">本日の利用状況（日次上限との対比）</div>
+              {/* The counters reset at UTC 00:00, which is the middle of the
+                  morning here. Spelling the window out in local time is what
+                  makes a near-zero reading readable: just after the boundary
+                  almost nothing has been counted yet, and the overnight
+                  collector sync lands in the PREVIOUS day. */}
+              <p className="usage-window-note">
+                集計期間: {d1.today.date}（UTC 00:00〜24:00）
+                {dailyResetWindows(d1.today.date).map((window) => (
+                  <span key={window.label}>
+                    {window.label}時間（{window.offsetLabel}）{window.start} 〜 {window.end}
+                  </span>
+                ))}
+                <span className="usage-window-caveat">
+                  コレクタの同期もUTC基準（00:00〜02:30）で動くため、必ずこの集計期間の中に入ります。
+                </span>
+              </p>
+              <div className="usage-meter" aria-label={`本日の読み取り行数 ${todayReadPct.toFixed(2)}%`}>
+                <div className="usage-bar"><span style={{ width: `${todayReadPct}%` }} /></div>
+                <p>読み取り {count.format(todayRowsRead)} / 5,000,000 行（{todayReadPct.toFixed(2)}%）</p>
+              </div>
+              <div className="usage-meter" aria-label={`本日の書き込み行数 ${todayWrittenPct.toFixed(2)}%`}>
+                <div className="usage-bar"><span style={{ width: `${todayWrittenPct}%` }} /></div>
+                <p>書き込み {count.format(todayRowsWritten)} / 100,000 行（{todayWrittenPct.toFixed(2)}%）</p>
+              </div>
+            </>
+          ) : (
+            <p className="muted-copy">Cloudflare Analyticsの読み取り専用トークンを設定すると、D1容量と直近30日の読み書き量を表示します。</p>
+          )}
         </div>
-        {tableUsage.date && (
-          <details className="usage-table-details">
-            <summary>テーブル別の内訳</summary>
-            <table className="usage-table-breakdown">
-              <thead><tr><th scope="col">テーブル</th><th scope="col">行数</th><th scope="col">容量</th>{tableUsage.baseDate && <th scope="col">{tableUsage.days}日の増加</th>}</tr></thead>
-              <tbody>
-                {tableUsage.groups.flatMap((group) => group.tables.map((table) => (
-                  <tr key={table.name}>
-                    <th scope="row">{table.name}</th>
-                    <td>{count.format(table.rows)}</td>
-                    <td>{formatBytes(table.bytes)}</td>
-                    {tableUsage.baseDate && <td>{table.baseBytes === null ? "—" : formatBytesDelta(table.bytes - table.baseBytes)}</td>}
-                  </tr>
-                )))}
-              </tbody>
-            </table>
-          </details>
-        )}
+        <div className="d1-usage-records">
+          {d1.configured && (
+            <div className="usage-metrics-grid" aria-label="直近30日のD1利用状況（参考値・日次上限とは対比不可）">
+              <div><span>読み取り行数（30日累計）</span><strong>{count.format(d1.last30Days.rowsRead)}</strong></div>
+              <div><span>書き込み行数（30日累計）</span><strong>{count.format(d1.last30Days.rowsWritten)}</strong></div>
+              <div><span>読み取りクエリ（30日累計）</span><strong>{count.format(d1.last30Days.readQueries)}</strong></div>
+              <div><span>書き込みクエリ（30日累計）</span><strong>{count.format(d1.last30Days.writeQueries)}</strong></div>
+            </div>
+          )}
+          {/* Issue #100: Watch List/Manage Asset/TextTube/ちきりんオプチャの件数はD1BackedUsage()
+              由来の純粋なD1データで、Cloudflare Analyticsの設定有無とは無関係。
+              以前はd1.configuredの分岐の内側に入れ子になっており、Analytics未
+              設定の環境(ローカル開発・テスト)ではこの件数表示ごと消えていた。 */}
+          <div className="usage-breakdown database-breakdown">
+            <div className="usage-section-label">主な保存データ</div>
+            <div className="usage-row"><span>Watch List</span><strong>{count.format(d1Query.databaseRecords.watchList)} 件<TableSize usage={tableUsage} group="watchList" /></strong></div>
+            <div className="usage-row"><span>Manage Assetのスナップショット</span><strong>{count.format(d1Query.databaseRecords.manageAsset)} 件<TableSize usage={tableUsage} group="manageAsset" /></strong></div>
+            <div className="usage-row"><span>TextTubeの動画</span><strong>{count.format(d1Query.databaseRecords.textTube)} 件<TableSize usage={tableUsage} group="textTube" /></strong></div>
+            <div className="usage-row"><span>ちきりんオプチャのノート</span><strong>{count.format(d1Query.databaseRecords.openchatNotes)} 件<TableSize usage={tableUsage} group="openchatNotes" /></strong></div>
+            <div className="usage-row"><span>ちきりんオプチャのコメント</span><strong>{count.format(d1Query.databaseRecords.openchatComments)} 件<TableSize usage={tableUsage} group="openchatComments" /></strong></div>
+            <div className="usage-row"><span>To Doのタスク</span><strong>{count.format(d1Query.databaseRecords.todoTasks)} 件<TableSize usage={tableUsage} group="todoTasks" /></strong></div>
+            <div className="usage-row"><span>作業日報</span><strong>{count.format(d1Query.databaseRecords.dailyReports)} 日分<TableSize usage={tableUsage} group="dailyReports" /></strong></div>
+            {tableUsage.date && (
+              <div className="usage-row"><span>台帳・同期の記録など</span><strong>{formatBytes(tableUsage.groups.find((group) => group.key === "system")?.bytes ?? 0)}<TableSize usage={tableUsage} group="system" onlyGrowth /></strong></div>
+            )}
+            {/* 合計・計測日・概算の注記を1行に、右に「今日の分を計測」(今日の分があれば押せない)。縦に積まない */}
+            <div className="usage-measure-row">
+              <p
+                className="usage-measure-note"
+                title="毎日0時(バンコク時間)に計測。各テーブルの値の長さを足した概算で、索引やページの余白は含まないため、D1全体の容量より小さく出ます。"
+              >
+                {tableUsage.date
+                  ? `合計 ${formatBytes(tableUsage.totalBytes)}${tableUsage.baseDate && tableUsage.baseTotalBytes !== null ? `(${tableUsage.days}日で ${formatBytesDelta(tableUsage.totalBytes - tableUsage.baseTotalBytes)})` : ""} · ${tableUsage.date} 0時の計測 · 値の長さの概算(索引は含まない)`
+                  : "容量は毎日0時(バンコク時間)に計測します。まだ記録がありません。"}
+              </p>
+              <MeasureButton measuredToday={tableUsage.date === todoDate()} />
+            </div>
+            {tableUsage.date && (
+              <details className="usage-table-details">
+                <summary>テーブル別の内訳</summary>
+                <table className="usage-table-breakdown">
+                  <thead><tr><th scope="col">テーブル</th><th scope="col">行数</th><th scope="col">容量</th>{tableUsage.baseDate && <th scope="col">{tableUsage.days}日の増加</th>}</tr></thead>
+                  <tbody>
+                    {tableUsage.groups.flatMap((group) => group.tables.map((table) => (
+                      <tr key={table.name}>
+                        <th scope="row">{table.name}</th>
+                        <td>{count.format(table.rows)}</td>
+                        <td>{formatBytes(table.bytes)}</td>
+                        {tableUsage.baseDate && <td>{table.baseBytes === null ? "—" : formatBytesDelta(table.bytes - table.baseBytes)}</td>}
+                      </tr>
+                    )))}
+                  </tbody>
+                </table>
+              </details>
+            )}
+          </div>
+        </div>
       </div>
     </section>
   );
