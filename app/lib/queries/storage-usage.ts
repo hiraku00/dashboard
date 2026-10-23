@@ -53,7 +53,8 @@ const TABLE_USAGE_SQL = `WITH latest AS (SELECT MAX(usage_date) AS d FROM d1_tab
   SELECT usage_date, table_name, row_count, payload_bytes FROM d1_table_usage_daily
   WHERE usage_date = (SELECT d FROM latest) OR usage_date = (SELECT d FROM base)`;
 
-export async function d1BackedUsage(month: string): Promise<D1BackedUsage> {
+export async function d1BackedUsage(month: string, now = new Date()): Promise<D1BackedUsage> {
+  const thirtyDaysAgo = new Date(now.getTime() - 30 * 86_400_000).toISOString();
   try {
     await ensureSchema({ seed: false });
     // One D1 round trip for all the reads. They never depended on each other --
@@ -63,7 +64,13 @@ export async function d1BackedUsage(month: string): Promise<D1BackedUsage> {
     // in the catch below and yields the same { ok: false } as before.
     const [bytes, categories, latest, watchList, manageAsset, textTube, transcript, openchatNotes, openchatComments, todoTasks, dailyReports, tableUsage] = await env.DB.batch<Record<string, unknown>>([
       env.DB.prepare(STORAGE_BYTES_SQL),
-      env.DB.prepare("SELECT category, COUNT(*) AS count, COALESCE(SUM(size_bytes),0) AS bytes FROM storage_objects WHERE deleted_at IS NULL GROUP BY category ORDER BY bytes DESC"),
+      // R2 のカテゴリごとの今の件数・容量と、30日前の容量(台帳は削除したファイルも deleted_at 付きで残すので、
+      // 「30日前より前に作られ、その時点で消えていなかった」ものを足せば30日前の容量になる。計測は要らない)
+      env.DB.prepare(`SELECT category,
+          SUM(CASE WHEN deleted_at IS NULL THEN 1 ELSE 0 END) AS count,
+          COALESCE(SUM(CASE WHEN deleted_at IS NULL THEN size_bytes END),0) AS bytes,
+          COALESCE(SUM(CASE WHEN created_at < ? AND (deleted_at IS NULL OR deleted_at >= ?) THEN size_bytes END),0) AS bytes_30d_ago
+        FROM storage_objects GROUP BY category HAVING count > 0 ORDER BY bytes DESC`).bind(thirtyDaysAgo, thirtyDaysAgo),
       env.DB.prepare("SELECT * FROM storage_usage_daily ORDER BY usage_date DESC LIMIT 1"),
       env.DB.prepare("SELECT COUNT(*) AS count FROM items WHERE deleted_at IS NULL"),
       env.DB.prepare("SELECT COUNT(*) AS count FROM asset_snapshots"),
