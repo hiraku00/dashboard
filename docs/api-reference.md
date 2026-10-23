@@ -50,7 +50,7 @@ auto-daily-report の送信スクリプトから呼ぶ。どれもCloudflare Acc
 | --- | --- |
 | `POST /api/daily-reports` | 取り込み。`{ reports: [{ date: "YYYY-MM-DD", markdown }] }`（1リクエスト20件・1件64KBまで。超えたら全体を400）。本文のsha256をサーバーで計算し、登録済みと同じなら `skipped`（何も書かない）。変わっていれば解析・タグ付けし、書き直し前の原本の退避・`daily_reports` のupsert・正規化とタグの作り直しを1回のbatchで行う。解析できない日報も `parseStatus: "failed"` で保存する。応答は `{ created, updated, skipped, errors, results: [{ date, status, parseStatus, warnings, error? }] }`（`status` は `created`/`updated`/`skipped`/`error`）。1件の誤り（日付の形・空の本文・大きすぎる本文）はその件の `error` にし、全体は200 |
 | `POST /api/daily-reports/reparse` | `parser_version` が古い日報を、D1の原本から最大20件解析し直す。`{ reparsed, remaining }` を返すので、`remaining` が0になるまで繰り返し呼ぶ |
-| `DELETE /api/daily-reports/:date` | その日付の日報を、正規化・タグ・改訂も含めて消す。`{ deleted: date }`。無ければ404、日付の形が違えば400 |
+| `DELETE /api/daily-reports/:date` | その日付の日報を、正規化・タグ・改訂も含めて消す。`{ deleted: date }`。無ければ404、日付の形が違えば400。画面に削除ボタンは無く、auto-daily-report の `sync_dashboard.py --delete YYMMDD` から呼ぶ |
 | `POST /api/daily-report-summaries` | 週次・月次サマリの取り込み。`{ summaries: [{ kind: "week" \| "month", periodStart, periodEnd, markdown }] }`（1リクエスト20件・1件64KBまで。超えたら全体を400）。週は `periodStart` が月曜で `periodEnd` がその6日後、月は `periodStart` が1日で `periodEnd` がその月の末日。sha256をサーバーで計算し、登録済みと同じなら `skipped`（何も書かない）、変わっていれば上書きする（改訂は残さない）。解析はしない。応答は `{ created, updated, skipped, errors, results: [{ kind, periodStart, status, error? }] }`。1件の誤り（kind・期間・空の本文・大きすぎる本文）はその件の `error` にし、全体は200 |
 | `DELETE /api/daily-report-summaries/:kind/:periodStart` | そのサマリを消す。`{ deleted: { kind, periodStart } }`。無ければ404、kindか期間の始まりの形が違えば400 |
 

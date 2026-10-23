@@ -146,7 +146,10 @@ migration `0017_daily_reports.sql` と `db/index.ts` の `ensureSchema()` の**�
 
 ### 5.3 `DELETE /api/daily-reports/:date`
 
-間違って送った日報を消す（正規化・タグ・改訂を含む）。
+間違って送った日報を消す（正規化・タグ・改訂を含む）。`{ "deleted": date }`。無ければ404、日付の形が違えば400。
+
+- 取り込みと同じく service token だけで受け付ける。ブラウザでログインした人からは403になり、画面にも削除ボタンは置かない（消すのは送信側の誤りを直すときだけで、頻度が低い。送った側の手元から消すほうが、手元の Markdown と D1 の食い違いに気づきやすい）。
+- 消すときは送信側の `python sync_dashboard.py --delete YYMMDD` を使う（§6）。元に戻せないので、`--dry-run` で日付を確かめてから実行する。
 
 ## 6. 送信側（auto-daily-report）
 
@@ -155,10 +158,12 @@ python daily_report.py --date 261021      # 生成して保存した直後に、
 python sync_dashboard.py 261021           # 指定した日付だけ送る（再送・手直し後）
 python sync_dashboard.py --all            # outputs/ の全件（一括送信、まとめて書き直した後）
 python sync_dashboard.py --reparse        # 規則を変えてデプロイした後、全件を作り直させる
+python sync_dashboard.py --delete 261023  # 間違って送った日報を消す（§5.3、複数指定・--dry-run 可、--all とは併用不可）
 ```
 
 - 送信処理は `src/dashboard_sync.py`。HTTPの部分（`urllib` + `certifi`、`.env` の service token をヘッダーに付ける）は scrape-tv-program の `core/watch_list_api.py` と同じ書き方にする。
 - 状態ファイルは持たない（再送してもサーバー側で `skipped` になるだけ）。
+- `--delete` は D1 から消すだけで、送信側の `outputs/` の Markdown は消さない。残したまま `--all` で送ると、その日報はもう一度登録される。
 - `daily_report.py` からの自動送信が失敗しても、日報の保存は失敗扱いにしない。エラーを表示し、手で `sync_dashboard.py <日付>` を実行する。
 
 ## 7. 容量・無料枠の見積もり
