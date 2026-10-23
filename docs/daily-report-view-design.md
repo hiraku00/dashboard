@@ -362,3 +362,4 @@ DADS のフォント（Noto Sans JP）と色のトークンは採らない（ポ
 - **日付入力欄（`<input type="date">`）だけ**: どの日に日報があるか分からない。Safari では `type="month"`・`type="week"` が使えない。カレンダーのポップオーバーにする。
 - **5色以上のカテゴリ**: 帯の上で隣り合う色を見分けられない（§5.2）。
 - **選択中以外の日の彩度を落とす（第1版）**: 色が倍に見える。強調は枠線で行う。
+- **画面からの日報の削除**: 削除API（`DELETE /api/daily-reports/:date`）は service token 専用で、ブラウザ用の削除経路と削除ボタンは作らない。消すのは送信側の誤り（日付の間違い・送るべきでなかった日報）を直すときだけなので、auto-daily-report の `sync_dashboard.py --delete YYMMDD` で消す（`daily-report-ingest-design.md` §5.3）。
