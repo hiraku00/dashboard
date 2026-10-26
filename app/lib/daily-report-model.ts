@@ -61,6 +61,8 @@ export type PeriodView = {
   notes: { reportDate: string; text: string }[];
   /** 日次のときだけ: その日の本文と解析時の警告 */
   original: { markdown: string; warnings: string[] } | null;
+  /** 週次・月次のときだけ: その期間のサマリ(auto-daily-report の summarize.py が作る Markdown) */
+  summary: { markdown: string; updatedAt: string } | null;
 };
 
 export type HeroItem = { label: string; value: string; sub?: string };
@@ -119,8 +121,9 @@ export type DailyReportModel = {
   work: WorkCategoryRow[];
   /** 知見・メモ: カテゴリは表示時にタグ辞書で決める */
   notes: { reportDate: string; text: string; category: Category }[];
-  /** 原本タブ: 日次は本文、週次・月次は日報の一覧 */
+  /** 原本タブ: 日次は本文、週次・月次はサマリと日報の一覧 */
   original: { markdown: string; warnings: string[]; parseStatus: ReportRow["parseStatus"] } | null;
+  summary: { markdown: string; updatedAt: string } | null;
   reportList: { date: string; active: number; recordStart: string | null; recordEnd: string | null; gapMinutes: number; parseStatus: ReportRow["parseStatus"] }[];
 };
 
@@ -259,6 +262,7 @@ export function buildModel(view: PeriodView, period: PeriodRange, today: string)
     work: workTable(view.workItems, currentTags),
     notes: view.notes.map((note) => ({ ...note, category: noteCategory(note.text) })),
     original: range === "day" && view.original && report ? { ...view.original, parseStatus: report.parseStatus } : null,
+    summary: range === "day" ? null : view.summary,
     reportList: current.map((row) => ({ date: row.reportDate, active: activeByDate.get(row.reportDate) ?? 0, recordStart: row.recordStart, recordEnd: row.recordEnd, gapMinutes: row.gapMinutes, parseStatus: row.parseStatus })).reverse(),
   };
 }

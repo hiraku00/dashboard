@@ -210,6 +210,25 @@ function OriginalTab({ model }: { model: DailyReportModel }) {
       </>
     );
   }
+  // 週次・月次: 左にサマリ(auto-daily-report が週末・月末に作る)、右に日報の一覧
+  const summaryTitle = period.range === "week" ? "週次サマリ" : "月次サマリ";
+  return (
+    <div className="dr-overview dr-original">
+      {model.summary ? (
+        <Panel title={summaryTitle} sub="auto-daily-report が書いた Markdown">
+          <div className="dr-raw"><MarkdownRenderer content={model.summary.markdown} /></div>
+        </Panel>
+      ) : (
+        <Panel title={summaryTitle}>
+          <p className="dr-empty">{period.elapsedDays < period.days ? "期間が終わると作られます。" : "この期間のサマリはありません。"}</p>
+        </Panel>
+      )}
+      <ReportList model={model} />
+    </div>
+  );
+}
+
+function ReportList({ model }: { model: DailyReportModel }) {
   return (
     <Panel title="日報の一覧" sub="押すとその日の原本へ">
       <div className="dr-table-scroll">
