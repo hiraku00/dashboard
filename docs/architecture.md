@@ -55,7 +55,7 @@ collectorは `collector/` にあり、外部APIキーをmacOS Keychainから読�
 | TextTube本文 | ブラウザ/移行スクリプト | R2 | Worker経由 |
 | 資産スナップショット | Mac collector | D1 | 集計・履歴 |
 | 作業日報（原本・正規化・タグ） | auto-daily-report | D1 | 未実装 |
-| 作業日報の週次・月次サマリ（原本） | auto-daily-report | D1 | 未実装 |
+| 作業日報の週次・月次サマリ（原本） | auto-daily-report | D1 | 作業日報の原本タブ |
 | 外部APIキー | macOS Keychain | Macのみ | 表示しない |
 
 ## 変更時のルール

@@ -1,6 +1,7 @@
 import { beforeAll, describe, expect, test } from "vitest";
 import { ensureSchema } from "@/db";
 import { ingestDailyReports } from "@/app/lib/daily-report-store";
+import { ingestDailyReportSummaries } from "@/app/lib/daily-report-summary-store";
 import { listReportDates, periodView } from "@/app/lib/queries/daily-report";
 import { portalSummary } from "@/app/lib/queries/portal";
 import { buildModel } from "@/app/lib/daily-report-model";
@@ -144,5 +145,24 @@ describe("periodView + buildModel", () => {
     const emptyModel = buildModel(await periodView(empty), empty, TODAY);
     expect(emptyModel.reportCount).toBe(0);
     expect(emptyModel.hero.figures.map((figure) => figure.value)).toEqual(["—", "—"]);
+  });
+
+  test("week/month: the original tab carries that period's summary alongside the report list", async () => {
+    await seed(DATES);
+    const results = await ingestDailyReportSummaries([
+      { kind: "week", periodStart: "2026-10-12", periodEnd: "2026-10-18", markdown: "# 週次サマリ 10/12〜10/18\n\n## 1. 概要\n- 架空の週" },
+    ]);
+    expect(results.map((result) => result.status)).not.toContain("error");
+
+    const week = periodRange("week", "2026-10-15", TODAY);
+    const model = buildModel(await periodView(week), week, TODAY);
+    expect(model.summary?.markdown).toContain("# 週次サマリ 10/12〜10/18");
+    expect(model.reportList.map((row) => row.date)).toEqual(["2026-10-15", "2026-10-13"]);
+
+    // 同じ日付から始まる月のサマリは無いので、月次には出さない
+    const month = periodRange("month", "2026-10-01", TODAY);
+    expect(buildModel(await periodView(month), month, TODAY).summary).toBeNull();
+    const day = periodRange("day", "2026-10-13", TODAY);
+    expect(buildModel(await periodView(day), day, TODAY).summary).toBeNull();
   });
 });
