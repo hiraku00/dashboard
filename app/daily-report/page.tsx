@@ -11,11 +11,11 @@ const first = (value: string | string[] | undefined) => (Array.isArray(value) ? 
 
 // Server Component: 期間(?range=&date=)の分を D1 から1回の batch で読み(app/lib/queries/daily-report.ts)、
 // 画面の形に組み立てて(app/lib/daily-report-model.ts)クライアントのワークスペースへ渡す。
-// date が無ければ既定の期間(今の期間に日報があればそこ、無ければ最新の日報の期間)を開く。
+// range が無ければ日次。date が無ければ既定の期間(日次は最新の日報の日、週次・月次は今の期間に日報があればそこ、無ければ最新の日報の期間)を開く。
 export default async function DailyReportPage({ searchParams }: { searchParams?: Promise<Params> }) {
   const params = (await searchParams) ?? {};
   const rawRange = first(params.range);
-  const range: Range = isRange(rawRange) ? rawRange : "week";
+  const range: Range = isRange(rawRange) ? rawRange : "day";
   const rawTab = first(params.tab);
   const tab: ReportTab = REPORT_TABS.some(([id]) => id === rawTab) ? (rawTab as ReportTab) : "summary";
   const rawDate = first(params.date);
