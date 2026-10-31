@@ -485,7 +485,7 @@ h1,h2,h3 { color:var(--ink); } h1 { margin:0; font-size:30px; line-height:1.1; l
 
 /* 概要: 左に活動時間、右に配分(Manage Asset の asset-dashboard-grid と同じ 1.35fr : 1fr) */
 .dr-overview { display:grid; gap:16px; margin-bottom:16px; }
-@media (min-width:1100px) { .dr-overview { grid-template-columns:minmax(0,1.35fr) minmax(0,1fr); align-items:stretch; } }
+@media (min-width:1100px) { .dr-overview { grid-template-columns:minmax(0,1.35fr) minmax(0,1fr); align-items:stretch; } .dr-original { align-items:start; } }
 
 /* 活動時間の図: 1色の縦棒・縦軸と目盛り線(Manage Asset の資産推移と同じ線・文字) */
 .dr-bars { padding:8px 18px 14px; }
@@ -659,3 +659,14 @@ h1,h2,h3 { color:var(--ink); } h1 { margin:0; font-size:30px; line-height:1.1; l
 .usage-measure-error { color:var(--danger); font-size:13px; }
 @media(max-width:760px){ .usage-table-details { padding:0 20px 16px; } .database-breakdown>.usage-measure-row { padding:8px 20px; } .usage-measure-note { white-space:normal; } }
 .tt-summary-field{margin-bottom:16px;color:#ccc;font-size:13px}.tt-summary-head{display:flex;align-items:center;justify-content:space-between;gap:10px}.tt-summary-head a{color:#3ea6ff;font-size:12px;text-decoration:none}.tt-summary-head a:hover{text-decoration:underline}.texttube-workspace .tt-summary-field{color:#414148}.texttube-workspace .tt-summary-head a{color:var(--blue-strong)}
+
+/* 使用量: 保存データの行は「項目名・件数・容量・増え方」を4列に分け、行をまたいで縦に揃える。
+   列幅は .usage-columns が持ち、各行は subgrid でその列に乗る(行ごとに幅が変わらない) */
+.usage-panel .usage-columns { display:grid; grid-template-columns:minmax(0,1fr) max-content max-content max-content; column-gap:14px; }
+.usage-panel .usage-columns>.usage-row { grid-column:1/-1; display:grid; grid-template-columns:subgrid; align-items:center; gap:0 14px; min-height:0; padding-block:9px; border-top:0; }
+.usage-panel .usage-columns>.usage-row>* { font-variant-numeric:tabular-nums; white-space:nowrap; }
+.usage-panel .usage-columns>.usage-row>span { white-space:normal; }
+.usage-panel .usage-columns>.usage-row>strong,.usage-panel .usage-columns>.usage-row>.usage-size { text-align:right; }
+.usage-panel .usage-columns>.usage-row>.usage-size { color:var(--muted); font-size:12px; font-weight:500; }
+.usage-panel .database-breakdown { display:block; }
+@media(max-width:760px){ .usage-panel .usage-columns,.usage-panel .usage-columns>.usage-row { column-gap:10px; } }

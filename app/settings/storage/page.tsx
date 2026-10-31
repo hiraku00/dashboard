@@ -59,15 +59,17 @@ export default async function StoragePage() {
           <div className="usage-breakdown r2-breakdown">
             <div className="usage-section-label">保存しているファイル</div>
             {d1Query.categories.length ? (
-              d1Query.categories.map((row) => (
-                <div className="usage-row" key={row.category as string}>
-                  <span>{storageCategoryName(row.category as string)}</span>
-                  <strong>
-                    {count.format(Number(row.count))} 件 · {formatBytes(Number(row.bytes))}
-                    <small className="usage-size">30日で {formatBytesDelta(Number(row.bytes) - Number(row.bytes_30d_ago ?? row.bytes))}</small>
-                  </strong>
-                </div>
-              ))
+              <div className="usage-columns">
+                {d1Query.categories.map((row) => (
+                  <UsageRow
+                    key={row.category as string}
+                    name={storageCategoryName(row.category as string)}
+                    count={`${count.format(Number(row.count))} 件`}
+                    size={formatBytes(Number(row.bytes))}
+                    growth={`30日で ${formatBytesDelta(Number(row.bytes) - Number(row.bytes_30d_ago ?? row.bytes))}`}
+                  />
+                ))}
+              </div>
             ) : (
               <div className="usage-row"><span>保存されたファイルはまだありません</span></div>
             )}
@@ -216,16 +218,17 @@ async function D1AnalyticsPanel({ d1Query }: { d1Query: D1BackedUsage }) {
               設定の環境(ローカル開発・テスト)ではこの件数表示ごと消えていた。 */}
           <div className="usage-breakdown database-breakdown">
             <div className="usage-section-label">主な保存データ</div>
-            <div className="usage-row"><span>Watch List</span><strong>{count.format(d1Query.databaseRecords.watchList)} 件<TableSize usage={tableUsage} group="watchList" /></strong></div>
-            <div className="usage-row"><span>Manage Assetのスナップショット</span><strong>{count.format(d1Query.databaseRecords.manageAsset)} 件<TableSize usage={tableUsage} group="manageAsset" /></strong></div>
-            <div className="usage-row"><span>TextTubeの動画</span><strong>{count.format(d1Query.databaseRecords.textTube)} 件<TableSize usage={tableUsage} group="textTube" /></strong></div>
-            <div className="usage-row"><span>ちきりんオプチャのノート</span><strong>{count.format(d1Query.databaseRecords.openchatNotes)} 件<TableSize usage={tableUsage} group="openchatNotes" /></strong></div>
-            <div className="usage-row"><span>ちきりんオプチャのコメント</span><strong>{count.format(d1Query.databaseRecords.openchatComments)} 件<TableSize usage={tableUsage} group="openchatComments" /></strong></div>
-            <div className="usage-row"><span>To Doのタスク</span><strong>{count.format(d1Query.databaseRecords.todoTasks)} 件<TableSize usage={tableUsage} group="todoTasks" /></strong></div>
-            <div className="usage-row"><span>作業日報</span><strong>{count.format(d1Query.databaseRecords.dailyReports)} 日分<TableSize usage={tableUsage} group="dailyReports" /></strong></div>
-            {tableUsage.date && (
-              <div className="usage-row"><span>台帳・同期の記録など</span><strong>{formatBytes(tableUsage.groups.find((group) => group.key === "system")?.bytes ?? 0)}<TableSize usage={tableUsage} group="system" onlyGrowth /></strong></div>
-            )}
+            <div className="usage-columns">
+              <TableRow usage={tableUsage} group="watchList" name="Watch List" count={`${count.format(d1Query.databaseRecords.watchList)} 件`} />
+              <TableRow usage={tableUsage} group="manageAsset" name="Manage Assetのスナップショット" count={`${count.format(d1Query.databaseRecords.manageAsset)} 件`} />
+              <TableRow usage={tableUsage} group="textTube" name="TextTubeの動画" count={`${count.format(d1Query.databaseRecords.textTube)} 件`} />
+              <TableRow usage={tableUsage} group="openchatNotes" name="ちきりんオプチャのノート" count={`${count.format(d1Query.databaseRecords.openchatNotes)} 件`} />
+              <TableRow usage={tableUsage} group="openchatComments" name="ちきりんオプチャのコメント" count={`${count.format(d1Query.databaseRecords.openchatComments)} 件`} />
+              <TableRow usage={tableUsage} group="todoTasks" name="To Doのタスク" count={`${count.format(d1Query.databaseRecords.todoTasks)} 件`} />
+              <TableRow usage={tableUsage} group="dailyReports" name="作業日報" count={`${count.format(d1Query.databaseRecords.dailyReports)} 日分`} />
+              {/* 台帳などは件数を持たないので、件数の列は空けて容量・増え方の列に揃える */}
+              {tableUsage.date && <TableRow usage={tableUsage} group="system" name="台帳・同期の記録など" />}
+            </div>
             {/* 合計・計測日・概算の注記を1行に、右に「今日の分を計測」(今日の分があれば押せない)。縦に積まない */}
             <div className="usage-measure-row">
               <p
@@ -263,17 +266,23 @@ async function D1AnalyticsPanel({ d1Query }: { d1Query: D1BackedUsage }) {
   );
 }
 
-/** 「主な保存データ」の行の容量と増え方(1日1回の計測。app/lib/d1-table-usage.ts)。計測がまだ無ければ何も出さない。 */
-function TableSize({ usage, group, onlyGrowth = false }: { usage: TableUsageSummary; group: UsageGroupKey; onlyGrowth?: boolean }) {
-  if (!usage.date) return null;
+/** 保存データの1行。項目名・件数・容量・増え方を、.usage-columns の4列に1つずつ置いて縦に揃える */
+function UsageRow({ name, count, size, growth }: { name: string; count?: string; size?: string; growth?: string | null }) {
+  return (
+    <div className="usage-row">
+      <span>{name}</span>
+      <strong className="usage-count">{count}</strong>
+      <strong className="usage-bytes">{size}</strong>
+      <small className="usage-size">{growth}</small>
+    </div>
+  );
+}
+
+/** 「主な保存データ」の行。容量と増え方は1日1回の計測(app/lib/d1-table-usage.ts)で、計測がまだ無ければ空ける。 */
+function TableRow({ usage, group, name, count }: { usage: TableUsageSummary; group: UsageGroupKey; name: string; count?: string }) {
+  if (!usage.date) return <UsageRow name={name} count={count} />;
   const entry = usage.groups.find((candidate) => candidate.key === group);
   const bytes = entry?.bytes ?? 0;
   const growth = usage.baseDate && entry?.baseBytes != null ? `${usage.days}日で ${formatBytesDelta(bytes - entry.baseBytes)}` : null;
-  // 1行に「件数 · 容量」を太字、増え方を灰色で続ける(縦に積まない)
-  return (
-    <>
-      {onlyGrowth ? null : ` · ${formatBytes(bytes)}`}
-      {growth ? <small className="usage-size">{growth}</small> : null}
-    </>
-  );
+  return <UsageRow name={name} count={count} size={formatBytes(bytes)} growth={growth} />;
 }

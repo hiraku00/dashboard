@@ -277,19 +277,17 @@ describe("Storage usage page", () => {
     ]);
     const html = await pageResponse.text();
     expect(html).toContain("主な保存データ");
-    // The count is the first child of <strong> (no boundary comment before
-    // it -- that only appears between it and the following " 件" text --
-    // see the earlier "GET /watch-list embeds..." test's comment), so
-    // matching right after <strong> is exact.
-    const watchListRow = html.match(/Watch List<\/span><strong>(\d+)/);
+    // The count is the first text of the row's count cell
+    // (<strong class="usage-count">), so matching right after it is exact.
+    const watchListRow = html.match(/Watch List<\/span><strong[^>]*>(\d+)/);
     expect(watchListRow, "expected a Watch List row with a numeric count in the raw HTML").toBeTruthy();
     expect(Number(watchListRow![1])).toBe(apiBody.databaseRecords.watchList);
     // ちきりんオプチャ(D1のノート・コメント)も保存データとして数える
-    expect(Number(html.match(/ちきりんオプチャのノート<\/span><strong>(\d+)/)?.[1])).toBe(apiBody.databaseRecords.openchatNotes);
-    expect(Number(html.match(/ちきりんオプチャのコメント<\/span><strong>(\d+)/)?.[1])).toBe(apiBody.databaseRecords.openchatComments);
+    expect(Number(html.match(/ちきりんオプチャのノート<\/span><strong[^>]*>(\d+)/)?.[1])).toBe(apiBody.databaseRecords.openchatNotes);
+    expect(Number(html.match(/ちきりんオプチャのコメント<\/span><strong[^>]*>(\d+)/)?.[1])).toBe(apiBody.databaseRecords.openchatComments);
     // To Do のタスクと作業日報も保存データとして数える
-    expect(Number(html.match(/To Doのタスク<\/span><strong>(\d+)/)?.[1])).toBe(apiBody.databaseRecords.todoTasks);
-    expect(Number(html.match(/作業日報<\/span><strong>(\d+)/)?.[1])).toBe(apiBody.databaseRecords.dailyReports);
+    expect(Number(html.match(/To Doのタスク<\/span><strong[^>]*>(\d+)/)?.[1])).toBe(apiBody.databaseRecords.todoTasks);
+    expect(Number(html.match(/作業日報<\/span><strong[^>]*>(\d+)/)?.[1])).toBe(apiBody.databaseRecords.dailyReports);
   });
 
   // The functional tests above would all still pass even if someone
@@ -308,7 +306,7 @@ describe("Storage usage page", () => {
     // on timing -- the nav being a client component moved it from the first to
     // the second here. Both are the boundary doing its job; what this must catch
     // is no boundary at all, i.e. a blocking await.
-    expect(html).toMatch(/<!--\$\??--><(?:template id="B:\d+"><\/template>)?<section class="settings-panel usage-panel d1-usage-panel"/);
+    expect(html).toMatch(/<!--\$\??-->(?:<template id="B:\d+"><\/template>)?<section class="settings-panel usage-panel d1-usage-panel"/);
     expect(html).toContain(`<!--/$-->`);
   });
 
