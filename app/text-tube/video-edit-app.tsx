@@ -10,6 +10,8 @@ import {
 } from "../text-tube-app";
 import { ApiError, readJson } from "../lib/json";
 
+const SUMMARY_CHAT_URL = "https://claude.ai/chat/c6268308-e70e-4257-a1ad-9efdcf450690";
+
 /** The add / edit page for one video (/text-tube/new and
  *  /text-tube/watch/[id]/edit). This used to be a modal over the library, but
  *  the summary and the detailed script are long Markdown, a click outside the
@@ -242,10 +244,16 @@ export function TextTubeVideoEditApp({
               <input type="number" value={form.viewCount} onChange={set("viewCount")} />
             </label>
           </div>
-          <label>
-            要約
-            <textarea rows={12} value={form.summary} onChange={set("summary")} />
-          </label>
+          <div className="tt-summary-field">
+            <div className="tt-summary-head">
+              <label htmlFor="tt-summary">要約</label>
+              {/* The Claude chat set up for summarizing YouTube videos. */}
+              <a href={SUMMARY_CHAT_URL} target="_blank" rel="noreferrer">
+                Claudeで要約する ↗
+              </a>
+            </div>
+            <textarea id="tt-summary" rows={12} value={form.summary} onChange={set("summary")} />
+          </div>
           <label>
             詳細スクリプト（Markdown）
             <textarea rows={24} value={form.detailedScript} onChange={set("detailedScript")} />

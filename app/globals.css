@@ -658,3 +658,4 @@ h1,h2,h3 { color:var(--ink); } h1 { margin:0; font-size:30px; line-height:1.1; l
 .usage-measure-button:disabled { cursor:default; opacity:.6; }
 .usage-measure-error { color:var(--danger); font-size:13px; }
 @media(max-width:760px){ .usage-table-details { padding:0 20px 16px; } .database-breakdown>.usage-measure-row { padding:8px 20px; } .usage-measure-note { white-space:normal; } }
+.tt-summary-field{margin-bottom:16px;color:#ccc;font-size:13px}.tt-summary-head{display:flex;align-items:center;justify-content:space-between;gap:10px}.tt-summary-head a{color:#3ea6ff;font-size:12px;text-decoration:none}.tt-summary-head a:hover{text-decoration:underline}.texttube-workspace .tt-summary-field{color:#414148}.texttube-workspace .tt-summary-head a{color:var(--blue-strong)}
