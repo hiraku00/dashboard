@@ -237,3 +237,26 @@ def test_link_card_title_is_neither_kept_nor_sent(tmp_path):
     data["notes"][0]["link_title"] = "あききます。"
     path.write_text(json.dumps(data), encoding="utf-8")
     assert "link_title" not in Ledger.load(path).notes[0]
+
+
+def test_a_dropped_ichi_does_not_split_one_note_into_two():
+    """実機で(2026-10-31、cosm)、「一昨日 午前 7:24」の「一」を読み落として「昨日午前 7:24」と読み、1日遅い別のノートとして
+    台帳に2件目ができた。本文を開いた後は正しく読めて2件目と一致せず、見出しを探し続けて同期が進まなくなった."""
+    body = "ザ・ライフ\n「生きた証（あかし）を誰かのために〜遺贈寄付が未来をつくる〜」\n10月23日放送"
+    led = Ledger()
+    real, _ = led.upsert_note(nobs(author="cosm", body=body, at="2026-10-29T00:24:00Z", raw="昨日午前7:24"), NOW)
+    stale, new = led.upsert_note(nobs(author="cosm", body=body, at="2026-10-30T00:24:00Z", raw="昨日午前 7:24", complete=False), NOW)
+    assert not new and stale["id"] == real["id"] and len(led.notes) == 1
+    assert real["posted_at"] == "2026-10-29T00:24:00Z"           # 読み落としの遅い時刻で上書きしない
+    # 読み落とした方が先に台帳に入っていても、後から正しい(早い)時刻を見れば直る
+    led2 = Ledger()
+    n, _ = led2.upsert_note(nobs(author="cosm", body=body, at="2026-10-30T00:24:00Z", raw="昨日午前 7:24"), NOW)
+    led2.upsert_note(nobs(author="cosm", body=body, at="2026-10-29T00:24:00Z", raw="一昨日 午前 7:24"), NOW)
+    assert len(led2.notes) == 1 and n["posted_at"] == "2026-10-29T00:24:00Z" and n["posted_at_raw"] == "一昨日 午前 7:24"
+
+
+def test_same_minute_on_another_day_needs_the_same_body():
+    led = Ledger()
+    led.upsert_note(nobs(author="cosm", body="10月23日放送 ザ・ライフ 遺贈寄付の回を見ました。とても良かった", at="2026-10-29T00:24:00Z"), NOW)
+    led.upsert_note(nobs(author="cosm", body="10月24日放送 クローズアップ現代 住まいの回を見ました。考えさせられた", at="2026-10-30T00:24:00Z"), NOW)
+    assert len(led.notes) == 2

@@ -165,6 +165,9 @@ class Ledger:
         note["badge_seen"] = bool(note.get("badge_seen")) or obs.badge
         note["author_is_target"] = _target(note["author_name"], note["badge_seen"])
         posted = better_time((note["posted_at"], note["posted_at_precision"]), (obs.posted_at, obs.posted_precision))
+        if not new and identity.day_shifted(note, obs.as_match_dict()):
+            # 日付だけが1〜2日ずれた: 「一昨日」の「一」の読み落としは本当より遅くなるので、早い方を残す
+            posted = min(posted, (note["posted_at"], note["posted_at_precision"]))
         if posted != (note["posted_at"], note["posted_at_precision"]):
             note["posted_at"], note["posted_at_precision"], note["posted_at_raw"] = posted[0], posted[1], obs.posted_raw
             note["pending_upload"] = True

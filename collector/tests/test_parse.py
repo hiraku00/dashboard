@@ -181,3 +181,28 @@ def test_link_card_photo_is_not_taken_for_an_avatar_when_the_notes_header_is_scr
     assert any(r[0] <= card.y <= r[1] for r in P.avatar_runs(screen))   # 写真の一部が、アバターの大きさの画像として検出される
     first = next(b for b in P.split_blocks(screen) if b.kind == "note")
     assert first.author == "" and not first.complete
+
+
+class _StrokeScreen:
+    """背景だけの画面に、(x0〜x1, y)の横棒を1本だけ描いたもの."""
+
+    def __init__(self, stroke: tuple[float, float, float] | None):
+        self.stroke = stroke
+
+    def pixel(self, x, y):
+        from line_openchat import layout as K
+        if self.stroke and self.stroke[0] <= x <= self.stroke[1] and abs(y - self.stroke[2]) < 0.6:
+            return (140, 140, 145)
+        return tuple(K.BG)
+
+
+def test_a_dropped_ichi_is_restored_from_the_stroke_left_of_the_line():
+    """実機で(2026-10-31、cosm)、「一昨日 午前 7:24」を「昨日午前 7:24」と読み、行の左端が1文字ぶん(x=14.7→24.6)右にずれた."""
+    from line_openchat.screen import Line
+    dropped = Line("昨日午前 7:24", 24.6, 985.5, 78.7, 13.1)
+    assert P.restore_dropped_ichi(_StrokeScreen((16.0, 24.0, 990.0)), dropped) == "一昨日午前 7:24"
+    # 本当に「昨日」なら、左に横棒は無い
+    assert P.restore_dropped_ichi(_StrokeScreen(None), Line("昨日 午前 8:23", 14.7, 246.2, 77.1, 15.1)) == "昨日 午前 8:23"
+    # 正しく読めた「一昨日」や、他の表示には触らない
+    assert P.restore_dropped_ichi(_StrokeScreen((16.0, 24.0, 990.0)), Line("一昨日 午前 7:24", 24.6, 985.5, 90, 13)) == "一昨日 午前 7:24"
+    assert P.restore_dropped_ichi(_StrokeScreen((16.0, 24.0, 990.0)), Line("3時間前", 24.6, 985.5, 50, 13)) == "3時間前"
