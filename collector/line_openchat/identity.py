@@ -65,6 +65,18 @@ def name_sim(a: str, b: str) -> float:
 
 
 MISREAD_HOURS = 4          # 相対表示(N時間前・N分前)の読み違いを許す幅
+DAY_SHIFT_MAX = 2          # 「昨日」「一昨日」の読み違いでずれる日数の上限
+
+
+def day_shifted(a: dict, b: dict) -> bool:
+    """2つの正確な時刻が、ちょうど1〜2日ずれている(時・分は同じ)か.
+    OCRが「一昨日」の「一」を読み落とすと、本当の時刻より1日遅くなる(実機で発生: 2026-10-31、cosm。「一昨日 午前 7:24」を
+    「昨日午前 7:24」と読み、2件目のノートができた。本文を開いた後は正しく読めて2件目と一致せず、見出しを探し続けた)。
+    読み落としは parse.restore_dropped_ichi で戻すが、戻せなかったときにノートが2つに分かれないようにする。"""
+    if a["posted_at_precision"] != EXACT or b["posted_at_precision"] != EXACT:
+        return False
+    diff, tol = _diff(a, b)
+    return any(abs(diff - 1440 * k) <= tol for k in range(1, DAY_SHIFT_MAX + 1))
 
 
 def _diff(a: dict, b: dict) -> tuple[float, int]:
@@ -87,6 +99,8 @@ def note_score(existing: dict, cand: dict) -> float:
     approx = existing["posted_at_precision"] != EXACT and cand["posted_at_precision"] != EXACT
     if approx and diff <= MISREAD_HOURS * 60 and same_name >= 0.9 and body >= 0.97 and len(norm_text(cand["body_text"])) >= 20:
         return 1.5 + body                          # 4. 「N時間前」の数字の読み違い(19→17)。作者・本文が同じ長い投稿は同じノート
+    if day_shifted(existing, cand) and same_name >= 0.9 and body >= 0.97 and len(norm_text(cand["body_text"])) >= 20:
+        return 1.5 + body                          # 5. 「一昨日」の「一」の読み落としで、日付だけが1日ずれた。作者・本文が同じ長い投稿は同じノート
     return 0.0
 
 

@@ -52,8 +52,32 @@ class Block:
 
 
 # ---------- 画素 ----------
+ICHI_STROKE_MIN = 8          # 「一」の横棒とみなす、背景でない点の連なり(0.5pt刻み。実機の横棒は8pt前後)
+
+
 def is_bg(p: tuple[int, int, int]) -> bool:
     return sum(abs(a - b) for a, b in zip(p, K.BG)) <= K.BG_TOLERANCE
+
+
+def restore_dropped_ichi(screen: Screen, tl: Line) -> str:
+    """時刻行の文字. OCRが「一昨日」の「一」(細い横棒1本)を読み落として「昨日」と返したら、「一」を戻す.
+    読み落とすと、行の左端が1文字ぶん右にずれ、そのすぐ左に横棒が残る(実機で発生: 2026-10-31、cosm。
+    「一昨日 午前 7:24」を「昨日午前 7:24」と読み、1日遅い別のノートとして台帳に2件目ができた)。"""
+    text = tl.text.strip()
+    if not re.sub(r"\s", "", text).startswith("昨日"):
+        return text
+    cy = tl.y + tl.h / 2
+    for k in range(-8, 5):                        # 横棒は文字の中央より少し上に引かれる
+        run = best = 0
+        for i in range(20):                       # 行の左端から10pt左まで
+            if is_bg(screen.pixel(tl.x - 10 + i * 0.5, cy + k * 0.5)):
+                run = 0
+            else:
+                run += 1
+                best = max(best, run)
+        if best >= ICHI_STROKE_MIN:
+            return "一" + text
+    return text
 
 
 def has_avatar(screen: Screen, y: float) -> bool:
@@ -442,7 +466,7 @@ def split_blocks(screen: Screen) -> list[Block]:
         if not rest and not author:
             continue
 
-        b = Block(kind=kind, author=author or ("?" if run else ""), time_raw=tl.text.strip(),
+        b = Block(kind=kind, author=author or ("?" if run else ""), time_raw=restore_dropped_ichi(screen, tl),
                   y_top=y_top, y_time=tl.y, complete=run is not None and not merged)
         b.badge = has_badge(screen, run[0], run[1]) if run else False
 
