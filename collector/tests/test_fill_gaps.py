@@ -58,3 +58,24 @@ def test_time_rows_missed_by_the_whole_screen_read_are_restored_from_the_tiles()
     assert [(b.author, b.time_raw, b.complete) for b in notes] == [
         ("Naozo", "9.23 午後 11:27", True), ("ちきりん", "9.23 午後 9:46", True), ("和泉", "9.23 午後 12:59", True)]
     assert len(screen.lines) == len(whole)                           # 同じ行が2重にならない
+
+
+def test_a_base_line_copied_from_another_line_is_replaced_by_the_tile_reading():
+    """2026-11-02 実機: 全体の読みが、わをのtverのURLの行を、上のチコちゃんのNHKのURLと読んだ(チコちゃんの行は全体の読みで
+    読み落とし、タイルで埋まった)。そのままだと、URLの違う同じノートが2件になった。タイルの読みに替える."""
+    nhk = "https://www.nhk.jp/g/ts/2NY2QQLPM3/blog/bl/paJnovBDza/bp/"
+    tver = "https://tver.jp/episodes/eptrkidalp?utm_medium=share&p=508"
+    base = [Line("チコちゃん", 49, 203, 64, 15), Line("わを", 49, 711, 30, 14), Line(nhk, 15, 775, 376, 15)]
+    extra = [Line(nhk, 15, 236, 381, 16, 0.5), Line(tver, 13, 776, 379, 16, 0.5)]
+    out = tallocr.fill_gaps(base, extra)
+    assert [l.text for l in out] == ["チコちゃん", nhk, "わを", tver]
+
+
+def test_the_same_text_really_in_two_places_is_kept():
+    """同じURLを2つのノートが貼っているときは、タイルもその場所を同じ文字に読むので、替えない."""
+    url = "https://www.nhk.jp/g/ts/9N81M92LXV/"
+    base = [Line(url, 15, 300, 230, 15), Line(url, 15, 700, 230, 15), Line("2時間前", 15, 400, 46, 14), Line("2時間前", 15, 800, 46, 14)]
+    extra = [Line(url, 15, 301, 230, 15, 0.5), Line(url, 15, 701, 230, 15, 0.5), Line("2時間前", 15, 400, 46, 14, 0.5),
+             Line("2 時間前", 15, 800, 48, 14, 0.5)]
+    out = tallocr.fill_gaps(base, extra)
+    assert out == sorted(base, key=lambda l: (round(l.y / 4), l.x))

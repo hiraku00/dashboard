@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 import tempfile
+from difflib import SequenceMatcher
 from typing import Iterator, Protocol
 
 import numpy as np
@@ -147,12 +148,21 @@ def same_place(a: Line, b: Line) -> bool:
     return v >= min(a.h, b.h) / 2 and hz > -2
 
 
+COPIED_LINE_MAX_RATIO = 0.6   # fill_gaps: 全体の読みとタイルの読みがこれより一致しなければ、別の行の文字を写したものとみなす
+
+
 def fill_gaps(base: list[Line], extra: list[Line]) -> list[Line]:
     """base(画面全体を1回で読んだ行)を一切変えずに残し、extra(タイルの読み)のうち、base のどの行とも同じ場所にないものだけを足す.
 
     足すのは、全体の読みが読み落とした場所の行だけ。同じ場所を2通りに読んだ行(全体とタイル、タイルどうし)を両方残すと、
     parse.merge_fragments で1行につながって文字が重複したり、時刻の行が2本になって区切りが狂うため、必ず1つにする。
-    extra どうしで同じ場所のものは、_better(時刻として読める方、信頼度の高い方)を採る。"""
+    extra どうしで同じ場所のものは、_better(時刻として読める方、信頼度の高い方)を採る。
+
+    ただ1つの例外として、全体の読みの行が、画面の別の場所の行と全く同じ文字で、その場所をタイルでは違う文字に読んだときは、
+    タイルの読みに替える(読み方の揺れでなく、別の文字と言えるほど違うとき: 一致率 COPIED_LINE_MAX_RATIO 未満)。
+    全体の読みが、別の行の文字をその場所に写してしまうことがある(実機: 2026-11-02、わをのtverのURLの行を、上のチコちゃんの
+    NHKのURLと読み、URLの違う同じノートが2件になった。同じ画像を読み直しても毎回そうなり、タイルでは正しく読めた)。
+    同じ文字が本当に2か所にあるときは、タイルもその場所を同じ文字に読むので替わらない。"""
     picked: list[Line] = []
     for line in extra:
         if any(same_place(line, b) for b in base):
@@ -162,7 +172,14 @@ def fill_gaps(base: list[Line], extra: list[Line]) -> list[Line]:
             picked.append(line)
         elif _better(line, picked[dup]):
             picked[dup] = line
-    out = list(base) + picked
+    kept = list(base)
+    for i, b in enumerate(base):
+        if not any(o is not b and o.text == b.text and not same_place(o, b) for o in base + picked):
+            continue
+        alts = [e for e in extra if same_place(e, b) and SequenceMatcher(None, e.text, b.text).ratio() < COPIED_LINE_MAX_RATIO]
+        if alts and not any(same_place(e, b) and e.text == b.text for e in extra):
+            kept[i] = max(alts, key=lambda e: (is_time_text(e.text), e.conf, len(e.text)))
+    out = kept + picked
     out.sort(key=lambda l: (round(l.y / 4), l.x))
     return out
 
