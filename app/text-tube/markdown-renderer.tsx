@@ -3,6 +3,7 @@
 import ReactMarkdown from "react-markdown";
 import type { Components } from "react-markdown";
 import { useEffect, useRef } from "react";
+import remarkCjkFriendly from "remark-cjk-friendly";
 import remarkGfm from "remark-gfm";
 import { MermaidDiagram } from "./mermaid-diagram";
 
@@ -113,7 +114,9 @@ export function MarkdownRenderer({ content }: { content: string }) {
 
   return (
     <div className="markdown-body">
-      <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
+      {/* remark-cjk-friendly: CommonMark rejects a closing ** between Japanese
+          punctuation and a letter (`**「…」**と`), leaving the asterisks visible. */}
+      <ReactMarkdown remarkPlugins={[remarkGfm, remarkCjkFriendly]} components={components}>
         {normalizeMarkdown(content)}
       </ReactMarkdown>
     </div>
