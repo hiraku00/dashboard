@@ -87,6 +87,31 @@ export async function runTextTubeImport(
     .bind(importId, youtubeVideoId, itemId, startedAt, startedAt)
     .run();
 
+  // ここから先で投げられた例外(D1への書き込みの失敗など)も、runningの
+  // まま残さずfailedとして記録する -- さもないとWatch Listには10分間
+  // 「登録中」と出続け、そのあとも理由の分からない「終わりませんでした」
+  // にしかならない。Worker自体が打ち切られた場合はここにも来ないので、
+  // その分は従来どおりpendingTextTubeImports()のstuck扱いに任せる。
+  try {
+    return await importVideo(importId, youtubeVideoId);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error("TextTube import failed unexpectedly", youtubeVideoId, error);
+    // markFailed自身もD1に書くので、D1が落ちているときはここでも投げる。
+    // そのときは記録を諦めてrunningのまま(=stuck扱い)にし、呼び出し元
+    // には失敗だけを返す。
+    const failure = `取り込みの途中でエラーが発生しました: ${message}`;
+    return markFailed(importId, failure).catch(() => ({ status: "failed" as const, error: failure }));
+  }
+}
+
+/** runTextTubeImport() が importId の running 行を作ったあとの、実際の
+ *  取り込み。想定内の失敗(APIキー未設定、動画情報が取れない)はここで
+ *  markFailed() し、想定外の例外は呼び出し元がまとめてfailedにする。 */
+async function importVideo(
+  importId: string,
+  youtubeVideoId: string,
+): Promise<TextTubeImportResult> {
   const key = (env as { YOUTUBE_DATA_API_KEY?: string }).YOUTUBE_DATA_API_KEY;
   const supadataKey = (env as { SUPADATA_API_KEY?: string }).SUPADATA_API_KEY;
   if (!key) return markFailed(importId, "YouTube連携が設定されていません。");
