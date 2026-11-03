@@ -104,6 +104,29 @@ test("a running import older than 10 minutes is treated as stuck, not blocking a
   expect(pendingAfter.some((row) => row.youtubeVideoId === id)).toBe(false);
 });
 
+test("an unexpected error after the import started is recorded as failed instead of staying running", async () => {
+  const id = videoId("throw1");
+  // Make the text_tube_videos INSERT itself throw, the way a D1 error in
+  // the middle of an import would -- a row left 'running' there used to
+  // show 登録中 for 10 minutes with no reason given.
+  await env.DB.prepare(
+    `CREATE TRIGGER fail_text_tube_video_insert BEFORE INSERT ON text_tube_videos WHEN NEW.youtube_video_id = '${id}' BEGIN SELECT RAISE(ABORT, 'simulated D1 failure'); END`,
+  ).run();
+  try {
+    const result = await runTextTubeImport(id, null);
+    expect(result.status).toBe("failed");
+    if (result.status === "failed") expect(result.error).toContain("simulated D1 failure");
+
+    const importRow = await env.DB.prepare("SELECT status, last_error FROM text_tube_imports WHERE youtube_video_id=?")
+      .bind(id)
+      .first<{ status: string; last_error: string }>();
+    expect(importRow?.status).toBe("failed");
+    expect(importRow?.last_error).toContain("simulated D1 failure");
+  } finally {
+    await env.DB.prepare("DROP TRIGGER IF EXISTS fail_text_tube_video_insert").run();
+  }
+});
+
 test("rejects a malformed video id without touching D1", async () => {
   const result = await runTextTubeImport("not-a-valid-id", null);
   expect(result).toEqual({ status: "failed", error: "YouTube動画IDが不正です。" });
