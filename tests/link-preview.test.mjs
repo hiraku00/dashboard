@@ -86,4 +86,16 @@ test("NHK ONE: OCRが「1」を「I」と読み違えたIDを、直した候補�
   expect(nhkIdVariants("https://www.web.nhk/tv/pl/series-tep-Y5P47Z7YVW/ep/PKQYlJGQ7V")).toContain("https://www.web.nhk/tv/pl/series-tep-Y5P47Z7YVW/ep/PKQY1JGQ7V");
   // 「X」を小文字の「x」と読み、同時に「1」を「I」と読んだID(実例)。
   expect(nhkIdVariants("https://www.web.nhk/tv/an/butterfly/pl/series-tep-9N81M92LxV/ep/GQGLMIKYLQ")).toContain("https://www.web.nhk/tv/an/butterfly/pl/series-tep-9N81M92LXV/ep/GQGLM1KYLQ");
+
+  // ノートに貼られる共有用のURL(one.nhk/www.web.nhk/…)でも、候補を出す(実例: R1N6564214 → RIN6564214)。
+  expect(nhkIdVariants("https://one.nhk/www.web.nhk/tv/pl/series-tep-RIN6564214/ep/G56K6M7GGL")).toContain("https://one.nhk/www.web.nhk/tv/pl/series-tep-R1N6564214/ep/G56K6M7GGL");
+  expect(nhkIdVariants("https://one.nhk/other/series-tep-RIN6564214/ep/G56K6M7GGL")).toEqual([]);
+});
+
+test("TVer のエピソードIDの読み違い(0 → o)を直した候補", async () => {
+  const { tverIdVariants } = await import("../app/lib/link-preview.ts");
+  expect(tverIdVariants("eprognjmmv")).toEqual(["epr0gnjmmv"]);         // 実例
+  expect(tverIdVariants("ept025uufz")).toEqual([]);                     // 直す文字が無い
+  expect(tverIdVariants("epoolool1o")).toEqual([]);                     // 候補が多すぎる(当てずっぽうになる)
+  expect(tverIdVariants("eplo12abcd")).toEqual(["ep1o12abcd", "epl012abcd", "ep1012abcd"]);
 });

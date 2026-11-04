@@ -6,7 +6,7 @@
  *  Everything here is best effort: any failure -- timeout, non-HTML, a
  *  redirect to a refused host, no image tag -- resolves to "" rather than
  *  throwing, because a missing thumbnail must never fail saving an item. */
-import { nhkIdVariants, parseLinkPreview, parseTverPreview, tverEpisodeId, type LinkPreview } from "./link-preview.ts";
+import { nhkIdVariants, parseLinkPreview, parseTverPreview, tverEpisodeId, tverIdVariants, type LinkPreview } from "./link-preview.ts";
 import { isPublicHttpUrl, metaRefreshUrl, pageImageUrl, tverThumbnailUrl, youTubeThumbnailFromLinks } from "./thumbnail.ts";
 
 /** One deadline for the whole lookup, redirects included. */
@@ -219,9 +219,20 @@ export async function fetchLinkPreview(url: string): Promise<{ preview: LinkPrev
 
 /** fetchLinkPreview と同じ読み取りで、読めなかったときはその理由を返す。 */
 export async function readLinkPreview(url: string): Promise<{ ok: true; preview: LinkPreview; url: string } | ReadFailure> {
-  if (tverEpisodeId(url)) {
-    const preview = await fetchTverPreview(tverEpisodeId(url));
-    return preview ? { ok: true, preview, url } : { ok: false, reason: "TVerの番組情報(公開JSON)を読めなかった", gone: false };
+  const tverId = tverEpisodeId(url);
+  if (tverId) {
+    const preview = await fetchTverPreview(tverId);
+    if (preview) return { ok: true, preview, url };
+    // OCRの読み違い(0 → o など)を直した候補のIDを順に試す。見つかったら、直したURLを返す(保存されるリンクも直る)。
+    const variants = tverIdVariants(tverId);
+    for (const variant of variants) {
+      const fixed = await fetchTverPreview(variant);
+      if (fixed) return { ok: true, preview: fixed, url: url.replace(tverId, variant) };
+    }
+    // 候補も読めなかったときは、同じ同期の中で取り直さない(候補ぶんのサブリクエストをもう一度使うだけ)。
+    return variants.length
+      ? { ok: false, reason: `TVerの番組情報(公開JSON)を読めなかった(読み違いを直した候補${variants.length}件も読めなかった)`, gone: true }
+      : { ok: false, reason: "TVerの番組情報(公開JSON)を読めなかった", gone: false };
   }
   const page = await readPageHead(url);
   if (page.ok) return { ok: true, preview: parseLinkPreview(page.html, page.url), url: page.url };
