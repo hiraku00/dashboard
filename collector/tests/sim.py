@@ -180,9 +180,9 @@ class SimChat:
             rects.append((rx, cy - 8, rx + 17, cy + 8, WHITE))
             rd = str(n.reactions)
             if n.reactions == 0:
-                # 実機は、0件のときは数字を出さない(アイコンだけ)
+                # 実機は、0件のときは数字を出さない(アイコンだけ)。コメントアイコンは x=46〜61.5(実測)
                 rw = 0.0
-                cx0 = 40.0
+                cx0 = 46.0
             else:
                 # 桁ごとに別の塊(実機は3桁で約21.5pt)。4桁は実機にほぼ無いので、位置だけ収める
                 p = 7.5 if len(rd) < 4 else 6.5
