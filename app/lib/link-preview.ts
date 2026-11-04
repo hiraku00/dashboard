@@ -76,6 +76,25 @@ export function tverEpisodeId(url: string) {
   } catch { return ""; }
 }
 
+/** TVer のエピソードIDで、OCRが読み違えやすい文字と、本来の文字(IDは小文字と数字だけ)。 */
+const TVER_MISREADS: Record<string, string> = { o: "0", l: "1" };
+
+/** TVer のエピソードIDは、OCRが「0」を「o」と読み違えることがある(実例: epr0gnjmmv → eprognjmmv で公開JSONが読めない)。
+ *  読み違えかもしれない文字を直した候補のIDを、直す箇所の少ない順に返す(元のIDは含まない)。先頭の「ep」は直さない。
+ *  候補を1つ試すごとにサブリクエストを使うので、多くは出さない。 */
+export function tverIdVariants(id: string): string[] {
+  const swaps = [...id].flatMap((ch, i) => (i >= 2 && TVER_MISREADS[ch] ? [i] : []));
+  if (!swaps.length || swaps.length > 4) return [];
+  const result: Array<{ changes: number; id: string }> = [];
+  for (let mask = 1; mask < 1 << swaps.length; mask++) {
+    const chars = [...id];
+    let changes = 0;
+    swaps.forEach((at, i) => { if (mask & (1 << i)) { chars[at] = TVER_MISREADS[chars[at]]; changes++; } });
+    if (changes <= 2) result.push({ changes, id: chars.join("") });
+  }
+  return result.sort((a, b) => a.changes - b.changes).map((r) => r.id).slice(0, 4);
+}
+
 /** TVer のページは中身をブラウザ側で描画するので、HTMLには番組情報が無い。代わりに公開JSON(statics.tver.jp/content/episode|series)を読む。
  *  放送局はエピソードの broadcastProviderLabel(「日テレ」「テレ朝」…)、タイトルは title。
  *  番組名は、ふだんはシリーズ名。ただし「日テレNEWS NNN」のようなニュースチャンネルは、番組ごとの切り抜きがまとめて入っていて
@@ -119,7 +138,9 @@ const misreadFix = (ch: string) => OCR_MISREADS[ch] ?? (/[a-z]/.test(ch) ? ch.to
 export function nhkIdVariants(url: string): string[] {
   let u: URL;
   try { u = new URL(url); } catch { return []; }
-  if (u.hostname.replace(/^www\./, "") !== "web.nhk") return [];
+  // ノートに貼られる共有用のURL(one.nhk/www.web.nhk/…)も、同じIDを含む(実例: R1N6564214 → RIN6564214 で404。この形には候補を出していなかった)。
+  const host = u.hostname.replace(/^www\./, "");
+  if (host !== "web.nhk" && !(host === "one.nhk" && u.pathname.startsWith("/www.web.nhk/"))) return [];
   const ids = [...u.pathname.matchAll(/(series-tep-|\/ep\/)([A-Za-z0-9]+)/g)].map((m) => ({ at: (m.index ?? 0) + m[1].length, id: m[2] }));
   // 1つのIDの候補(直す箇所の数, 直したID)。元のIDは直す箇所0。
   const candidatesOf = (id: string) => {
