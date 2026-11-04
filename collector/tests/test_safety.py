@@ -37,6 +37,18 @@ def test_reaction_icon_span_is_rejected_even_if_claimed_as_the_comment_icon():
         guard_click(ClickTarget("toggle_comments", 26, 500, icon_span=(18, 35), counts_y=500), screen)
 
 
+def test_comment_icon_without_reaction_digits_is_allowed():
+    """リアクション0件だと数字が出ず、コメントアイコンが左に寄る(実機 46〜61.5). それでも押せる."""
+    chat = SimChat([SimNote("参加者A", "本文です。", "一昨日 午後 2:46", comments=[SimComment("a", "b", "1時間前")],
+                            reactions=0)], jitter=False)
+    screen = chat.screen()
+    note = next(b for b in split_blocks(screen) if b.kind == "note")
+    assert note.reactions == 0 and note.comments == 1
+    x0, x1 = note.comment_icon
+    assert x0 < 50.0                                                   # 以前の下限(50)では止められていた位置
+    guard_click(ClickTarget("toggle_comments", (x0 + x1) / 2, note.counts_y, icon_span=(x0, x1), counts_y=note.counts_y), screen)
+
+
 def test_text_buttons_need_their_text_under_the_pointer():
     chat, screen = screen_with_thread()
     cut = next(l for l in screen.lines if "前のコメントを見る" in l.text)
