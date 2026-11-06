@@ -158,6 +158,9 @@ class TallThreadReader:
             res = capture.scan_down(src, cal, first, max_frames=MAX_FRAMES, workdir=work, stop=counter, on_frame=on_frame)
             st = res.stitcher
             t1 = time.time()
+            # OCRと区切りの間(長いと10秒近く)は、画面もログも止まる。固まったと思われてマウスに触られ、
+            # 中断したことがある(2026-11-06、ちきりん)。待っていることを先に出しておく
+            log(f"      撮影 {res.frames}枚を読み取っています(画面は動きませんが、そのままお待ちください)")
             lines = tallocr.ocr_tall(st, cal.frame_w, cal.scale)
             t2 = time.time()
             # つないだ画像の y=0 は、最初の画面の帯の上端。見出しより上(前のノートの末尾)と、終わりより下(次のノート)を除く
