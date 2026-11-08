@@ -1,5 +1,7 @@
 import { PortalHome } from "./portal-home";
+import { headers } from "next/headers";
 import { portalSummary, type PortalSummary } from "@/app/lib/queries/portal";
+import { assetWalletFor } from "@/app/lib/queries/asset-wallet";
 
 // Server Component: fetches the portal summary directly from D1 at render
 // time so the initial HTML already has real numbers in it, instead of
@@ -24,7 +26,9 @@ async function fetchInitialSummary(): Promise<PortalSummary | null> {
   // rendering, so such a catch would not actually catch a rendering error
   // anyway; the only thing that can throw here is the D1 call itself.
   try {
-    return await portalSummary();
+    // 資産合計は、Manage Asset で表示中のウォレットのもの（app/api/portal/summary と同じ）。
+    const { db } = await assetWalletFor((await headers()).get("cookie"));
+    return await portalSummary(db);
   } catch {
     return null;
   }

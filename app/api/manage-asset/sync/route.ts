@@ -1,10 +1,12 @@
 import { env } from "cloudflare:workers";
-import { ensureSchema } from "@/db";
+import { ensureSchema, ensureWallet2Schema } from "@/db";
 import { currentStorageBytes, putPortalObject } from "@/app/lib/r2-storage";
 import { clean } from "@/app/lib/text";
 import { normalizeSyncedPositions } from "@/app/lib/manage-asset-core";
+import { scaleSyncEntry } from "@/app/lib/manage-asset-wallet2";
 import { summarizeRun } from "@/app/lib/sync-summary";
 import { latestSyncRun, pendingResyncRequest } from "@/app/lib/queries/manage-asset";
+import { assetWalletFor } from "@/app/lib/queries/asset-wallet";
 import { route } from "@/app/lib/route";
 
 // One request carries every source of a run, so cap it: the Workers Free plan
@@ -30,14 +32,19 @@ class SyncEntryError extends Error {}
 /** Store one source's snapshot, raw object and positions. Both the single-source
  *  and the batch action go through here so the two paths cannot drift apart.
  *  knownUsedBytes threads the batch's running R2 total through; when omitted,
- *  the storage total is measured for this call alone (the legacy path). */
-async function storeEntry(runId: string, entry: Entry, now: string, knownUsedBytes?: number) {
+ *  the storage total is measured for this call alone (the legacy path).
+ *
+ *  `db` is the production DB, or wallet 2's (mirrorToWallet2 below), which writes
+ *  the scaled copy through this very function so the two cannot differ in shape.
+ *  Wallet 2 does not archive its raw payload to R2 (`archiveRaw: false`): nothing
+ *  reads it, and it would double the R2 usage. */
+async function storeEntry(db: D1Database, runId: string, entry: Entry, now: string, knownUsedBytes?: number, { archiveRaw = true }: { archiveRaw?: boolean } = {}) {
   if (!entry.source || !entry.snapshot) throw new SyncEntryError("source同期データが不正です。秘密情報は送信しないでください。");
   const sourceId = clean(entry.source.sourceId ?? entry.source.id, 200); const provider = clean(entry.source.provider, 100); const displayName = clean(entry.source.displayName ?? entry.source.name, 250);
   const capturedAt = clean(entry.snapshot.capturedAt, 50); const asOfDate = clean(entry.snapshot.asOfDate, 10);
   if (!sourceId || !provider || !displayName || !/^\d{4}-\d{2}-\d{2}$/.test(asOfDate) || !capturedAt) throw new SyncEntryError("sourceId、provider、displayName、capturedAt、asOfDateが必要です。");
   const sourceAddress = clean(entry.source.publicAddress ?? entry.source.address, 300); const sourceType = clean(entry.source.sourceType, 60) || "unknown";
-  await env.DB.prepare(`INSERT INTO asset_sources (id,source_type,provider,display_name,public_address,enabled,created_at) VALUES (?,?,?,?,?,1,?) ON CONFLICT(id) DO UPDATE SET source_type=excluded.source_type,provider=excluded.provider,display_name=excluded.display_name,public_address=excluded.public_address`).bind(sourceId,sourceType,provider,displayName,sourceAddress,now).run();
+  await db.prepare(`INSERT INTO asset_sources (id,source_type,provider,display_name,public_address,enabled,created_at) VALUES (?,?,?,?,?,1,?) ON CONFLICT(id) DO UPDATE SET source_type=excluded.source_type,provider=excluded.provider,display_name=excluded.display_name,public_address=excluded.public_address`).bind(sourceId,sourceType,provider,displayName,sourceAddress,now).run();
   const rawJson = JSON.stringify({ source: entry.source, snapshot: entry.snapshot, positions: entry.positions ?? [] }); const rawBody = new TextEncoder().encode(rawJson).buffer;
   // Keyed by date and source rather than by run: a same-day re-sync overwrites
   // its own raw object instead of leaving 8-20 copies a day in R2, matching the
@@ -58,7 +65,7 @@ async function storeEntry(runId: string, entry: Entry, now: string, knownUsedByt
   // a D1 failure here still fails the whole entry (via the empty snapshotId
   // check below) but never leaves an R2 object behind, since R2 hasn't been
   // touched yet.
-  const upserted = await env.DB.prepare(`INSERT INTO asset_snapshots (id,run_id,source_id,captured_at,as_of_date,total_usd,total_jpy,fx_usdjpy,raw_object_key,raw_sha256,raw_size,raw_storage_status) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+  const upserted = await db.prepare(`INSERT INTO asset_snapshots (id,run_id,source_id,captured_at,as_of_date,total_usd,total_jpy,fx_usdjpy,raw_object_key,raw_sha256,raw_size,raw_storage_status) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
     ON CONFLICT(source_id,as_of_date) DO UPDATE SET run_id=excluded.run_id,captured_at=excluded.captured_at,total_usd=excluded.total_usd,total_jpy=excluded.total_jpy,fx_usdjpy=excluded.fx_usdjpy
     RETURNING id`).bind(crypto.randomUUID(),runId,sourceId,capturedAt,asOfDate,totalUsd,totalJpy,fx,null,null,rawBody.byteLength,"local_only").all<{ id: string }>();
   const snapshotId = String(upserted.results?.[0]?.id ?? "");
@@ -69,11 +76,13 @@ async function storeEntry(runId: string, entry: Entry, now: string, knownUsedByt
   // saved fine.
   let storageStatus = "local_only"; let rawStorageError: string | undefined; let usedBytesResult: number | undefined;
   let storedRaw: { key: string; sha256: string; size: number } | null = null;
-  try {
-    const stored = await putPortalObject({ key, body: rawBody, category: "manage-asset/raw", contentType: "application/json", expiresAt: new Date(Date.now() + 365 * 86400000).toISOString(), knownUsedBytes });
-    storedRaw = stored; usedBytesResult = stored.usedBytes;
-  } catch (error) {
-    rawStorageError = error instanceof Error ? error.message : "原本の保存に失敗しました。";
+  if (archiveRaw) {
+    try {
+      const stored = await putPortalObject({ key, body: rawBody, category: "manage-asset/raw", contentType: "application/json", expiresAt: new Date(Date.now() + 365 * 86400000).toISOString(), knownUsedBytes });
+      storedRaw = stored; usedBytesResult = stored.usedBytes;
+    } catch (error) {
+      rawStorageError = error instanceof Error ? error.message : "原本の保存に失敗しました。";
+    }
   }
   // Linking the now-uploaded R2 object to its snapshot row rides in the same
   // batch as the two statements below, rather than its own prepare().run().
@@ -91,24 +100,66 @@ async function storeEntry(runId: string, entry: Entry, now: string, knownUsedByt
   // difference from before is that even in this residual case the totals and
   // positions already committed above are never lost -- only the archived
   // raw payload's link is temporarily missing, not the numbers anyone reads.
-  await env.DB.batch([
-    env.DB.prepare("UPDATE asset_sources SET last_success_at=? WHERE id=?").bind(capturedAt,sourceId),
+  await db.batch([
+    db.prepare("UPDATE asset_sources SET last_success_at=? WHERE id=?").bind(capturedAt,sourceId),
     // The upsert may have reused an existing snapshot row, whose positions now
     // describe the earlier sync. Replace them rather than adding to them.
-    env.DB.prepare("DELETE FROM asset_positions WHERE snapshot_id=?").bind(snapshotId),
-    ...(storedRaw ? [env.DB.prepare("UPDATE asset_snapshots SET raw_object_key=?,raw_sha256=?,raw_size=?,raw_storage_status='stored' WHERE id=?").bind(storedRaw.key,storedRaw.sha256,storedRaw.size,snapshotId)] : []),
+    db.prepare("DELETE FROM asset_positions WHERE snapshot_id=?").bind(snapshotId),
+    ...(storedRaw ? [db.prepare("UPDATE asset_snapshots SET raw_object_key=?,raw_sha256=?,raw_size=?,raw_storage_status='stored' WHERE id=?").bind(storedRaw.key,storedRaw.sha256,storedRaw.size,snapshotId)] : []),
   ]);
   if (storedRaw) storageStatus = "stored";
   const suppliedPositions = (Array.isArray(entry.positions) ? entry.positions : []).filter((position): position is Record<string, unknown> => Boolean(position && typeof position === "object"));
   // A wallet's stETH is nested under protocols[].panels[].assets[] in the local
   // DeBank snapshot. Never rely only on the flattened positions payload here.
   const positions = normalizeSyncedPositions(entry.source, entry.snapshot, suppliedPositions);
-  const statements = positions.slice(0, 2000).map((position) => env.DB.prepare("INSERT INTO asset_positions (id,snapshot_id,symbol,quantity,price_usd,value_usd,value_jpy,location_type,protocol,position_type,is_debt) VALUES (?,?,?,?,?,?,?,?,?,?,?)").bind(crypto.randomUUID(),snapshotId,clean(position.symbol,100)||"UNKNOWN",position.quantity ?? 0,position.quantity && position.valueUsd ? position.valueUsd / position.quantity : null,position.valueUsd,fx ? position.valueUsd * fx : null,position.locationType,clean(position.protocol,200),position.positionType,position.positionType === "debt" ? 1 : 0));
-  for (let start = 0; start < statements.length; start += 50) await env.DB.batch(statements.slice(start,start+50));
+  const statements = positions.slice(0, 2000).map((position) => db.prepare("INSERT INTO asset_positions (id,snapshot_id,symbol,quantity,price_usd,value_usd,value_jpy,location_type,protocol,position_type,is_debt) VALUES (?,?,?,?,?,?,?,?,?,?,?)").bind(crypto.randomUUID(),snapshotId,clean(position.symbol,100)||"UNKNOWN",position.quantity ?? 0,position.quantity && position.valueUsd ? position.valueUsd / position.quantity : null,position.valueUsd,fx ? position.valueUsd * fx : null,position.locationType,clean(position.protocol,200),position.positionType,position.positionType === "debt" ? 1 : 0));
+  for (let start = 0; start < statements.length; start += 50) await db.batch(statements.slice(start,start+50));
   return { sourceId, snapshotId, rawStorageStatus: storageStatus, rawStorageError, usedBytes: usedBytesResult ?? knownUsedBytes };
 }
 
-export const GET = route(async () => Response.json({ ok: true, latest: await latestSyncRun(), pendingResyncRequest: await pendingResyncRequest() }));
+/** ウォレット2（ダミーデータ、env.DB_WALLET2）にも、同じ同期を倍率を掛けて書く。
+ *
+ *  朝の同期で本番が保存できた source だけを、app/lib/manage-asset-wallet2.ts の scaleSyncEntry() で
+ *  増やし、本番と同じ storeEntry() で書く。run の行も本番と同じ id で写す（スナップショットの
+ *  run_id が指す先がいるので、source より先に）。ここで何が失敗しても本番の同期は失敗にしない
+ *  -- ログに残すだけ。ウォレット2が欠けても、本番のデータと集計には影響しない。 */
+async function mirrorToWallet2(runId: string, entries: Entry[], now: string) {
+  if (!entries.length) return;
+  try {
+    await ensureWallet2Schema();
+    const db = env.DB_WALLET2;
+    const run = await env.DB.prepare("SELECT * FROM asset_sync_runs WHERE id=?").bind(runId).first<Record<string, unknown>>();
+    if (!run) return;
+    await db.prepare("INSERT INTO asset_sync_runs (id,client_run_id,client_version,started_at,completed_at,status,source_count,success_count,error_count,received_at) VALUES (?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO NOTHING")
+      .bind(run.id, run.client_run_id, run.client_version, run.started_at, run.completed_at ?? null, run.status, run.source_count, run.success_count, run.error_count, run.received_at).run();
+    for (const entry of entries) {
+      try {
+        await storeEntry(db, runId, scaleSyncEntry(entry), now, undefined, { archiveRaw: false });
+      } catch (error) {
+        console.error("ウォレット2への同期に失敗しました", clean(entry.source?.sourceId ?? entry.source?.id, 200), error);
+      }
+    }
+  } catch (error) {
+    console.error("ウォレット2への同期に失敗しました", error);
+  }
+}
+
+/** 本番の run が完了したら、ウォレット2の同じ run にも同じ結果（状態・件数）を写す。
+ *  ウォレット2は R2 に原本を置かないので、自分で数え直すと「原本なし」の分だけ本番と食い違う。 */
+async function completeWallet2Run(runId: string) {
+  try {
+    await ensureWallet2Schema();
+    const run = await env.DB.prepare("SELECT completed_at,status,success_count,error_count FROM asset_sync_runs WHERE id=?").bind(runId).first<Record<string, unknown>>();
+    if (!run) return;
+    await env.DB_WALLET2.prepare("UPDATE asset_sync_runs SET completed_at=?,status=?,success_count=?,error_count=? WHERE id=?")
+      .bind(run.completed_at ?? null, run.status, run.success_count, run.error_count, runId).run();
+  } catch (error) {
+    console.error("ウォレット2の同期の完了を記録できませんでした", error);
+  }
+}
+
+// `latest`（データ更新タブの最終同期）は表示中のウォレットの DB から読む。「今すぐ再取得」の依頼は本番だけのもの。
+export const GET = route(async (request: Request) => Response.json({ ok: true, latest: await latestSyncRun((await assetWalletFor(request.headers.get("cookie"))).db), pendingResyncRequest: await pendingResyncRequest() }));
 
 export const POST = route(async (request: Request) => {
   // Cloudflare Access validates the Service Token at the edge. Its client-secret
@@ -162,6 +213,7 @@ export const POST = route(async (request: Request) => {
       rawStoredCount: Number(counts?.raw_stored ?? 0),
     });
     await env.DB.prepare("UPDATE asset_sync_runs SET completed_at=?,status=?,success_count=?,error_count=? WHERE id=?").bind(now,summary.status,summary.successCount,summary.errorCount,run.id).run();
+    await completeWallet2Run(run.id);
     return Response.json({ ok: summary.errorCount === 0, runId: run.id, ...summary });
   }
 
@@ -175,10 +227,12 @@ export const POST = route(async (request: Request) => {
     // everything added earlier in this same request.
     let usedBytes: number | undefined = (await currentStorageBytes()).bytes;
     const results: Array<Record<string, unknown>> = [];
+    const storedEntries: Entry[] = [];
     for (const raw of entries) {
       const entry = (raw && typeof raw === "object" ? raw : {}) as Entry;
       try {
-        const stored = await storeEntry(run.id, entry, now, usedBytes);
+        const stored = await storeEntry(env.DB, run.id, entry, now, usedBytes);
+        storedEntries.push(entry);
         usedBytes = stored.usedBytes ?? usedBytes;
         results.push({ sourceId: stored.sourceId, snapshotId: stored.snapshotId, rawStorageStatus: stored.rawStorageStatus, ...(stored.rawStorageError ? { rawStorageError: stored.rawStorageError } : {}) });
       } catch (error) {
@@ -187,12 +241,14 @@ export const POST = route(async (request: Request) => {
         results.push({ sourceId: clean(entry.source?.sourceId ?? entry.source?.id, 200), error: error instanceof Error ? error.message : "同期に失敗しました。" });
       }
     }
+    await mirrorToWallet2(run.id, storedEntries, now);
     return Response.json({ ok: results.every((result) => !result.error), runId: run.id, results });
   }
 
   if (body.action !== "source" || !body.source || !body.snapshot || containsCredential(body)) return Response.json({ error: "source同期データが不正です。秘密情報は送信しないでください。" }, { status: 400 });
   try {
-    const stored = await storeEntry(run.id, body, now);
+    const stored = await storeEntry(env.DB, run.id, body, now);
+    await mirrorToWallet2(run.id, [body], now);
     return Response.json({ ok: true, runId: run.id, snapshotId: stored.snapshotId, sourceId: stored.sourceId, rawStorageStatus: stored.rawStorageStatus, ...(stored.rawStorageError ? { rawStorageError: stored.rawStorageError } : {}) });
   } catch (error) {
     if (error instanceof SyncEntryError) return Response.json({ error: error.message }, { status: 400 });

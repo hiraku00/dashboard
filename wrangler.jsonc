@@ -25,6 +25,15 @@
       "database_name": "hiraku-watch-list",
       "database_id": "a88eabc6-5b74-48e8-b347-07720d2297d1",
       "migrations_dir": "migrations"
+    },
+    // Manage Asset の「ウォレット2」(ダミーデータ)。本番の資産テーブルと
+    // 同じ DDL (db/index.ts の ASSET_TABLE_DDL) を ensureWallet2Schema() が作る。
+    // migrations/ は本番 DB 用なので、こちらには適用しない。docs/manage-asset.md 参照。
+    {
+      "binding": "DB_WALLET2",
+      "database_name": "hiraku-manage-asset-wallet2",
+      "database_id": "4b01ebd3-1009-450d-abfe-a4a0755efeb7",
+      "migrations_dir": "migrations-wallet2"
     }
   ],
   "vars": {

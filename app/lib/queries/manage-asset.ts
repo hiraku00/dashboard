@@ -8,14 +8,25 @@
  *  通すことで、レガシーフロントに渡す形が二本の間でドリフトしない -- という
  *  元のルートのコメントが強調していた不変条件を、共有関数として構造で担保する。
  *
- *  書き込み系（同期の取り込み等）はここには置かない。 */
+ *  書き込み系（同期の取り込み等）はここには置かない。
+ *
+ *  どの関数も、読む DB を `db` で受け取る（省略すると本番の env.DB）。ウォレット2
+ *  （ダミーデータ、env.DB_WALLET2）は本番と同じ形のテーブルを持つので、
+ *  SQL も組み立ても一切分けず、DB だけを差し替える（app/lib/manage-asset-wallet.ts）。 */
 import { env } from "cloudflare:workers";
-import { ensureSchema } from "@/db";
+import { ensureSchema, ensureWallet2Schema } from "@/db";
 import { toLegacyExchangeSnapshot, toLegacyWalletSnapshot } from "@/app/lib/manage-asset-legacy";
 import { currencyFields } from "@/app/lib/manage-asset-history-fields";
 import { LATEST_SNAPSHOT_JOIN } from "@/app/lib/manage-asset-latest-snapshot";
 
 type Row = Record<string, unknown>;
+
+/** 読む前に、その DB のテーブルがあることを確かめる。本番は ensureSchema()、ウォレット2は
+ *  同じ資産テーブルを作る ensureWallet2Schema()。どちらも isolate ごとに1回だけ確かめる。 */
+async function ready(db: D1Database): Promise<void> {
+  await ensureSchema({ seed: false });
+  if (db !== env.DB) await ensureWallet2Schema();
+}
 
 export type AssetState = {
   sources: Row[];
@@ -26,19 +37,19 @@ export type AssetState = {
 };
 
 /** app/api/manage-asset/state の GET と、/manage-asset ページの初期表示が両方呼ぶ。 */
-export async function assetState(): Promise<AssetState> {
-  await ensureSchema({ seed: false });
+export async function assetState(db: D1Database = env.DB): Promise<AssetState> {
+  await ready(db);
   // The sources and the latest snapshots do not depend on each other, so they
   // share one D1 round trip; only the positions need the snapshot ids and follow.
-  const [sourceResult, snapshotResult] = await env.DB.batch<Row>([
-    env.DB.prepare("SELECT * FROM asset_sources WHERE enabled=1 ORDER BY display_name"),
+  const [sourceResult, snapshotResult] = await db.batch<Row>([
+    db.prepare("SELECT * FROM asset_sources WHERE enabled=1 ORDER BY display_name"),
     // "Latest snapshot per source". This was a ROW_NUMBER() pass, which had to
     // read and rank every snapshot ever taken -- 4,200 rows to return 17. Since
     // asset_snapshots gained UNIQUE(source_id, as_of_date) there is exactly one
     // row per source and date, so the newest date per source identifies it
     // uniquely and the grouping can use asset_snapshots_source_date_idx instead
     // of scanning.
-    env.DB.prepare(`SELECT s.*, a.source_type, a.display_name, a.provider, a.public_address
+    db.prepare(`SELECT s.*, a.source_type, a.display_name, a.provider, a.public_address
     ${LATEST_SNAPSHOT_JOIN}
     ORDER BY s.total_usd DESC`),
   ]);
@@ -48,7 +59,7 @@ export async function assetState(): Promise<AssetState> {
   // same "latest per source" lookup a second time for positions.
   const latestSnapshotIds = snapshotRows.map((row) => String(row.id ?? "")).filter(Boolean);
   const positions = latestSnapshotIds.length
-    ? (await env.DB.prepare(`SELECT p.*, a.display_name, a.provider FROM asset_positions p JOIN asset_snapshots s ON s.id=p.snapshot_id JOIN asset_sources a ON a.id=s.source_id WHERE p.snapshot_id IN (${latestSnapshotIds.map(() => "?").join(",")}) ORDER BY p.value_usd DESC`).bind(...latestSnapshotIds).all<Row>()).results ?? []
+    ? (await db.prepare(`SELECT p.*, a.display_name, a.provider FROM asset_positions p JOIN asset_snapshots s ON s.id=p.snapshot_id JOIN asset_sources a ON a.id=s.source_id WHERE p.snapshot_id IN (${latestSnapshotIds.map(() => "?").join(",")}) ORDER BY p.value_usd DESC`).bind(...latestSnapshotIds).all<Row>()).results ?? []
     : [];
   const positionsBySnapshot = new Map<string, Row[]>();
   for (const position of positions) {
@@ -88,11 +99,11 @@ function newestRecord(current: Row, previous: Row): boolean {
  *  calendar days including the latest). The latest date spans both tables:
  *  normalized snapshots hold current data, asset_history_records the imported
  *  past, and callers merge them before picking their own latest. */
-async function cutoffDate(days: string | null): Promise<string | null> {
+async function cutoffDate(db: D1Database, days: string | null): Promise<string | null> {
   if (!days || days === "all") return null;
   const window = Number(days);
   if (!Number.isFinite(window) || window < 1) return null;
-  const row = (await env.DB.prepare(`SELECT MAX(latest) AS latest FROM (
+  const row = (await db.prepare(`SELECT MAX(latest) AS latest FROM (
          SELECT MAX(as_of_date) AS latest FROM asset_snapshots
          UNION ALL SELECT MAX(as_of_date) FROM asset_history_records)`).all<{ latest: string | null }>()).results?.[0];
   const latest = row?.latest;
@@ -133,10 +144,10 @@ function newestPerSourceAndDate(wallets: Row[], exchanges: Row[]): AssetHistory 
  *
  *  形は3つ: 指定なし = 全項目、`summary` = 資産概要が使う ID・日付・合計だけ、
  *  `fields: "currency"` = 通貨推移が読む項目だけ（全項目の約半分）。 */
-export async function assetHistory(days: string | null, options: { summary?: boolean; fields?: "currency" } = {}): Promise<AssetHistory> {
-  await ensureSchema({ seed: false });
-  const cutoff = await cutoffDate(days);
-  if (options.summary) return assetHistorySummary(cutoff);
+export async function assetHistory(days: string | null, options: { summary?: boolean; fields?: "currency" } = {}, db: D1Database = env.DB): Promise<AssetHistory> {
+  await ready(db);
+  const cutoff = await cutoffDate(db, days);
+  if (options.summary) return assetHistorySummary(db, cutoff);
   const since = cutoff ?? "";
   const filterSql = cutoff ? " WHERE as_of_date >= ?" : "";
   const bind = cutoff ? [since] : [];
@@ -144,17 +155,17 @@ export async function assetHistory(days: string | null, options: { summary?: boo
   // filter on the same window, so they share one D1 round trip (the window
   // lookup above has to come first: it produces the bound date).
   const snapshotFilter = cutoff ? " WHERE s.as_of_date >= ?" : "";
-  const [recordResult, normalizedResult, positionResult] = await env.DB.batch<Row>([
-    env.DB.prepare(`SELECT * FROM asset_history_records${filterSql} ORDER BY as_of_date ASC, captured_at ASC`).bind(...bind),
+  const [recordResult, normalizedResult, positionResult] = await db.batch<Row>([
+    db.prepare(`SELECT * FROM asset_history_records${filterSql} ORDER BY as_of_date ASC, captured_at ASC`).bind(...bind),
     // The daily collector writes the normalized current snapshot tables, while
     // the migration endpoint writes the legacy history table. Both are read here
     // and merged below so today's data is available to the same charts as
     // imported history.
-    env.DB.prepare(`SELECT s.*, a.source_type, a.display_name, a.public_address, r.received_at AS sync_received_at
+    db.prepare(`SELECT s.*, a.source_type, a.display_name, a.public_address, r.received_at AS sync_received_at
     FROM asset_snapshots s JOIN asset_sources a ON a.id=s.source_id
     LEFT JOIN asset_sync_runs r ON r.id=s.run_id${snapshotFilter}
     ORDER BY s.as_of_date ASC, s.captured_at ASC`).bind(...bind),
-    env.DB.prepare(`SELECT p.*, s.id AS snapshot_id, s.source_id, s.as_of_date, s.captured_at, a.source_type, a.display_name
+    db.prepare(`SELECT p.*, s.id AS snapshot_id, s.source_id, s.as_of_date, s.captured_at, a.source_type, a.display_name
     FROM asset_positions p JOIN asset_snapshots s ON s.id=p.snapshot_id JOIN asset_sources a ON a.id=s.source_id${snapshotFilter}
     ORDER BY s.as_of_date ASC, s.captured_at ASC`).bind(...bind),
   ]);
@@ -185,23 +196,23 @@ export async function assetHistory(days: string | null, options: { summary?: boo
 }
 
 /** app/api/lido-rewards の GET と、通貨推移ページの初期表示が両方呼ぶ。 */
-export async function lidoRewards(): Promise<Row[]> {
-  await ensureSchema({ seed: false });
-  const rows = (await env.DB.prepare("SELECT payload_json FROM asset_lido_rewards ORDER BY reward_date ASC").all<{ payload_json: string }>()).results ?? [];
+export async function lidoRewards(db: D1Database = env.DB): Promise<Row[]> {
+  await ready(db);
+  const rows = (await db.prepare("SELECT payload_json FROM asset_lido_rewards ORDER BY reward_date ASC").all<{ payload_json: string }>()).results ?? [];
   return rows.map((row) => JSON.parse(row.payload_json));
 }
 
 /** app/api/usd-jpy-rates の GET と、通貨推移ページの初期表示が両方呼ぶ。 */
-export async function usdJpyRates(): Promise<Row[]> {
-  await ensureSchema({ seed: false });
-  const rows = (await env.DB.prepare("SELECT payload_json FROM asset_fx_rates ORDER BY rate_date ASC").all<{ payload_json: string }>()).results ?? [];
+export async function usdJpyRates(db: D1Database = env.DB): Promise<Row[]> {
+  await ready(db);
+  const rows = (await db.prepare("SELECT payload_json FROM asset_fx_rates ORDER BY rate_date ASC").all<{ payload_json: string }>()).results ?? [];
   return rows.map((row) => JSON.parse(row.payload_json));
 }
 
 /** app/api/manage-asset/sync の GET と、データ更新ページの初期表示が両方呼ぶ。 */
-export async function latestSyncRun(): Promise<Row | null> {
-  await ensureSchema({ seed: false });
-  return (await env.DB.prepare("SELECT * FROM asset_sync_runs ORDER BY received_at DESC LIMIT 1").all<Row>()).results?.[0] ?? null;
+export async function latestSyncRun(db: D1Database = env.DB): Promise<Row | null> {
+  await ready(db);
+  return (await db.prepare("SELECT * FROM asset_sync_runs ORDER BY received_at DESC LIMIT 1").all<Row>()).results?.[0] ?? null;
 }
 
 /** 未処理の「今すぐ再取得」依頼（あれば1件）。Mac側collectorのポーリングと、
@@ -235,13 +246,13 @@ export async function pendingResyncRequest(): Promise<Row | null> {
  *  It goes through the same newest-per-source-and-date merge as the full read,
  *  so both pick the same rows; tests/workers/manage-asset-queries.test.ts holds
  *  the two together on the same data. */
-async function assetHistorySummary(cutoff: string | null): Promise<AssetHistory> {
+async function assetHistorySummary(db: D1Database, cutoff: string | null): Promise<AssetHistory> {
   const filterSql = cutoff ? " WHERE as_of_date >= ?" : "";
   const snapshotFilter = cutoff ? " WHERE s.as_of_date >= ?" : "";
   const bind = cutoff ? [cutoff] : [];
-  const [recordResult, normalizedResult] = await env.DB.batch<Row>([
-    env.DB.prepare(`SELECT record_type, source_id, as_of_date, captured_at, total_usd, fx_usdjpy FROM asset_history_records${filterSql} ORDER BY as_of_date ASC, captured_at ASC`).bind(...bind),
-    env.DB.prepare(`SELECT s.source_id, s.as_of_date, s.captured_at, s.total_usd, s.fx_usdjpy, a.source_type, r.received_at AS sync_received_at
+  const [recordResult, normalizedResult] = await db.batch<Row>([
+    db.prepare(`SELECT record_type, source_id, as_of_date, captured_at, total_usd, fx_usdjpy FROM asset_history_records${filterSql} ORDER BY as_of_date ASC, captured_at ASC`).bind(...bind),
+    db.prepare(`SELECT s.source_id, s.as_of_date, s.captured_at, s.total_usd, s.fx_usdjpy, a.source_type, r.received_at AS sync_received_at
     FROM asset_snapshots s JOIN asset_sources a ON a.id=s.source_id
     LEFT JOIN asset_sync_runs r ON r.id=s.run_id${snapshotFilter}
     ORDER BY s.as_of_date ASC, s.captured_at ASC`).bind(...bind),
