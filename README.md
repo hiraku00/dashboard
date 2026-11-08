@@ -28,7 +28,7 @@ Watch List、TextTube、Manage Asset、To Doを一つのCloudflare上で管理�
 | `/` | ポータルホーム。各機能への導線とデータ基盤の状態 |
 | `/watch-list` | Watch Listの検索、フィルタ、ページング、登録・編集・削除、インポート/エクスポート。`?q=` で検索語つきで開ける（ちきりんオプチャの「Watch List」列から） |
 | `/text-tube` | TextTubeライブラリ。検索、並び替え、追加、各カードからの編集・削除、詳細表示への導線 |
-| `/text-tube/watch/:id` | TextTube本文の読書画面。Markdown、GFM表、目次アンカー、Mermaidを表示。編集・削除もここから |
+| `/text-tube/watch/:id` | TextTube本文の読書画面。Markdown、GFM表、目次アンカー、Mermaidを表示。Pody形式のHTML部品（目次・章見出し・吹き出し・用語注釈・図解・まとめ）は許可リストで安全にして表示（[docs/text-tube.md](docs/text-tube.md)）。編集・削除もここから |
 | `/text-tube/watch/:id/edit`, `/text-tube/new` | TextTubeの編集・追加画面 |
 | `/manage-asset` | Manage Assetホーム。総資産、資産推移、資産配分、保有資産 |
 | `/manage-asset/locations` | 保管場所ごとの資産内訳 |

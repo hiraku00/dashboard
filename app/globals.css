@@ -670,3 +670,201 @@ h1,h2,h3 { color:var(--ink); } h1 { margin:0; font-size:30px; line-height:1.1; l
 .usage-panel .usage-columns>.usage-row>.usage-size { color:var(--muted); font-size:12px; font-weight:500; }
 .usage-panel .database-breakdown { display:block; }
 @media(max-width:760px){ .usage-panel .usage-columns,.usage-panel .usage-columns>.usage-row { column-gap:10px; } }
+
+/* =========================================================
+   TextTube 記事用スタイル（Pody形式の部品）
+   app/text-tube/markdown-renderer.tsx の PodyArticle が .tt-article を付ける。
+   ポータルはライト表示のみなので、依頼のCSSにあった prefers-color-scheme: dark
+   の変数の上書きは入れていない（入れると明るいカードに明るい文字が載る）。
+   ========================================================= */
+.tt-article {
+  --tt-text: #1f2328;
+  --tt-text-2: #4b5563;
+  --tt-muted: #6b7280;
+  --tt-bg: #ffffff;
+  --tt-surface: #f7f8fa;
+  --tt-border: #e5e7eb;
+  --tt-primary: #2563eb;
+  --tt-primary-soft: rgba(37, 99, 235, 0.10);
+  --tt-green: #059669;
+  --tt-green-soft: rgba(5, 150, 105, 0.12);
+  --tt-orange: #d97706;
+  --tt-orange-soft: rgba(217, 119, 6, 0.12);
+  --tt-mark: rgba(250, 204, 21, 0.35);
+  /* 話し手ごとの吹き出しの背景と、アイコンの文字・枠の色。
+     左右は番号の奇数が左・偶数が右なので、3人以上だと同じ側に2人並ぶ。色で見分ける。 */
+  --tt-bubble-1: #f1f3f6;
+  --tt-bubble-2: #e8f0fe;
+  --tt-bubble-3: #e3f5ec;
+  --tt-bubble-4: #fdf0e1;
+  --tt-speaker-1: #4b5563;
+  --tt-speaker-2: #2563eb;
+  --tt-speaker-3: #047857;
+  --tt-speaker-4: #b45309;
+  max-width: 760px;
+  margin: 0 auto;
+  color: var(--tt-text);
+  font-size: 16px;
+  line-height: 1.9;
+  letter-spacing: 0.01em;
+  word-break: break-word;
+}
+
+/* ---- Markdown の地の文（Tailwind の preflight で消える既定の見た目を戻す） ---- */
+.tt-article h1 { font-size: 1.7em; line-height: 1.4; margin: 0 0 0.6em; font-weight: 800; }
+.tt-article h2 { font-size: 1.35em; line-height: 1.45; margin: 1.6em 0 0.6em; font-weight: 800; }
+.tt-article h3 { font-size: 1.15em; line-height: 1.5; margin: 1.4em 0 0.5em; font-weight: 800; }
+.tt-article p { margin: 0 0 1.1em; }
+.tt-article ul { list-style: disc; margin: 0 0 1.1em; padding-left: 1.4em; }
+.tt-article ol { list-style: decimal; margin: 0 0 1.1em; padding-left: 1.6em; }
+.tt-article li { margin: 0.25em 0; }
+.tt-article strong { font-weight: 700; }
+.tt-article a { color: var(--tt-primary); }
+.tt-article blockquote { margin: 1.2em 0; border-left: 3px solid var(--tt-primary); background: var(--tt-primary-soft); padding: 0.6em 1em; color: var(--tt-text-2); }
+.tt-article code { border-radius: 5px; background: #eef2f8; padding: 2px 5px; color: #164f9e; font-size: 0.92em; }
+.tt-article pre { overflow: auto; margin: 1.2em 0; border-radius: 9px; background: #1e2430; padding: 15px; color: #eef2f8; }
+.tt-article pre code { background: transparent; color: inherit; padding: 0; }
+.tt-article hr { margin: 2em 0; border: 0; border-top: 1px solid var(--tt-border); }
+
+/* ---- メタ情報・リード ---- */
+.tt-article .article-meta { font-size: 13px; color: var(--tt-muted); margin-bottom: 1.2em; }
+.tt-article .article-lead {
+  font-size: 1.02em; color: var(--tt-text-2); padding: 1em 1.2em;
+  background: var(--tt-surface); border-left: 3px solid var(--tt-primary); border-radius: 6px;
+}
+
+/* ---- 目次 ---- */
+.tt-article .article-toc { border: 1px solid var(--tt-border); border-radius: 12px; padding: 1em 1.2em 0.6em; margin: 1.6em 0 2.4em; }
+.tt-article .article-toc-title { font-weight: 700; font-size: 14px; margin: 0 0 0.4em; }
+.tt-article .article-toc ol { list-style: none; margin: 0; padding: 0; }
+.tt-article .article-toc li { border-top: 1px solid var(--tt-border); margin: 0; }
+.tt-article .article-toc li:first-child { border-top: none; }
+.tt-article .article-toc a {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 12px; align-items: baseline;
+  padding: 10px 0; color: var(--tt-text); text-decoration: none; font-size: 14px; line-height: 1.5;
+}
+.tt-article .article-toc a:hover .toc-title { color: var(--tt-primary); }
+.tt-article .toc-no { font-weight: 700; color: var(--tt-primary); font-variant-numeric: tabular-nums; font-size: 12px; }
+.tt-article .toc-time { color: var(--tt-muted); font-variant-numeric: tabular-nums; font-size: 12px; }
+
+/* ---- 章見出し ---- */
+/* scroll-margin-top: ポータルの上部（.portal-chrome）は sticky なので、旧形式の見出し
+   （.markdown-heading）と同じだけ空けて、目次から飛んだ見出しが隠れないようにする。 */
+.tt-article .chapter-head { margin: 3em 0 1.2em; padding-top: 1.2em; border-top: 1px solid var(--tt-border); scroll-margin-top: 200px; }
+.tt-article .chapter-no { display: block; font-size: 13px; font-weight: 800; color: var(--tt-primary); letter-spacing: 0.08em; font-variant-numeric: tabular-nums; }
+.tt-article .chapter-head h2 { font-size: 1.35em; line-height: 1.45; margin: 0.2em 0 0.5em; font-weight: 800; border: none; padding: 0; }
+.tt-article .timestamp-link {
+  display: inline-flex; align-items: center; gap: 4px; font-size: 13px; font-weight: 700;
+  color: var(--tt-primary); background: var(--tt-primary-soft); border-radius: 999px; padding: 4px 12px;
+  text-decoration: none; font-variant-numeric: tabular-nums;
+}
+.tt-article .timestamp-link:hover { filter: brightness(1.1); }
+
+/* ---- 吹き出し ---- */
+.tt-article .bubble-group { margin: 1.4em 0; display: flex; flex-direction: column; gap: 10px; }
+.tt-article .bubble-row { display: flex; gap: 10px; align-items: flex-start; }
+.tt-article .bubble-row.speaker2,
+.tt-article .bubble-row.speaker4 { flex-direction: row-reverse; }
+.tt-article .bubble-avatar {
+  flex: 0 0 40px; width: 40px; height: 40px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700;
+  background: var(--tt-surface); border: 1px solid var(--tt-border); color: var(--tt-text-2);
+  overflow: hidden; white-space: nowrap;
+}
+.tt-article .bubble-row.is-continued .bubble-content { margin-left: 50px; }
+.tt-article .bubble-row.speaker2.is-continued .bubble-content,
+.tt-article .bubble-row.speaker4.is-continued .bubble-content { margin-left: 0; margin-right: 50px; }
+.tt-article .bubble-content { max-width: 82%; display: flex; flex-direction: column; }
+.tt-article .speaker2 .bubble-content,
+.tt-article .speaker4 .bubble-content { align-items: flex-end; }
+.tt-article .bubble-name { font-size: 12px; color: var(--tt-muted); margin-bottom: 3px; }
+.tt-article .bubble { background: var(--tt-bubble-1); border-radius: 4px 16px 16px 16px; padding: 10px 14px; font-size: 15px; line-height: 1.75; }
+.tt-article .speaker2 .bubble,
+.tt-article .speaker4 .bubble { border-radius: 16px 4px 16px 16px; }
+.tt-article .speaker1 .bubble { background: var(--tt-bubble-1); }
+.tt-article .speaker2 .bubble { background: var(--tt-bubble-2); }
+.tt-article .speaker3 .bubble { background: var(--tt-bubble-3); }
+.tt-article .speaker4 .bubble { background: var(--tt-bubble-4); }
+.tt-article .speaker1 .bubble-avatar { background: var(--tt-bubble-1); color: var(--tt-speaker-1); border-color: color-mix(in srgb, var(--tt-speaker-1) 35%, transparent); }
+.tt-article .speaker2 .bubble-avatar { background: var(--tt-bubble-2); color: var(--tt-speaker-2); border-color: color-mix(in srgb, var(--tt-speaker-2) 35%, transparent); }
+.tt-article .speaker3 .bubble-avatar { background: var(--tt-bubble-3); color: var(--tt-speaker-3); border-color: color-mix(in srgb, var(--tt-speaker-3) 35%, transparent); }
+.tt-article .speaker4 .bubble-avatar { background: var(--tt-bubble-4); color: var(--tt-speaker-4); border-color: color-mix(in srgb, var(--tt-speaker-4) 35%, transparent); }
+.tt-article .bubble p { margin: 0; }
+
+/* ---- 用語注釈（PCはホバー、スマホはタップ。タップの開閉と画面端の位置調整は JS） ---- */
+.tt-article .tip { position: relative; display: inline; outline: none; }
+.tt-article .tip-term { border-bottom: 1px dashed var(--tt-primary); color: var(--tt-primary); cursor: help; }
+.tt-article .tip-pop {
+  display: none; position: absolute; left: 0; top: 1.9em; z-index: 20; width: min(320px, 80vw);
+  padding: 10px 12px; background: var(--tt-bg); color: var(--tt-text); border: 1px solid var(--tt-border);
+  border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,0.14); font-size: 13px; line-height: 1.7;
+}
+.tt-article .tip.is-open .tip-pop,
+.tt-article .tip:focus-visible .tip-pop { display: block; }
+@media (hover: hover) { .tt-article .tip:hover .tip-pop { display: block; } }
+
+/* ---- 強調 ---- */
+.tt-article .mark { background: linear-gradient(transparent 55%, var(--tt-mark) 55%); font-weight: 700; }
+
+/* ---- 図解の外枠 ---- */
+.tt-article .figure-box { margin: 1.8em 0; padding: 1.1em 1.2em 1.2em; border: 1px solid var(--tt-border); border-radius: 14px; background: var(--tt-surface); }
+.tt-article .figure-box-title { font-size: 14px; font-weight: 700; margin-bottom: 0.9em; color: var(--tt-text); }
+.tt-article .figure-box p { margin: 0; }
+
+/* タイムライン */
+.tt-article .timeline { position: relative; padding-left: 18px; }
+.tt-article .timeline::before { content: ""; position: absolute; left: 5px; top: 6px; bottom: 6px; width: 2px; background: var(--tt-border); }
+.tt-article .timeline-item { position: relative; padding: 0 0 14px 8px; display: flex; flex-direction: column; }
+.tt-article .timeline-item.last { padding-bottom: 0; }
+.tt-article .timeline-item::before {
+  content: ""; position: absolute; left: -18px; top: 7px; width: 12px; height: 12px; border-radius: 50%;
+  background: var(--tt-primary); border: 2px solid var(--tt-surface);
+}
+.tt-article .timeline-year { font-weight: 700; font-size: 13px; color: var(--tt-primary); }
+.tt-article .timeline-event { font-size: 14px; line-height: 1.7; }
+
+/* BEFORE / AFTER と連鎖カード */
+.tt-article .ba-card,
+.tt-article .figure-card { background: var(--tt-bg); border: 1px solid var(--tt-border); border-radius: 10px; padding: 10px 14px; font-size: 14px; line-height: 1.7; }
+.tt-article .ba-label { font-size: 11px; font-weight: 800; letter-spacing: 0.1em; margin-bottom: 2px; }
+.tt-article .ba-label.before { color: var(--tt-muted); }
+.tt-article .ba-label.after { color: var(--tt-primary); }
+.tt-article .ba-card.after { border-color: var(--tt-primary); }
+.tt-article .ba-arrow,
+.tt-article .figure-arrow { text-align: center; color: var(--tt-muted); line-height: 1.6; margin: 2px 0; }
+.tt-article .highlight { font-weight: 700; color: var(--tt-primary); }
+.tt-article .highlight-green { font-weight: 700; color: var(--tt-green); }
+
+/* VS 比較 */
+.tt-article .compare-grid { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 10px; align-items: stretch; }
+.tt-article .compare-item { background: var(--tt-bg); border: 1px solid var(--tt-border); border-radius: 10px; padding: 10px 12px; font-size: 14px; line-height: 1.7; }
+.tt-article .compare-item.left { border-top: 3px solid var(--tt-primary); }
+.tt-article .compare-item.right { border-top: 3px solid var(--tt-orange); }
+.tt-article .compare-label { font-weight: 700; margin-bottom: 4px; }
+.tt-article .figure-vs { align-self: center; font-weight: 800; font-size: 12px; color: var(--tt-muted); }
+@media (max-width: 560px) {
+  .tt-article .compare-grid { grid-template-columns: minmax(0, 1fr); }
+  .tt-article .figure-vs { text-align: center; }
+}
+
+/* キーワード */
+.tt-article .keyword-cloud { display: flex; flex-wrap: wrap; gap: 8px; }
+.tt-article .keyword-tag { font-size: 13px; font-weight: 700; padding: 4px 12px; border-radius: 999px; }
+.tt-article .keyword-tag.blue { background: var(--tt-primary-soft); color: var(--tt-primary); }
+.tt-article .keyword-tag.green { background: var(--tt-green-soft); color: var(--tt-green); }
+.tt-article .keyword-tag.orange { background: var(--tt-orange-soft); color: var(--tt-orange); }
+
+/* 表 */
+.tt-article .table-wrap { overflow-x: auto; }
+.tt-article .article-table { width: 100%; border-collapse: collapse; font-size: 14px; line-height: 1.6; }
+.tt-article .article-table th,
+.tt-article .article-table td { border-bottom: 1px solid var(--tt-border); padding: 8px 10px; text-align: left; vertical-align: top; }
+.tt-article .article-table th { font-size: 12px; color: var(--tt-muted); white-space: nowrap; }
+.tt-article .article-table td:first-child { font-weight: 700; white-space: nowrap; }
+
+/* ---- まとめ ---- */
+.tt-article .summary { margin: 3.2em 0 1em; padding: 1.4em 1.4em 1em; border-radius: 14px; background: var(--tt-primary-soft); }
+.tt-article .summary-title { font-size: 1.2em; margin: 0 0 0.6em; font-weight: 800; border: none; padding: 0; }
+.tt-article .summary-intro { color: var(--tt-text); }
+.tt-article .summary-list { list-style: disc; margin: 0; padding-left: 1.2em; }
+.tt-article .summary-list li { margin-bottom: 0.5em; line-height: 1.75; }
