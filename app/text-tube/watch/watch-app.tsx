@@ -119,7 +119,7 @@ export function TextTubeWatchApp({
           </header>
           <section className="tt-reading-section">
             <h2>要約</h2>
-            <MarkdownRenderer content={String(video.summary || "")} />
+            <MarkdownRenderer content={String(video.summary || "")} videoUrl={video.original_url ? String(video.original_url) : null} />
           </section>
         </article>
         <aside className="tt-next">

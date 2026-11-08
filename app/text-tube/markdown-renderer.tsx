@@ -3,8 +3,11 @@
 import ReactMarkdown from "react-markdown";
 import type { Components } from "react-markdown";
 import { useEffect, useRef } from "react";
+import rehypeRaw from "rehype-raw";
+import rehypeSanitize from "rehype-sanitize";
 import remarkCjkFriendly from "remark-cjk-friendly";
 import remarkGfm from "remark-gfm";
+import { isPartsArticle, parseSeconds, partsSanitizeSchema, youtubeUrlAt } from "./article-html";
 import { MermaidDiagram } from "./mermaid-diagram";
 
 function plainText(value: unknown): string {
@@ -52,7 +55,148 @@ function ResponsiveTable({ children }: { children?: React.ReactNode }) {
   return <div ref={container} className="markdown-table-scroll"><table>{children}</table></div>;
 }
 
-export function MarkdownRenderer({ content }: { content: string }) {
+function MermaidOrCode({ className, children }: { className?: string; children?: React.ReactNode }) {
+  const language = className?.match(/language-([\w-]+)/)?.[1];
+  const code = String(children).replace(/\n$/, "");
+  if (language === "mermaid") return <MermaidDiagram chart={code} />;
+  if (!className) return <code>{children}</code>;
+  return <code className={className}>{children}</code>;
+}
+
+/**
+ * Term tips (`span.tip`): hover on a pointer device, tap to toggle on a touch
+ * device, and keep the popup inside the viewport near the screen edges.
+ */
+function useTermTips(container: React.RefObject<HTMLDivElement | null>) {
+  useEffect(() => {
+    const root = container.current;
+    if (!root) return;
+    const place = (tip: Element) => {
+      const pop = tip.querySelector<HTMLElement>(".tip-pop");
+      if (!pop) return;
+      const fit = () => {
+        pop.style.transform = "";
+        // Reading the box forces layout, so this sees the popup as currently
+        // shown; a hidden one (display:none) has no width and is left alone.
+        const rect = pop.getBoundingClientRect();
+        if (!rect.width) return;
+        const margin = 8;
+        const width = document.documentElement.clientWidth;
+        let shift = 0;
+        if (rect.right > width - margin) shift = width - margin - rect.right;
+        if (rect.left + shift < margin) shift = margin - rect.left;
+        pop.style.transform = shift ? `translateX(${Math.round(shift)}px)` : "";
+      };
+      fit();
+      // Once more after the browser applies :hover / :focus-visible, in case
+      // the popup was not shown yet when the event fired.
+      requestAnimationFrame(fit);
+    };
+    const closeAll = (except?: Element) => {
+      root.querySelectorAll(".tip.is-open").forEach((tip) => {
+        if (tip !== except) tip.classList.remove("is-open");
+      });
+    };
+    const onClick = (event: MouseEvent) => {
+      const target = event.target as Element | null;
+      const tip = target?.closest(".tip");
+      if (!tip || !root.contains(tip)) {
+        closeAll();
+        return;
+      }
+      // A tap inside an open popup (selecting its text, say) keeps it open.
+      if (target?.closest(".tip-pop") && tip.classList.contains("is-open")) return;
+      closeAll(tip);
+      const open = tip.classList.toggle("is-open");
+      if (open) place(tip);
+      else (tip as HTMLElement).blur();
+    };
+    const onEnter = (event: Event) => {
+      const tip = (event.target as Element | null)?.closest?.(".tip");
+      if (tip && root.contains(tip)) place(tip);
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") closeAll();
+    };
+    document.addEventListener("click", onClick);
+    root.addEventListener("mouseover", onEnter);
+    root.addEventListener("focusin", onEnter);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("click", onClick);
+      root.removeEventListener("mouseover", onEnter);
+      root.removeEventListener("focusin", onEnter);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [container]);
+}
+
+/**
+ * Articles with HTML parts: the raw HTML is kept, filtered through an
+ * allow-list (partsSanitizeSchema), and styled under `.tt-article` instead of
+ * `.markdown-body` (whose pre-wrap paragraphs and card-style tables would
+ * break the parts). Ids are kept as written (`section-N`), so the slug
+ * rewriting used for old-format articles is not applied here.
+ */
+function PartsArticle({ content, videoUrl }: { content: string; videoUrl?: string | null }) {
+  const container = useRef<HTMLDivElement>(null);
+  useTermTips(container);
+  const components: Components = {
+    a: ({ href, children, className, target, ...rest }) => {
+      const dataSeconds = (rest as Record<string, unknown>)["data-seconds"] as string | undefined;
+      if (className?.split(/\s+/).includes("timestamp-link")) {
+        // No player is embedded on the watch page, so the button opens the
+        // video at that second in a new tab when the article's URL is a
+        // YouTube one; otherwise the link stays as written (#t=N).
+        const seconds = parseSeconds(dataSeconds) ?? parseSeconds(href?.match(/^#t=(\d+s?)$/)?.[1]);
+        const external =
+          href && /^https?:/i.test(href) ? href : seconds != null ? youtubeUrlAt(videoUrl, seconds) : null;
+        return (
+          <a
+            href={external ?? href}
+            className={className}
+            data-seconds={dataSeconds}
+            target={external ? "_blank" : undefined}
+            rel={external ? "noopener noreferrer" : undefined}
+          >
+            {children}
+          </a>
+        );
+      }
+      const isInternal = href?.startsWith("#") ?? false;
+      const finalTarget = target ?? (isInternal ? undefined : "_blank");
+      return (
+        <a
+          href={href}
+          className={className}
+          target={finalTarget}
+          rel={finalTarget === "_blank" ? "noopener noreferrer" : undefined}
+        >
+          {children}
+        </a>
+      );
+    },
+    code: ({ className, children }) => <MermaidOrCode className={className}>{children}</MermaidOrCode>,
+  };
+  return (
+    <div ref={container} className="tt-article">
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm, remarkCjkFriendly]}
+        rehypePlugins={[rehypeRaw, [rehypeSanitize, partsSanitizeSchema]]}
+        components={components}
+      >
+        {content}
+      </ReactMarkdown>
+    </div>
+  );
+}
+
+export function MarkdownRenderer({ content, videoUrl }: { content: string; videoUrl?: string | null }) {
+  if (isPartsArticle(content)) return <PartsArticle content={content} videoUrl={videoUrl} />;
+  return <LegacyMarkdown content={content} />;
+}
+
+function LegacyMarkdown({ content }: { content: string }) {
   const headingCounts = new Map<string, number>();
   const heading = (level: 1 | 2 | 3) => {
     // Named and given an explicit displayName rather than returned as a bare
@@ -103,13 +247,7 @@ export function MarkdownRenderer({ content }: { content: string }) {
     th: ({ children }) => <th>{children}</th>,
     td: ({ children }) => <td>{children}</td>,
     hr: () => <hr />,
-    code: ({ className, children }) => {
-      const language = className?.match(/language-([\w-]+)/)?.[1];
-      const code = String(children).replace(/\n$/, "");
-      if (language === "mermaid") return <MermaidDiagram chart={code} />;
-      if (!className) return <code>{children}</code>;
-      return <code className={className}>{children}</code>;
-    },
+    code: ({ className, children }) => <MermaidOrCode className={className}>{children}</MermaidOrCode>,
   };
 
   return (

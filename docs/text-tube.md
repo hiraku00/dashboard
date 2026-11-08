@@ -23,6 +23,19 @@ TextTubeは単独アプリではなく、ポータルの共通ヘッダー・認
 
 目次リンクは本文内の見出しに対応する安定したIDへ移動します。見出しIDの生成規則を変更すると既存リンクに影響するため、変更時は既存記事を含む画面テストを行います。
 
+### HTML部品入りの記事
+
+要約欄に、Claude のプロジェクトで「Markdownの地の文＋決められたHTML部品」として出力した記事を貼ると、その部品をそのまま表示します。
+
+- 判定: 本文に `article-meta` / `article-lead` / `article-toc` / `chapter-head` / `bubble-group` / `figure-box` / `tip` / `summary` のいずれかのクラスを持つ `p` / `div` / `nav` / `section` / `span` があれば HTML部品入りの記事として扱う（`app/text-tube/article-html.ts` の `isPartsArticle()`）。それ以外の記事は従来どおり、HTMLを文字のまま出すMarkdown表示（見出しIDの自動生成、表のカード表示もそのまま）。
+- 生のHTMLは `rehype-raw` で読み、`rehype-sanitize` の許可リスト（`partsSanitizeSchema`）で絞る。許可するタグは div, span, section, nav, p, h1〜h6, ol, ul, li, a, strong, em, table, thead, tbody, tr, th, td, br と、Markdownの出力に要る blockquote, pre, code, hr, del, sup, sub, input（GFMのチェックボックスのみ）。属性は class, id, tabindex と、a の href / target / rel / data-seconds、th/td の align だけ。href は http / https / mailto と相対URL・`#` だけ。script, style, iframe などは中身ごと消え、style 属性・on* 属性・`javascript:` のURL・img は残らない。
+- id は書かれたまま残す（`clobberPrefix: ""`）。目次の `#section-N` がそのまま章見出しに飛ぶ。
+- 見た目は `.tt-article`（`app/globals.css` の末尾）。`.markdown-body` は付けない（段落の `white-space: pre-wrap` と、1100px以下で表をカードにする指定が部品を崩すため）。ポータルにダークモードはないので、ダーク用の色の上書きは入れていない。
+- 吹き出し: 左右は話し手の番号で決まる（speaker1・3 が左、speaker2・4 が右）。3人以上だと同じ側に2人並ぶので、吹き出しとアイコンの色を speaker1〜4 で別々にしている（灰・青・緑・橙）。
+- 再生ボタン（`a.timestamp-link`）: 記事ページに埋め込みプレーヤーはないので、記事の「元の動画」URLが YouTube なら、その秒数から（`&t=Ns`）新しいタブで開く。YouTube でなければ `href` のまま（`#t=N`）。
+- 用語注釈（`span.tip`）: PCはホバー、キーボードはフォーカス、スマホはタップで開閉する（もう一度タップか、外をタップで閉じる）。開いたときに画面からはみ出す分だけ横にずらす。
+- 要約欄は保存時に30,000文字で切られる（`app/api/text-tube/videos/[id]/route.ts`）。HTML部品入りの記事は長くなりやすく、上限を超えると末尾のHTMLが途中で切れる。
+
 ## 保存構成
 
 - D1: タイトル、チャンネル、説明、ステータス、種別、公開日、検索用メタデータ
@@ -63,3 +76,5 @@ Watch ListにYouTube動画のURLを含む項目を保存する（新規追加、
 - 目次クリックで該当見出しへ移動する
 - 長文でもポータルヘッダーが固定表示される
 - モバイル幅で表と本文が横溢れしない
+- HTML部品入りの記事で、目次の全リンクが章見出しへ飛び、再生ボタンが動画をその秒数から開き、用語注釈が画面端でもはみ出さずに開く
+- HTML部品入りの記事に `<script>` や `onerror=` を入れても実行されない（`tests/dom/text-tube-article-parts.test.tsx`）
