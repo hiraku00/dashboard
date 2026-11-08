@@ -868,3 +868,15 @@ h1,h2,h3 { color:var(--ink); } h1 { margin:0; font-size:30px; line-height:1.1; l
 .tt-article .summary-intro { color: var(--tt-text); }
 .tt-article .summary-list { list-style: disc; margin: 0; padding-left: 1.2em; }
 .tt-article .summary-list li { margin-bottom: 0.5em; line-height: 1.75; }
+
+/* ---- キーインサイト ---- */
+.tt-article .insight-card { margin: 1.8em 0; padding: 1.1em 1.3em; border-left: 5px solid var(--tt-primary); background: var(--tt-primary-soft); border-radius: 0 10px 10px 0; }
+.tt-article .insight-label { margin: 0 0 0.4em; font-size: 0.75em; font-weight: 700; letter-spacing: 0.08em; color: var(--tt-primary); }
+.tt-article .insight-text { margin: 0; font-size: 1.15em; font-weight: 700; line-height: 1.7; }
+.tt-article .insight-attr { margin: 0.5em 0 0; font-size: 0.85em; color: var(--tt-muted); text-align: right; }
+
+/* ---- 数値カード（1〜3枚） ---- */
+.tt-article .stats-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 0.8em; margin: 1.5em 0; }
+.tt-article .stat-card { padding: 1em; border: 1px solid var(--tt-border); border-radius: 10px; text-align: center; background: var(--tt-surface); }
+.tt-article .stat-number { font-size: 1.6em; font-weight: 800; color: var(--tt-primary); line-height: 1.3; }
+.tt-article .stat-label { margin-top: 0.3em; font-size: 0.85em; color: var(--tt-muted); line-height: 1.5; }

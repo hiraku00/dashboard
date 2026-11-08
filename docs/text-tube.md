@@ -27,13 +27,14 @@ TextTubeは単独アプリではなく、ポータルの共通ヘッダー・認
 
 要約欄に、Claude のプロジェクトで「Markdownの地の文＋決められたHTML部品」として出力した記事を貼ると、その部品をそのまま表示します。
 
-- 判定: 本文に `article-meta` / `article-lead` / `article-toc` / `chapter-head` / `bubble-group` / `figure-box` / `tip` / `summary` のいずれかのクラスを持つ `p` / `div` / `nav` / `section` / `span` があれば HTML部品入りの記事として扱う（`app/text-tube/article-html.ts` の `isPartsArticle()`）。それ以外の記事は従来どおり、HTMLを文字のまま出すMarkdown表示（見出しIDの自動生成、表のカード表示もそのまま）。
+- 判定: 本文に `article-meta` / `article-lead` / `article-toc` / `chapter-head` / `bubble-group` / `figure-box` / `tip` / `insight-card` / `stats-row` / `summary` のいずれかのクラスを持つ `p` / `div` / `nav` / `section` / `span` があれば HTML部品入りの記事として扱う（`app/text-tube/article-html.ts` の `isPartsArticle()`）。それ以外の記事は従来どおり、HTMLを文字のまま出すMarkdown表示（見出しIDの自動生成、表のカード表示もそのまま）。
 - 生のHTMLは `rehype-raw` で読み、`rehype-sanitize` の許可リスト（`partsSanitizeSchema`）で絞る。許可するタグは div, span, section, nav, p, h1〜h6, ol, ul, li, a, strong, em, table, thead, tbody, tr, th, td, br と、Markdownの出力に要る blockquote, pre, code, hr, del, sup, sub, input（GFMのチェックボックスのみ）。属性は class, id, tabindex と、a の href / target / rel / data-seconds、th/td の align だけ。href は http / https / mailto と相対URL・`#` だけ。script, style, iframe などは中身ごと消え、style 属性・on* 属性・`javascript:` のURL・img は残らない。
 - id は書かれたまま残す（`clobberPrefix: ""`）。目次の `#section-N` がそのまま章見出しに飛ぶ。
 - 見た目は `.tt-article`（`app/globals.css` の末尾）。`.markdown-body` は付けない（段落の `white-space: pre-wrap` と、1100px以下で表をカードにする指定が部品を崩すため）。ポータルにダークモードはないので、ダーク用の色の上書きは入れていない。
 - 吹き出し: 左右は話し手の番号で決まる（speaker1・3 が左、speaker2・4 が右）。3人以上だと同じ側に2人並ぶので、吹き出しとアイコンの色を speaker1〜4 で別々にしている（灰・青・緑・橙）。
 - 再生ボタン（`a.timestamp-link`）: 記事ページに埋め込みプレーヤーはないので、記事の「元の動画」URLが YouTube なら、その秒数から（`&t=Ns`）新しいタブで開く。YouTube でなければ `href` のまま（`#t=N`）。
 - 用語注釈（`span.tip`）: PCはホバー、キーボードはフォーカス、スマホはタップで開閉する（もう一度タップか、外をタップで閉じる）。開いたときに画面からはみ出す分だけ横にずらす。
+- キーインサイト（`div.insight-card` > `p.insight-label` + `p.insight-text` + `p.insight-attr`）と数値カード（`div.stats-row` > `div.stat-card` > `div.stat-number` + `div.stat-label`、1〜3枚）: 数値カードはPC幅で横に並び、狭い画面では1枚ずつ縦に並ぶ（`minmax(160px, 1fr)` の自動折り返し）。
 - 要約欄は保存時に30,000文字で切られる（`app/api/text-tube/videos/[id]/route.ts`）。HTML部品入りの記事は長くなりやすく、上限を超えると末尾のHTMLが途中で切れる。
 
 ## 保存構成

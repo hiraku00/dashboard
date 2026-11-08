@@ -60,6 +60,34 @@ test("HTML parts keep their classes and ids, and the TOC link targets the chapte
   expect(external.getAttribute("rel")).toContain("noopener");
 });
 
+test("key insight and stat cards are recognised and keep their structure", () => {
+  const parts = `本文
+
+<div class="insight-card">
+<p class="insight-label">キーインサイト</p>
+<p class="insight-text">引用</p>
+<p class="insight-attr">── 話者</p>
+</div>
+
+<div class="stats-row">
+<div class="stat-card"><div class="stat-number">100ページ</div><div class="stat-label">説明1</div></div>
+<div class="stat-card"><div class="stat-number">業務委託</div><div class="stat-label">説明2</div></div>
+</div>
+`;
+  // Each part alone is enough to switch to the raw-HTML path.
+  expect(isPartsArticle(parts.slice(0, parts.indexOf("<div class=\"stats-row\">")))).toBe(true);
+  expect(isPartsArticle(parts.slice(parts.indexOf("<div class=\"stats-row\">")))).toBe(true);
+  const { container } = render(<MarkdownRenderer content={parts} />);
+  const article = container.querySelector(".tt-article")!;
+  expect(article.querySelector("div.insight-card > p.insight-label")?.textContent).toBe("キーインサイト");
+  expect(article.querySelector("div.insight-card > p.insight-text")?.textContent).toBe("引用");
+  expect(article.querySelector("div.insight-card > p.insight-attr")?.textContent).toBe("── 話者");
+  const cards = article.querySelectorAll("div.stats-row > div.stat-card");
+  expect(cards).toHaveLength(2);
+  expect(cards[0].querySelector(".stat-number")?.textContent).toBe("100ページ");
+  expect(cards[1].querySelector(".stat-label")?.textContent).toBe("説明2");
+});
+
 test("the play button opens the article's YouTube video at that second", () => {
   const { container } = render(<MarkdownRenderer content={partsArticle} videoUrl="https://youtu.be/abcdefghijk" />);
   const link = container.querySelector("a.timestamp-link")!;
