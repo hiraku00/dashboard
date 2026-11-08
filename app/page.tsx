@@ -1,5 +1,4 @@
 import { PortalHome } from "./portal-home";
-import { headers } from "next/headers";
 import { portalSummary, type PortalSummary } from "@/app/lib/queries/portal";
 import { assetWalletFor } from "@/app/lib/queries/asset-wallet";
 
@@ -26,8 +25,8 @@ async function fetchInitialSummary(): Promise<PortalSummary | null> {
   // rendering, so such a catch would not actually catch a rendering error
   // anyway; the only thing that can throw here is the D1 call itself.
   try {
-    // 資産合計は、Manage Asset で表示中のウォレットのもの（app/api/portal/summary と同じ）。
-    const { db } = await assetWalletFor((await headers()).get("cookie"));
+    // 資産合計は、Manage Asset の設定で選んだウォレットのもの（app/api/portal/summary と同じ）。
+    const { db } = await assetWalletFor();
     return await portalSummary(db);
   } catch {
     return null;

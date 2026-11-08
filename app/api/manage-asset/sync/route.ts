@@ -158,8 +158,8 @@ async function completeWallet2Run(runId: string) {
   }
 }
 
-// `latest`（データ更新タブの最終同期）は表示中のウォレットの DB から読む。「今すぐ再取得」の依頼は本番だけのもの。
-export const GET = route(async (request: Request) => Response.json({ ok: true, latest: await latestSyncRun((await assetWalletFor(request.headers.get("cookie"))).db), pendingResyncRequest: await pendingResyncRequest() }));
+// `latest`（データ更新タブの最終同期）は設定で選んだウォレットの DB から読む。「今すぐ再取得」の依頼は本番だけのもの。
+export const GET = route(async () => Response.json({ ok: true, latest: await latestSyncRun((await assetWalletFor()).db), pendingResyncRequest: await pendingResyncRequest() }));
 
 export const POST = route(async (request: Request) => {
   // Cloudflare Access validates the Service Token at the edge. Its client-secret

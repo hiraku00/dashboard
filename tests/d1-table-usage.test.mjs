@@ -17,6 +17,14 @@ describe("usageGroupOf", () => {
     expect(usageGroupOf("storage_objects")).toBe("system");
     expect(usageGroupOf("d1_table_usage_daily")).toBe("system");
   });
+
+  test("wallet 2's tables (recorded with the wallet2. prefix) get their own group, after wallet 1", () => {
+    expect(usageGroupOf("wallet2.asset_snapshots")).toBe("manageAssetWallet2");
+    expect(usageGroupOf("wallet2.asset_positions")).toBe("manageAssetWallet2");
+    const summary = summarizeTableUsage([row("2026-11-09", "asset_snapshots", 1000), row("2026-11-09", "wallet2.asset_snapshots", 900), row("2026-11-09", "items", 10)]);
+    expect(summary.groups.map((group) => [group.key, group.bytes])).toEqual([["watchList", 10], ["manageAsset", 1000], ["manageAssetWallet2", 900]]);
+    expect(summary.totalBytes).toBe(1910);
+  });
 });
 
 describe("summarizeTableUsage", () => {

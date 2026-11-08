@@ -11,7 +11,7 @@ import { wallet2Address } from "@/app/lib/manage-asset-wallet2";
 
 // ウォレット2（ダミーデータ）は、朝の同期のたびに本番と同じ形で、通貨ごとの倍率を
 // 掛けて書かれる。本番の同期を1回流して、ウォレット2の DB に同じ形・倍率どおりのデータが
-// でき、cookie と設定の既定値で読む DB が切り替わることを確かめる。
+// でき、設定で読む DB が切り替わることを確かめる。
 
 const REAL_ADDRESS = "0x1234567890abcdef1234567890abcdef12345678";
 const asOfDate = "2026-02-01";
@@ -24,8 +24,6 @@ async function sync(body: Record<string, unknown>) {
   const response = await syncPost(new Request("http://x/api/manage-asset/sync", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }));
   return { response, body: await response.json() as Record<string, unknown> };
 }
-
-const withWallet = (url: string, wallet: string | null) => new Request(url, wallet ? { headers: { cookie: `other=1; asset_wallet=${wallet}` } } : undefined);
 
 beforeAll(async () => {
   const clientRunId = crypto.randomUUID();
@@ -101,38 +99,40 @@ test("wallet 2's run mirrors production's run result", async () => {
   expect(demo).toEqual(real);
 });
 
-test("the cookie picks which DB the API reads; without it the setting's default does", async () => {
-  const total = async (wallet: string | null) => {
-    const state = await (await stateGet(withWallet("http://x/api/manage-asset/state", wallet))).json() as { snapshots: Array<{ wallet_id: string; total_usd: number; address: string }> };
+const chooseWallet = async (wallet: string) => {
+  const response = await settingsPost(new Request("http://x/api/manage-asset/settings", { method: "POST", body: JSON.stringify({ defaultWallet: wallet }) }));
+  expect(response.status).toBe(200);
+};
+
+test("the setting picks which DB the API reads", async () => {
+  const total = async () => {
+    const state = await (await stateGet()).json() as { snapshots: Array<{ wallet_id: string; total_usd: number; address: string }> };
     return state.snapshots.find((row) => row.wallet_id === "w2-test-wallet");
   };
-  expect((await total("1"))?.total_usd).toBe(4030);
-  expect((await total("2"))?.total_usd).toBe(4030 + 20 * 99 + 10 * 999 + 4000 * 7);
-  expect((await total("2"))?.address).toBe(wallet2Address(REAL_ADDRESS));
+  // Unset means wallet 1.
+  expect(await (await settingsGet()).json()).toEqual({ defaultWallet: "1" });
+  expect((await total())?.total_usd).toBe(4030);
 
-  const history = await (await historyGet(withWallet("http://x/api/manage-asset/history?days=all&fields=currency", "2"))).json() as { snapshots: Array<{ wallet_id: string; tokens: Array<{ symbol: string; amount_value: number }> }> };
+  await chooseWallet("2");
+  expect((await total())?.total_usd).toBe(4030 + 20 * 99 + 10 * 999 + 4000 * 7);
+  expect((await total())?.address).toBe(wallet2Address(REAL_ADDRESS));
+  const history = await (await historyGet(new Request("http://x/api/manage-asset/history?days=all&fields=currency"))).json() as { snapshots: Array<{ wallet_id: string; tokens: Array<{ symbol: string; amount_value: number }> }> };
   const tokens = history.snapshots.find((row) => row.wallet_id === "w2-test-wallet")?.tokens ?? [];
   expect(tokens.find((token) => token.symbol === "stETH")?.amount_value).toBe(8);
-
-  // The default starts at wallet 1 and is changed in the settings.
-  expect(await (await settingsGet()).json()).toEqual({ defaultWallet: "1" });
-  expect((await total(null))?.total_usd).toBe(4030);
-  const saved = await settingsPost(new Request("http://x/api/manage-asset/settings", { method: "POST", body: JSON.stringify({ defaultWallet: "2" }) }));
-  expect(saved.status).toBe(200);
-  expect((await total(null))?.total_usd).toBe(4030 + 20 * 99 + 10 * 999 + 4000 * 7);
-  // A choice made in the header still wins over the default.
-  expect((await total("1"))?.total_usd).toBe(4030);
-  expect((await settingsPost(new Request("http://x/api/manage-asset/settings", { method: "POST", body: JSON.stringify({ defaultWallet: "3" }) }))).status).toBe(400);
-  await settingsPost(new Request("http://x/api/manage-asset/settings", { method: "POST", body: JSON.stringify({ defaultWallet: "1" }) }));
-
   // The data-update tab's last run follows the wallet; the resync request stays production's.
-  const syncBody = await (await syncGet(withWallet("http://x/api/manage-asset/sync", "2"))).json() as { latest: { id: string } | null };
+  const syncBody = await (await syncGet()).json() as { latest: { id: string } | null };
   expect(syncBody.latest?.id).toBeTruthy();
+
+  expect((await settingsPost(new Request("http://x/api/manage-asset/settings", { method: "POST", body: JSON.stringify({ defaultWallet: "3" }) }))).status).toBe(400);
+  await chooseWallet("1");
+  expect((await total())?.total_usd).toBe(4030);
 });
 
 test("the home page's asset total follows the chosen wallet", async () => {
-  const real = await portalSummary((await assetWalletFor("asset_wallet=1")).db);
-  const demo = await portalSummary((await assetWalletFor("asset_wallet=2")).db);
+  const real = await portalSummary((await assetWalletFor()).db);
+  await chooseWallet("2");
+  const demo = await portalSummary((await assetWalletFor()).db);
+  await chooseWallet("1");
   expect(demo.assets.totalUsd).toBeGreaterThan(real.assets.totalUsd);
   expect(demo.assets.sourceCount).toBe(real.assets.sourceCount);
   // Everything that is not an asset is the same either way.

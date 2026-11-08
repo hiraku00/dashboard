@@ -13,5 +13,5 @@ export const GET = route(async (request: Request) => {
   return Response.json(await assetHistory(params.get("days"), {
     summary: params.get("summary") === "1",
     fields: params.get("fields") === "currency" ? "currency" : undefined,
-  }, (await assetWalletFor(request.headers.get("cookie"))).db));
+  }, (await assetWalletFor()).db));
 });

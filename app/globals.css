@@ -881,9 +881,8 @@ h1,h2,h3 { color:var(--ink); } h1 { margin:0; font-size:30px; line-height:1.1; l
 .tt-article .stat-number { font-size: 1.6em; font-weight: 800; color: var(--tt-primary); line-height: 1.3; }
 .tt-article .stat-label { margin-top: 0.3em; font-size: 0.85em; color: var(--tt-muted); line-height: 1.5; }
 
-/* Manage Asset の「ウォレット1 / ウォレット2」の切り替え（ヘッダーのタブの右端と、設定タブ）。 */
-.asset-wallet-switch { display:inline-flex; flex:0 0 auto; align-self:center; gap:2px; margin-left:auto; border:1px solid var(--line-strong); border-radius:9px; background:rgba(255,255,255,.82); padding:2px; }
-.asset-workspace .asset-tabs .asset-wallet-switch button,.asset-wallet-switch button { min-height:30px; border:0; border-radius:7px; background:transparent; color:var(--muted); padding:4px 10px; font-size:12px; font-weight:700; white-space:nowrap; cursor:pointer; }
-.asset-workspace .asset-tabs .asset-wallet-switch button.active,.asset-wallet-switch button.active { background:var(--blue); color:#fff; border-bottom:0; }
+/* Manage Asset の設定タブの「ウォレット1 / ウォレット2」。 */
+.asset-wallet-switch { display:inline-flex; gap:2px; border:1px solid var(--line-strong); border-radius:9px; background:rgba(255,255,255,.82); padding:2px; }
+.asset-wallet-switch button { min-height:30px; border:0; border-radius:7px; background:transparent; color:var(--muted); padding:4px 10px; font-size:12px; font-weight:700; white-space:nowrap; cursor:pointer; }
+.asset-wallet-switch button.active { background:var(--blue); color:#fff; }
 .asset-wallet-switch button:disabled { cursor:default; opacity:.6; }
-.settings-item .asset-wallet-switch { margin-left:0; }

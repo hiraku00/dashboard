@@ -5,7 +5,7 @@ import { R2_SOFT_LIMIT_BYTES } from "@/app/lib/r2-storage";
 import { cloudflareAnalyticsUsage, d1BackedUsage, type D1BackedUsage } from "@/app/lib/queries/storage-usage";
 import { TODO_TIMEZONE, todoDate } from "@/app/lib/todo-date";
 import { MeasureButton } from "./measure-button";
-import { formatBytes, formatBytesDelta, type TableUsageSummary, type UsageGroupKey } from "@/app/lib/d1-table-usage";
+import { WALLET2_TABLE_PREFIX, formatBytes, formatBytesDelta, type TableUsageSummary, type UsageGroupKey } from "@/app/lib/d1-table-usage";
 
 const D1_DAILY_ROWS_READ_LIMIT = 5_000_000;
 const D1_DAILY_ROWS_WRITTEN_LIMIT = 100_000;
@@ -220,7 +220,8 @@ async function D1AnalyticsPanel({ d1Query }: { d1Query: D1BackedUsage }) {
             <div className="usage-section-label">主な保存データ</div>
             <div className="usage-columns">
               <TableRow usage={tableUsage} group="watchList" name="Watch List" count={`${count.format(d1Query.databaseRecords.watchList)} 件`} />
-              <TableRow usage={tableUsage} group="manageAsset" name="Manage Assetのスナップショット" count={`${count.format(d1Query.databaseRecords.manageAsset)} 件`} />
+              <TableRow usage={tableUsage} group="manageAsset" name="Manage Assetのスナップショット（ウォレット1）" count={`${count.format(d1Query.databaseRecords.manageAsset)} 件`} />
+              <TableRow usage={tableUsage} group="manageAssetWallet2" name="Manage Assetのスナップショット（ウォレット2）" count={`${count.format(d1Query.databaseRecords.manageAssetWallet2)} 件`} />
               <TableRow usage={tableUsage} group="textTube" name="TextTubeの動画" count={`${count.format(d1Query.databaseRecords.textTube)} 件`} />
               <TableRow usage={tableUsage} group="openchatNotes" name="ちきりんオプチャのノート" count={`${count.format(d1Query.databaseRecords.openchatNotes)} 件`} />
               <TableRow usage={tableUsage} group="openchatComments" name="ちきりんオプチャのコメント" count={`${count.format(d1Query.databaseRecords.openchatComments)} 件`} />
@@ -239,7 +240,8 @@ async function D1AnalyticsPanel({ d1Query }: { d1Query: D1BackedUsage }) {
                   ? `合計 ${formatBytes(tableUsage.totalBytes)}${tableUsage.baseDate && tableUsage.baseTotalBytes !== null ? `(${tableUsage.days}日で ${formatBytesDelta(tableUsage.totalBytes - tableUsage.baseTotalBytes)})` : ""} · ${tableUsage.date} 0時の計測 · 値の長さの概算(索引は含まない)`
                   : "容量は毎日0時(バンコク時間)に計測します。まだ記録がありません。"}
               </p>
-              <MeasureButton measuredToday={tableUsage.date === todoDate()} />
+              {/* ウォレット2の計測がまだ無い日（足した日）は、今日の分をもう一度測れるようにする */}
+              <MeasureButton measuredToday={tableUsage.date === todoDate() && tableUsage.groups.some((group) => group.key === "manageAssetWallet2")} />
             </div>
             {tableUsage.date && (
               <details className="usage-table-details">
@@ -249,7 +251,7 @@ async function D1AnalyticsPanel({ d1Query }: { d1Query: D1BackedUsage }) {
                   <tbody>
                     {tableUsage.groups.flatMap((group) => group.tables.map((table) => (
                       <tr key={table.name}>
-                        <th scope="row">{table.name}</th>
+                        <th scope="row">{tableLabel(table.name)}</th>
                         <td>{count.format(table.rows)}</td>
                         <td>{formatBytes(table.bytes)}</td>
                         {tableUsage.baseDate && <td>{table.baseBytes === null ? "—" : formatBytesDelta(table.bytes - table.baseBytes)}</td>}
@@ -264,6 +266,11 @@ async function D1AnalyticsPanel({ d1Query }: { d1Query: D1BackedUsage }) {
       </div>
     </section>
   );
+}
+
+/** テーブル別の内訳の名前。ウォレット2の DB のテーブルは `wallet2.` を外して（ウォレット2）を付ける。 */
+function tableLabel(name: string): string {
+  return name.startsWith(WALLET2_TABLE_PREFIX) ? `${name.slice(WALLET2_TABLE_PREFIX.length)}（ウォレット2）` : name;
 }
 
 /** 保存データの1行。項目名・件数・容量・増え方を、.usage-columns の4列に1つずつ置いて縦に揃える */
