@@ -20,11 +20,24 @@ function isMeasuredTable(name: string) {
   return /^[A-Za-z0-9_]+$/.test(name) && !name.startsWith("sqlite_") && !name.startsWith("_cf_") && name !== "d1_migrations";
 }
 
+/** ウォレット2（Manage Asset のダミーデータ、別の D1）のテーブルを記録するときの名前の頭。
+ *  記録は本番 DB の d1_table_usage_daily に、`wallet2.asset_snapshots` のような名前で並べる。 */
+export const WALLET2_TABLE_PREFIX = "wallet2.";
+
+type MeasureOptions = {
+  /** 記録を書く DB。省略すると測った DB 自身 */
+  recordTo?: D1Database;
+  /** 記録するテーブル名の頭 */
+  prefix?: string;
+  /** 測るテーブルを絞る */
+  only?: (table: string) => boolean;
+};
+
 /** 全テーブルの行数と値の長さの合計を測り、その日の行として記録する。D1 への呼び出しは3回+記録の1回。 */
-export async function measureD1Tables(db: D1Database, now = new Date()): Promise<{ date: string; tables: TableUsageRow[] }> {
+export async function measureD1Tables(db: D1Database, now = new Date(), { recordTo = db, prefix = "", only = () => true }: MeasureOptions = {}): Promise<{ date: string; tables: TableUsageRow[] }> {
   const date = todoDate(now);
   const list = await db.prepare("PRAGMA table_list").all<{ schema: string; name: string; type: string }>();
-  const tables = (list.results ?? []).filter((row) => row.schema === "main" && row.type === "table" && isMeasuredTable(row.name)).map((row) => row.name).sort();
+  const tables = (list.results ?? []).filter((row) => row.schema === "main" && row.type === "table" && isMeasuredTable(row.name) && only(row.name)).map((row) => row.name).sort();
   if (!tables.length) return { date, tables: [] };
   const infos = await db.batch<{ name: string }>(tables.map((table) => db.prepare(`PRAGMA table_info("${table}")`)));
   const sums = await db.batch<{ row_count: number; payload_bytes: number }>(
@@ -36,32 +49,51 @@ export async function measureD1Tables(db: D1Database, now = new Date()): Promise
   );
   const rows: TableUsageRow[] = tables.map((tableName, index) => ({
     usageDate: date,
-    tableName,
+    tableName: `${prefix}${tableName}`,
     rowCount: Number(sums[index].results?.[0]?.row_count ?? 0),
     payloadBytes: Number(sums[index].results?.[0]?.payload_bytes ?? 0),
   }));
   const measuredAt = now.toISOString();
-  await db.batch(rows.map((row) => db
+  await recordTo.batch(rows.map((row) => recordTo
     .prepare("INSERT INTO d1_table_usage_daily (usage_date,table_name,row_count,payload_bytes,measured_at) VALUES (?,?,?,?,?) ON CONFLICT(usage_date,table_name) DO UPDATE SET row_count=excluded.row_count,payload_bytes=excluded.payload_bytes,measured_at=excluded.measured_at")
     .bind(row.usageDate, row.tableName, row.rowCount, row.payloadBytes, measuredAt)));
   return { date, tables: rows };
 }
 
-/** 今日(バンコク時間の日付)の計測がもう記録されているか。「今日の分を計測」ボタンの可否に使う。 */
+/** 本番 DB の全テーブルと、ウォレット2の DB の資産テーブルを測って、どちらも本番 DB に記録する。
+ *  ウォレット2の計測が失敗しても、本番の記録は残す（ログに出すだけ）。 */
+export async function measureAllD1Tables(db: D1Database, wallet2Db: D1Database | undefined, now = new Date()): Promise<{ date: string; tables: TableUsageRow[] }> {
+  const main = await measureD1Tables(db, now);
+  if (!wallet2Db) return main;
+  try {
+    const wallet2 = await measureD1Tables(wallet2Db, now, { recordTo: db, prefix: WALLET2_TABLE_PREFIX, only: (table) => table.startsWith("asset_") });
+    return { date: main.date, tables: [...main.tables, ...wallet2.tables] };
+  } catch (error) {
+    console.error("ウォレット2の容量を計測できませんでした", error);
+    return main;
+  }
+}
+
+/** 今日(バンコク時間の日付)の計測がもう記録されているか。「今日の分を計測」ボタンの可否に使う。
+ *  本番とウォレット2の両方の行があって計測済み(ウォレット2を足した日は、本番だけ測ってあれば測り直せる)。 */
 export async function measuredToday(db: D1Database, now = new Date()): Promise<boolean> {
-  const row = await db.prepare("SELECT 1 AS found FROM d1_table_usage_daily WHERE usage_date = ? LIMIT 1").bind(todoDate(now)).first<{ found: number }>();
-  return Boolean(row);
+  const row = await db.prepare(`SELECT
+      SUM(CASE WHEN table_name NOT LIKE '${WALLET2_TABLE_PREFIX}%' THEN 1 ELSE 0 END) AS main,
+      SUM(CASE WHEN table_name LIKE '${WALLET2_TABLE_PREFIX}%' THEN 1 ELSE 0 END) AS wallet2
+    FROM d1_table_usage_daily WHERE usage_date = ?`).bind(todoDate(now)).first<{ main: number | null; wallet2: number | null }>();
+  return Boolean(row?.main) && Boolean(row?.wallet2);
 }
 
 // ---- 画面用のまとめ(純粋) ----
 
 /** 使用量画面の「主な保存データ」の行。行ごとに、どのテーブルの容量を足すかを決める。
  *  オプチャはノートとコメントの2行に分け、コメントの表だけをコメントの行に入れる。どれにも当たらない表は「台帳・管理」。 */
-export type UsageGroupKey = "watchList" | "manageAsset" | "textTube" | "openchatNotes" | "openchatComments" | "todoTasks" | "dailyReports" | "system";
+export type UsageGroupKey = "watchList" | "manageAsset" | "manageAssetWallet2" | "textTube" | "openchatNotes" | "openchatComments" | "todoTasks" | "dailyReports" | "system";
 
-export const USAGE_GROUP_ORDER: UsageGroupKey[] = ["watchList", "manageAsset", "textTube", "openchatNotes", "openchatComments", "todoTasks", "dailyReports", "system"];
+export const USAGE_GROUP_ORDER: UsageGroupKey[] = ["watchList", "manageAsset", "manageAssetWallet2", "textTube", "openchatNotes", "openchatComments", "todoTasks", "dailyReports", "system"];
 
 export function usageGroupOf(table: string): UsageGroupKey {
+  if (table.startsWith(WALLET2_TABLE_PREFIX)) return "manageAssetWallet2";
   if (table === "items" || table === "item_links" || table === "import_runs") return "watchList";
   if (table.startsWith("asset_")) return "manageAsset";
   if (table.startsWith("text_tube_")) return "textTube";

@@ -25,7 +25,7 @@ export type D1BackedUsage = {
   usage: { bytes: number; count: number };
   categories: Record<string, unknown>[];
   latest: Record<string, unknown> | null;
-  databaseRecords: { watchList: number; manageAsset: number; textTube: number; openchatNotes: number; openchatComments: number; todoTasks: number; dailyReports: number };
+  databaseRecords: { watchList: number; manageAsset: number; manageAssetWallet2: number; textTube: number; openchatNotes: number; openchatComments: number; todoTasks: number; dailyReports: number };
   transcriptUsage: { credits: number; attempts: number; lastUsedAt: string | null };
   /** テーブルごとの容量の概算(1日1回の計測の最新と、30日前ごろとの比較)。app/lib/d1-table-usage.ts */
   tableUsage: TableUsageSummary;
@@ -35,7 +35,7 @@ const emptyD1Records: Omit<D1BackedUsage, "ok" | "error"> = {
   usage: { bytes: 0, count: 0 },
   categories: [],
   latest: null,
-  databaseRecords: { watchList: 0, manageAsset: 0, textTube: 0, openchatNotes: 0, openchatComments: 0, todoTasks: 0, dailyReports: 0 },
+  databaseRecords: { watchList: 0, manageAsset: 0, manageAssetWallet2: 0, textTube: 0, openchatNotes: 0, openchatComments: 0, todoTasks: 0, dailyReports: 0 },
   transcriptUsage: { credits: 0, attempts: 0, lastUsedAt: null },
   tableUsage: summarizeTableUsage([]),
 };
@@ -85,6 +85,8 @@ export async function d1BackedUsage(month: string, now = new Date()): Promise<D1
       // 容量の計測の、最新の日と、比べる日(最新の30日前以前で一番新しい日。無ければ最初の日)の行だけ
       env.DB.prepare(TABLE_USAGE_SQL),
     ]);
+    // ウォレット2（Manage Asset のダミーデータ）は別の D1 なので batch に入れられない。読めなければ0件として本番の表示は続ける。
+    const wallet2Snapshots = await env.DB_WALLET2.prepare("SELECT COUNT(*) AS count FROM asset_snapshots").first<{ count: number }>().catch(() => null);
     const transcriptUsage = (transcript.results?.[0] as { credits?: number; attempts?: number; last_used_at?: string | null } | undefined) ?? { credits: 0, attempts: 0, last_used_at: null };
     return {
       ok: true,
@@ -95,6 +97,7 @@ export async function d1BackedUsage(month: string, now = new Date()): Promise<D1
       databaseRecords: {
         watchList: Number(watchList.results?.[0]?.count ?? 0),
         manageAsset: Number(manageAsset.results?.[0]?.count ?? 0),
+        manageAssetWallet2: Number(wallet2Snapshots?.count ?? 0),
         textTube: Number(textTube.results?.[0]?.count ?? 0),
         openchatNotes: Number(openchatNotes.results?.[0]?.count ?? 0),
         openchatComments: Number(openchatComments.results?.[0]?.count ?? 0),

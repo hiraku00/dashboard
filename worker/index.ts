@@ -2,7 +2,7 @@
 import { handleImageOptimization, DEFAULT_DEVICE_SIZES, DEFAULT_IMAGE_SIZES } from "vinext/server/image-optimization";
 import handler from "vinext/server/app-router-entry";
 import { reconcileStorageUsage } from "../app/lib/storage-usage";
-import { measureD1Tables } from "../app/lib/d1-table-usage";
+import { measureAllD1Tables } from "../app/lib/d1-table-usage";
 import { ensureSchema } from "../db";
 import { guardRequest } from "../app/lib/access";
 import { initTodo, materializeRoutines, todoDate } from "../app/lib/todo-lib";
@@ -10,6 +10,8 @@ import { initTodo, materializeRoutines, todoDate } from "../app/lib/todo-lib";
 interface Env {
   ASSETS: Fetcher;
   DB: D1Database;
+  /** Manage Asset のウォレット2（ダミーデータ）。容量の計測だけがここで使う */
+  DB_WALLET2: D1Database;
   FILES: R2Bucket;
   IMAGES: {
     input(stream: ReadableStream): {
@@ -80,9 +82,9 @@ const worker = {
     // 3. D1 のテーブルごとの容量の概算(使用量画面の「主な保存データ」)。全テーブルを全件読むので1日1回だけ。
     try {
       await ensureSchema({ seed: false });
-      await measureD1Tables(env.DB);
+      await measureAllD1Tables(env.DB, env.DB_WALLET2);
     } catch (error) {
-      console.error("measureD1Tables failed", error);
+      console.error("measureAllD1Tables failed", error);
     }
   },
 };
