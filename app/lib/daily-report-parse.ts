@@ -6,7 +6,7 @@
  *  1行目の列名で見分ける。読めない行は飛ばして warnings に残し、例外で全体を落とさない。 */
 
 /** パーサー・タグ辞書・アプリ名の別名表のどれかを変えたら上げる。古い版で解析された日報は再解析の対象になる。 */
-export const PARSER_VERSION = 1;
+export const PARSER_VERSION = 2;
 
 export type ParseStatus = "ok" | "partial" | "failed";
 
