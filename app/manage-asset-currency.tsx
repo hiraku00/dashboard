@@ -411,13 +411,13 @@ function CurrencyTable({ rows, symbol, balanceMode, page, setPage }: { rows: Cal
           <thead>
             <tr>
               <th scope="col">Date</th>
-              <th scope="col">Rate<br />({symbol})</th>
-              <th scope="col">Rate<br />(USD/JPY)</th>
-              <th scope="col">APR</th>
-              <th scope="col">{differenceLabel}<br />({symbol})</th>
-              <th scope="col">{differenceLabel}<br />(USD/JPY)</th>
-              <th scope="col">Balance<br />({symbol})</th>
-              <th scope="col">Balance<br />(USD/JPY)</th>
+              <th scope="col" className="num">Rate<br />({symbol})</th>
+              <th scope="col" className="num">Rate<br />(USD/JPY)</th>
+              <th scope="col" className="num">APR</th>
+              <th scope="col" className="num">{differenceLabel}<br />({symbol})</th>
+              <th scope="col" className="num">{differenceLabel}<br />(USD/JPY)</th>
+              <th scope="col" className="num">Balance<br />({symbol})</th>
+              <th scope="col" className="num">Balance<br />(USD/JPY)</th>
             </tr>
           </thead>
           <tbody>
@@ -429,19 +429,19 @@ function CurrencyTable({ rows, symbol, balanceMode, page, setPage }: { rows: Cal
               return (
                 <tr key={row.date}>
                   <td>{row.date}</td>
-                  <td>
+                  <td className="num">
                     {row.price == null ? "—" : `$${fixed(row.price, rateUsdDigits)}`}
                     <small>{row.price == null || !row.fx ? "JPY —" : `¥${fixed(row.price * row.fx, rateJpyDigits)}`}</small>
                   </td>
-                  <td>{row.fx ? fixed(row.fx, fxDigits) : "—"}</td>
-                  <td>{balanceMode || row.apr == null ? "—" : `${fixed(row.apr, aprDigits)}%`}</td>
-                  <td>{balanceMode ? "—" : currencyQuantity(row.change, symbol, "change")}</td>
-                  <td>
+                  <td className="num">{row.fx ? fixed(row.fx, fxDigits) : "—"}</td>
+                  <td className="num">{balanceMode || row.apr == null ? "—" : `${fixed(row.apr, aprDigits)}%`}</td>
+                  <td className="num">{balanceMode ? "—" : currencyQuantity(row.change, symbol, "change")}</td>
+                  <td className="num">
                     <span className={balanceMode ? changeClass(changeUsd) : ""}>{changeUsdText}</span>
                     <small className={balanceMode ? changeClass(changeYen) : ""}>{changeYen == null ? "JPY —" : changeYenText}</small>
                   </td>
-                  <td>{currencyQuantity(row.balance, symbol, "balance")}</td>
-                  <td>
+                  <td className="num">{currencyQuantity(row.balance, symbol, "balance")}</td>
+                  <td className="num">
                     {currencyFiat(row.balanceUsd, "USD")}
                     <small>{row.balanceUsd == null || !row.fx ? "JPY —" : currencyFiat(row.balanceUsd * row.fx, "JPY")}</small>
                   </td>

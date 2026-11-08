@@ -39,8 +39,8 @@ export function LocationsView({ state, today }: { state: AssetStateData | null; 
               <tr>
                 <th scope="col">保管場所</th>
                 <th scope="col">種別</th>
-                <th scope="col">評価額</th>
-                <th scope="col">構成比</th>
+                <th scope="col" className="num">評価額</th>
+                <th scope="col" className="num">構成比</th>
                 <th scope="col">最終取得</th>
                 <th scope="col">状態</th>
               </tr>
@@ -58,8 +58,8 @@ export function LocationsView({ state, today }: { state: AssetStateData | null; 
                         </button>
                       </td>
                       <td>{place.type}</td>
-                      <td><MoneyPair value={place.value} rate={rate} /></td>
-                      <td>{total ? ((place.value / total) * 100).toFixed(1) : "0.0"}%</td>
+                      <td className="num"><MoneyPair value={place.value} rate={rate} /></td>
+                      <td className="num">{total ? ((place.value / total) * 100).toFixed(1) : "0.0"}%</td>
                       {/* formatDate() is timezone-dependent (see manage-asset-overview.tsx's
                           `today` comment); "" until the client has hydrated avoids a mismatch. */}
                       <td>{today ? formatDate(place.captured_at) : "—"}</td>
@@ -94,9 +94,9 @@ function LocationDetail({ name, wallets, exchanges, rate }: { name: string; wall
         <thead>
           <tr>
             <th scope="col">資産</th>
-            <th scope="col">数量</th>
-            <th scope="col">単価</th>
-            <th scope="col">評価額</th>
+            <th scope="col" className="num">数量</th>
+            <th scope="col" className="num">単価</th>
+            <th scope="col" className="num">評価額</th>
           </tr>
         </thead>
         <tbody>
@@ -105,9 +105,9 @@ function LocationDetail({ name, wallets, exchanges, rate }: { name: string; wall
             return (
               <tr key={`${item.symbol}-${index}`}>
                 <td>{item.symbol}{item.unpriced ? <small>評価なし</small> : null}</td>
-                <td>{formatQuantity(item.quantity, item.symbol)}</td>
-                <td>{unit == null ? "評価なし" : <MoneyPair value={unit} rate={rate} />}</td>
-                <td>{item.unpriced ? "評価なし" : <MoneyPair value={item.valueUsd} rate={rate} />}</td>
+                <td className="num">{formatQuantity(item.quantity, item.symbol)}</td>
+                <td className="num">{unit == null ? "評価なし" : <MoneyPair value={unit} rate={rate} />}</td>
+                <td className="num">{item.unpriced ? "評価なし" : <MoneyPair value={item.valueUsd} rate={rate} />}</td>
               </tr>
             );
           })}

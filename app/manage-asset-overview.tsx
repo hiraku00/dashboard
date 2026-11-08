@@ -314,10 +314,10 @@ function HoldingsTable({ holdings, total, rate, showDust }: { holdings: Holding[
           <thead>
             <tr>
               <th scope="col">資産</th>
-              <th scope="col">合計数量</th>
-              <th scope="col">単価</th>
-              <th scope="col">評価額</th>
-              <th scope="col">比率</th>
+              <th scope="col" className="num">合計数量</th>
+              <th scope="col" className="num">単価</th>
+              <th scope="col" className="num">評価額</th>
+              <th scope="col" className="num">比率</th>
               <th scope="col">主な保管場所</th>
             </tr>
           </thead>
@@ -329,10 +329,10 @@ function HoldingsTable({ holdings, total, rate, showDust }: { holdings: Holding[
               return (
                 <tr key={item.symbol}>
                   <td><strong>{item.symbol}</strong>{item.unpriced ? <small>一部評価なし</small> : null}</td>
-                  <td>{formatQuantity(item.quantityKnown ? item.quantity : null, item.symbol)}</td>
-                  <td>{item.unitPriceUsd == null ? "評価なし" : <MoneyPair value={item.unitPriceUsd} rate={rate} />}</td>
-                  <td>{item.unpriced && item.valueUsd === 0 ? "評価なし" : <MoneyPair value={item.valueUsd} rate={rate} />}</td>
-                  <td>
+                  <td className="num">{formatQuantity(item.quantityKnown ? item.quantity : null, item.symbol)}</td>
+                  <td className="num">{item.unitPriceUsd == null ? "評価なし" : <MoneyPair value={item.unitPriceUsd} rate={rate} />}</td>
+                  <td className="num">{item.unpriced && item.valueUsd === 0 ? "評価なし" : <MoneyPair value={item.valueUsd} rate={rate} />}</td>
+                  <td className="num">
                     <span>{ratio.toFixed(1)}%</span>
                     <div className="mini-bar" role="img" aria-label={`構成比 ${ratio.toFixed(1)}%`}><i style={{ width: `${Math.max(0, Math.min(100, ratio))}%` }} /></div>
                   </td>
