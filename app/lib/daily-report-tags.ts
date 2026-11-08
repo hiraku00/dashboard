@@ -47,11 +47,53 @@ export const DAILY_REPORT_TAGS: TagDefinition[] = [
   { key: "media", label: "動画・番組視聴", group: "media", pattern: /動画|視聴|YouTube|NHK|TVer|ニュース|番組|ドキュメンタリー|バラエティ|WBS|ガイアの夜明け|映像の世紀|漫画|マンガ|ヤンマガ|Voicy|ポッドキャスト|Netflix|音楽|ブログ|記事|攻略|ゲーム/ },
 ];
 
-/** 文に当たるタグのキー(辞書の順)。具体的なタグが無いときだけ generic なタグを見る。 */
+/** 見ていたことを表す語。この語を含む節は、見た物の話題(旅行・コンピュータ科学など)ではなく「視聴」だけに数える。 */
+const VIEWING = /視聴|鑑賞/;
+const MEDIA_TAG = "media";
+
+/** 節の終わりと見なす語(「〜の確認」「〜を視聴」のような動作)。 */
+const CLAUSE_END = /(?:確認|視聴|鑑賞|閲覧|再生|学習|勉強|復習|練習|利用|使用|修正|改修|実装|開発|作成|調査|検索|整理|設定|対応|追加|削除|更新|作業|購入|入力|読書|操作|変更|準備|編集|登録|比較|検討|導入|続き|相談|質問|執筆|記入|計画|レビュー)$/;
+/** 見る物そのものを表す語。これを含む区切りは、後ろの「〜を視聴」の目的語としてつなぐ。 */
+const CONTENT = /動画|番組|ラジオ|配信|チャンネル|講座|対談|セミナー|アーカイブ|VLOG|特集|#\d/i;
+const TRAILING_NOTE = /\s*[（(][^（）()]*[）)]\s*$/;
+
+/** 区切りの後ろで節を終えるか。動作の語で終わるとき、または「、」の前が(見る物の語が無く)視聴以外のタグに当たるとき
+ *  (「Voicy、Perplexity、YouTube視聴」の Perplexity は見た物ではなく使った物)。
+ *  「と」は「AIと市場の動画」のように題名の中にも出るので、動作の語で終わるときだけ区切る。 */
+function endsClause(current: string, piece: string): boolean {
+  const core = current.replace(/[、,，と]$/, "").replace(TRAILING_NOTE, "").trim();
+  if (CLAUSE_END.test(core)) return true;
+  if (piece.endsWith("と") || CONTENT.test(piece)) return false;
+  return DAILY_REPORT_TAGS.some((tag) => !tag.generic && tag.key !== MEDIA_TAG && tag.pattern.test(piece));
+}
+
+/** 文を「、」「と」で区切り、節にまとめる。節の終わりでない区切りは次の区切りとつなぐ
+ *  (「韓国旅行の動画、ゆるコンピュータ科学ラジオを視聴」は全体で1つの節、「英作文の続き、報道1930の視聴」は2つの節)。 */
+function splitClauses(text: string): string[] {
+  const clauses: string[] = [];
+  let current = "";
+  for (const piece of text.split(/(?<=[、,，と])/)) {
+    current += piece;
+    if (endsClause(current, piece)) {
+      clauses.push(current);
+      current = "";
+    }
+  }
+  if (current) clauses.push(current);
+  return clauses;
+}
+
+/** 文に当たるタグのキー(辞書の順)。具体的なタグが無いときだけ generic なタグを見る。
+ *  視聴の節(VIEWING)は「視聴」だけに数え、ほかのタグはそれ以外の節から当てる。 */
 export function tagsForText(text: string): string[] {
-  const specific = DAILY_REPORT_TAGS.filter((tag) => !tag.generic && tag.pattern.test(text)).map((tag) => tag.key);
+  const clauses = splitClauses(text);
+  const viewing = clauses.some((clause) => VIEWING.test(clause));
+  const rest = clauses.filter((clause) => !VIEWING.test(clause)).join("");
+  const specific = DAILY_REPORT_TAGS
+    .filter((tag) => !tag.generic && ((viewing && tag.key === MEDIA_TAG) || tag.pattern.test(rest)))
+    .map((tag) => tag.key);
   if (specific.length) return specific;
-  return DAILY_REPORT_TAGS.filter((tag) => tag.generic && tag.pattern.test(text)).map((tag) => tag.key);
+  return DAILY_REPORT_TAGS.filter((tag) => tag.generic && tag.pattern.test(rest)).map((tag) => tag.key);
 }
 
 export type ItemTag = { source: "work" | "time"; position: number; tag: string };

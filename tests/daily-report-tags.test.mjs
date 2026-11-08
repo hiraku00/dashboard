@@ -19,6 +19,23 @@ describe("tagsForText", () => {
     expect(tagsForText("scrape-tv-programのoutput確認、hiraku-watch-listの更新")).toEqual(["dashboard", "scraping"]);
   });
 
+  test("counts a viewing clause only as media, not as the topic of what was watched", () => {
+    expect(tagsForText("韓国旅行のパッキング動画、マリオカートワールド、ゆるコンピュータ科学ラジオ（バベッジ）をYouTubeで視聴（16時台〜19時台）")).toEqual(["media"]);
+    expect(tagsForText("ゆるコンピュータ科学ラジオ（バベッジ）の視聴、YouTubeの高評価動画の確認")).toEqual(["media"]);
+    expect(tagsForText("電気工事士#6、24pラウンジ視聴")).toEqual(["media"]);
+  });
+
+  test("keeps the tags of the other clauses next to a viewing clause", () => {
+    expect(tagsForText("Claudeの利用、マリオカートワールドや韓国旅行パッキング動画の視聴")).toEqual(["ai", "media"]);
+    expect(tagsForText("英作文の続き、Gmailと9to5macの確認、報道1930の視聴")).toEqual(["english", "communication", "media"]);
+    expect(tagsForText("英語学習とYouTube視聴とGmail")).toEqual(["english", "communication", "media"]);
+    // 見る物の語が無い区切りは、使った物として別の節にする
+    expect(tagsForText("Voicy、Perplexity、YouTube視聴")).toEqual(["ai", "media"]);
+    expect(tagsForText("Gmail・Google翻訳、AIと市場の動画視聴")).toEqual(["communication", "media"]);
+    // 「視聴」の無い文はこれまでどおり(動画の語があっても話題のタグを付ける)
+    expect(tagsForText("Texttubeのリストで起きるYouTube動画取得エラーを確認")).toEqual(["texttube", "media"]);
+  });
+
   test("uses a generic tag only when no specific tag matches", () => {
     expect(tagsForText("README.mdの編集と実装計画の確認")).toEqual(["dev"]);
     expect(tagsForText("TextTubeの機能開発")).toEqual(["texttube"]);
@@ -55,15 +72,14 @@ describe("tagDailyReport", () => {
 
   test("tags a work item by its own text, falling back to its category heading", () => {
     const { itemTags, tagDays } = tagDailyReport({
-      workItems: [item(0, "英語学習", "Ankiで復習"), item(1, "英語学習", "例文を10個作った"), item(2, "動画視聴・買い物", "IKEAの新作を視聴"), item(3, "その他", "片付け")],
+      workItems: [item(0, "英語学習", "Ankiで復習"), item(1, "英語学習", "例文を10個作った"), item(2, "動画視聴・買い物", "IKEAの新作をAmazonで比較"), item(3, "その他", "片付け")],
       timeBlocks: [],
     });
     expect(itemTags).toEqual([
       { source: "work", position: 0, tag: "english" },
       { source: "work", position: 1, tag: "english" },
-      // 自分の文に当たったタグだけを付け、見出しの「買い物」は付けない
+      // 自分の文に当たったタグだけを付け、見出しの「動画視聴」は付けない
       { source: "work", position: 2, tag: "shopping" },
-      { source: "work", position: 2, tag: "media" },
     ]);
     expect(tagDays.find((d) => d.tag === "english")).toEqual({ tag: "english", minutes: 0, workItemCount: 2 });
     expect(tagDays.find((d) => d.tag === OTHER_TAG)).toEqual({ tag: OTHER_TAG, minutes: 0, workItemCount: 1 });
