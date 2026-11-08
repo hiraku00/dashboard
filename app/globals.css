@@ -886,3 +886,7 @@ h1,h2,h3 { color:var(--ink); } h1 { margin:0; font-size:30px; line-height:1.1; l
 .asset-wallet-switch button { min-height:30px; border:0; border-radius:7px; background:transparent; color:var(--muted); padding:4px 10px; font-size:12px; font-weight:700; white-space:nowrap; cursor:pointer; }
 .asset-wallet-switch button.active { background:var(--blue); color:#fff; }
 .asset-wallet-switch button:disabled { cursor:default; opacity:.6; }
+
+/* Manage Asset の表の数値の列（数量・単価・評価額・比率・レートなど）は右詰めにして、桁を揃える。 */
+.asset-workspace .asset-table th.num,.asset-workspace .asset-table td.num { text-align:right; }
+.asset-workspace .asset-table td.num .mini-bar { margin-left:auto; }
