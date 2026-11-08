@@ -11,6 +11,62 @@ type SeedItem = {
   links: Array<{ label: string; url: string; linkType: string }>;
 };
 
+/** Manage Asset の資産テーブルの DDL。本番 DB（env.DB）と、ウォレット2（ダミーデータ、
+ *  env.DB_WALLET2）の両方に、この同じ文を流す -- 二つの DB の形が
+ *  ずれないことを、文を一本にすることで担保する（ensureWallet2Schema() 参照）。
+ *  「今すぐ再取得」の依頼（asset_resync_requests）は本番だけのものなので、ここには入れない。 */
+export const ASSET_TABLE_DDL: readonly string[] = [
+  `CREATE TABLE IF NOT EXISTS asset_sources (
+    id TEXT PRIMARY KEY, source_type TEXT NOT NULL, provider TEXT NOT NULL,
+    display_name TEXT NOT NULL, public_address TEXT NOT NULL DEFAULT '',
+    enabled INTEGER NOT NULL DEFAULT 1, last_success_at TEXT, created_at TEXT NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS asset_sync_runs (
+    id TEXT PRIMARY KEY, client_run_id TEXT NOT NULL UNIQUE, client_version TEXT NOT NULL DEFAULT '',
+    started_at TEXT NOT NULL, completed_at TEXT, status TEXT NOT NULL,
+    source_count INTEGER NOT NULL DEFAULT 0, success_count INTEGER NOT NULL DEFAULT 0,
+    error_count INTEGER NOT NULL DEFAULT 0, received_at TEXT NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS asset_snapshots (
+    id TEXT PRIMARY KEY, run_id TEXT NOT NULL, source_id TEXT NOT NULL,
+    captured_at TEXT NOT NULL, as_of_date TEXT NOT NULL, total_usd REAL NOT NULL DEFAULT 0,
+    total_jpy REAL NOT NULL DEFAULT 0, fx_usdjpy REAL, raw_object_key TEXT,
+    raw_sha256 TEXT, raw_size INTEGER, raw_storage_status TEXT NOT NULL DEFAULT 'stored',
+    FOREIGN KEY(run_id) REFERENCES asset_sync_runs(id), FOREIGN KEY(source_id) REFERENCES asset_sources(id)
+  )`,
+  `CREATE TABLE IF NOT EXISTS asset_positions (
+    id TEXT PRIMARY KEY, snapshot_id TEXT NOT NULL, symbol TEXT NOT NULL,
+    quantity REAL NOT NULL DEFAULT 0, price_usd REAL, value_usd REAL,
+    value_jpy REAL, location_type TEXT NOT NULL DEFAULT '', protocol TEXT NOT NULL DEFAULT '',
+    position_type TEXT NOT NULL DEFAULT 'asset', is_debt INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY(snapshot_id) REFERENCES asset_snapshots(id) ON DELETE CASCADE
+  )`,
+  "CREATE INDEX IF NOT EXISTS asset_snapshots_source_date_idx ON asset_snapshots(source_id, as_of_date DESC)",
+  // The sync "complete" action counts a single run's snapshots; without this
+  // the WHERE run_id=? scans the whole table on every completed sync.
+  "CREATE INDEX IF NOT EXISTS asset_snapshots_run_idx ON asset_snapshots(run_id)",
+  "CREATE INDEX IF NOT EXISTS asset_positions_snapshot_idx ON asset_positions(snapshot_id)",
+  `CREATE TABLE IF NOT EXISTS asset_history_records (
+    id TEXT PRIMARY KEY, record_type TEXT NOT NULL, source_id TEXT NOT NULL DEFAULT '',
+    as_of_date TEXT NOT NULL, captured_at TEXT NOT NULL, total_usd REAL NOT NULL DEFAULT 0,
+    total_jpy REAL NOT NULL DEFAULT 0, fx_usdjpy REAL, payload_json TEXT NOT NULL,
+    UNIQUE(record_type, source_id, as_of_date, captured_at)
+  )`,
+  "CREATE INDEX IF NOT EXISTS asset_history_records_date_idx ON asset_history_records(record_type, as_of_date DESC)",
+  `CREATE TABLE IF NOT EXISTS asset_lido_rewards (
+    id TEXT PRIMARY KEY, reward_date TEXT NOT NULL, reward_type TEXT NOT NULL DEFAULT 'reward',
+    change REAL, change_usd REAL, apr REAL, balance REAL, payload_json TEXT NOT NULL,
+    UNIQUE(reward_date, reward_type, change, balance)
+  )`,
+  "CREATE INDEX IF NOT EXISTS asset_lido_rewards_date_idx ON asset_lido_rewards(reward_date DESC)",
+  `CREATE TABLE IF NOT EXISTS asset_fx_rates (
+    rate_date TEXT PRIMARY KEY, rate REAL NOT NULL, payload_json TEXT NOT NULL
+  )`,
+];
+
+/** asset_snapshots の (source_id, as_of_date) の一意制約。同期の upsert がこれを使う。 */
+const ASSET_SNAPSHOT_UNIQUE_INDEX = "CREATE UNIQUE INDEX IF NOT EXISTS asset_snapshots_source_date_unique ON asset_snapshots(source_id, as_of_date)";
+
 let schemaReady = false;
 
 /** Creates every table and index this app needs, idempotently, on the first
@@ -28,15 +84,15 @@ let schemaReady = false;
  *  than reconciled, since the drizzle ORM was never actually used to query. */
 /** Bump whenever the DDL below changes, so existing databases re-run it once.
  *  A database whose schema_meta row already matches skips the whole batch. */
-const SCHEMA_VERSION = 16;
+const SCHEMA_VERSION = 17;
 
 /** Reads the recorded schema version. A database that predates schema_meta (or
  *  a brand new one) has no table, and the query fails rather than returning a
  *  row -- treat that as "not provisioned" and fall through to the DDL. */
-async function recordedSchemaVersion(): Promise<number | null> {
+async function recordedSchemaVersion(db: D1Database = env.DB): Promise<number | null> {
   try {
     const row = (
-      await env.DB.prepare("SELECT version FROM schema_meta WHERE id = 1").all<{ version: number }>()
+      await db.prepare("SELECT version FROM schema_meta WHERE id = 1").all<{ version: number }>()
     ).results?.[0];
     return row ? Number(row.version) : null;
   } catch {
@@ -209,17 +265,6 @@ export async function ensureSchema({ seed = true }: { seed?: boolean } = {}) {
       warnings_json TEXT NOT NULL DEFAULT '[]',
       CHECK(status IN ('started','success','partial','failed','aborted'))
     )`),
-    env.DB.prepare(`CREATE TABLE IF NOT EXISTS asset_sources (
-      id TEXT PRIMARY KEY, source_type TEXT NOT NULL, provider TEXT NOT NULL,
-      display_name TEXT NOT NULL, public_address TEXT NOT NULL DEFAULT '',
-      enabled INTEGER NOT NULL DEFAULT 1, last_success_at TEXT, created_at TEXT NOT NULL
-    )`),
-    env.DB.prepare(`CREATE TABLE IF NOT EXISTS asset_sync_runs (
-      id TEXT PRIMARY KEY, client_run_id TEXT NOT NULL UNIQUE, client_version TEXT NOT NULL DEFAULT '',
-      started_at TEXT NOT NULL, completed_at TEXT, status TEXT NOT NULL,
-      source_count INTEGER NOT NULL DEFAULT 0, success_count INTEGER NOT NULL DEFAULT 0,
-      error_count INTEGER NOT NULL DEFAULT 0, received_at TEXT NOT NULL
-    )`),
     // ポータルの「データ更新」画面から押す「今すぐ再取得」依頼。Mac側collectorが
     // 自身の60秒ごとのlaunchdティックでこの未処理行の有無を確認し、見つけたら
     // 全sourceを再取得してfulfilled_atを立てる。ポータル自身はAPIキーを持たない
@@ -276,50 +321,12 @@ export async function ensureSchema({ seed = true }: { seed?: boolean } = {}) {
       sha256 TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
       PRIMARY KEY (kind, period_start), CHECK(kind IN ('week','month'))
     )`),
-    env.DB.prepare(`CREATE TABLE IF NOT EXISTS asset_snapshots (
-      id TEXT PRIMARY KEY, run_id TEXT NOT NULL, source_id TEXT NOT NULL,
-      captured_at TEXT NOT NULL, as_of_date TEXT NOT NULL, total_usd REAL NOT NULL DEFAULT 0,
-      total_jpy REAL NOT NULL DEFAULT 0, fx_usdjpy REAL, raw_object_key TEXT,
-      raw_sha256 TEXT, raw_size INTEGER, raw_storage_status TEXT NOT NULL DEFAULT 'stored',
-      FOREIGN KEY(run_id) REFERENCES asset_sync_runs(id), FOREIGN KEY(source_id) REFERENCES asset_sources(id)
-    )`),
-    env.DB.prepare(`CREATE TABLE IF NOT EXISTS asset_positions (
-      id TEXT PRIMARY KEY, snapshot_id TEXT NOT NULL, symbol TEXT NOT NULL,
-      quantity REAL NOT NULL DEFAULT 0, price_usd REAL, value_usd REAL,
-      value_jpy REAL, location_type TEXT NOT NULL DEFAULT '', protocol TEXT NOT NULL DEFAULT '',
-      position_type TEXT NOT NULL DEFAULT 'asset', is_debt INTEGER NOT NULL DEFAULT 0,
-      FOREIGN KEY(snapshot_id) REFERENCES asset_snapshots(id) ON DELETE CASCADE
-    )`),
-    env.DB.prepare(
-      "CREATE INDEX IF NOT EXISTS asset_snapshots_source_date_idx ON asset_snapshots(source_id, as_of_date DESC)",
-    ),
-    // The sync "complete" action counts a single run's snapshots; without this
-    // the WHERE run_id=? scans the whole table on every completed sync.
-    env.DB.prepare(
-      "CREATE INDEX IF NOT EXISTS asset_snapshots_run_idx ON asset_snapshots(run_id)",
-    ),
-    env.DB.prepare(
-      "CREATE INDEX IF NOT EXISTS asset_positions_snapshot_idx ON asset_positions(snapshot_id)",
-    ),
-    env.DB.prepare(`CREATE TABLE IF NOT EXISTS asset_history_records (
-      id TEXT PRIMARY KEY, record_type TEXT NOT NULL, source_id TEXT NOT NULL DEFAULT '',
-      as_of_date TEXT NOT NULL, captured_at TEXT NOT NULL, total_usd REAL NOT NULL DEFAULT 0,
-      total_jpy REAL NOT NULL DEFAULT 0, fx_usdjpy REAL, payload_json TEXT NOT NULL,
-      UNIQUE(record_type, source_id, as_of_date, captured_at)
-    )`),
-    env.DB.prepare(
-      "CREATE INDEX IF NOT EXISTS asset_history_records_date_idx ON asset_history_records(record_type, as_of_date DESC)",
-    ),
-    env.DB.prepare(`CREATE TABLE IF NOT EXISTS asset_lido_rewards (
-      id TEXT PRIMARY KEY, reward_date TEXT NOT NULL, reward_type TEXT NOT NULL DEFAULT 'reward',
-      change REAL, change_usd REAL, apr REAL, balance REAL, payload_json TEXT NOT NULL,
-      UNIQUE(reward_date, reward_type, change, balance)
-    )`),
-    env.DB.prepare(
-      "CREATE INDEX IF NOT EXISTS asset_lido_rewards_date_idx ON asset_lido_rewards(reward_date DESC)",
-    ),
-    env.DB.prepare(`CREATE TABLE IF NOT EXISTS asset_fx_rates (
-      rate_date TEXT PRIMARY KEY, rate REAL NOT NULL, payload_json TEXT NOT NULL
+    // Manage Asset の資産テーブル（ASSET_TABLE_DDL、ウォレット2の DB にも同じものを作る）。
+    ...ASSET_TABLE_DDL.map((sql) => env.DB.prepare(sql)),
+    // ポータルの設定（schema version 17）。今は Manage Asset が既定で表示するウォレット
+    // （"manage_asset_wallet"）だけ。同じ内容が migrations/0021_portal_settings.sql にもある。
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS portal_settings (
+      key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TEXT NOT NULL
     )`),
     env.DB.prepare(`CREATE TABLE IF NOT EXISTS storage_objects (
       object_key TEXT PRIMARY KEY, category TEXT NOT NULL, size_bytes INTEGER NOT NULL,
@@ -400,9 +407,7 @@ export async function ensureSchema({ seed = true }: { seed?: boolean } = {}) {
   // failure would take every table's DDL -- and so every route -- down with it.
   // Out here, a database that has not been migrated yet only fails the sync
   // upsert, which is the one thing that actually needs the constraint.
-  await env.DB.prepare(
-    "CREATE UNIQUE INDEX IF NOT EXISTS asset_snapshots_source_date_unique ON asset_snapshots(source_id, as_of_date)",
-  ).run().catch(() => {});
+  await env.DB.prepare(ASSET_SNAPSHOT_UNIQUE_INDEX).run().catch(() => {});
   const countResult = seed
     ? await env.DB.prepare("SELECT COUNT(*) AS count FROM items").all<{
         count: number;
@@ -463,4 +468,32 @@ export async function ensureSchema({ seed = true }: { seed?: boolean } = {}) {
     "INSERT INTO schema_meta (id, version) VALUES (1, ?) ON CONFLICT(id) DO UPDATE SET version = excluded.version",
   ).bind(SCHEMA_VERSION).run();
   schemaReady = true;
+}
+
+let wallet2SchemaReady = false;
+
+/** ウォレット2（ダミーデータ、env.DB_WALLET2）に、本番と同じ資産テーブルを作る。
+ *
+ *  本番 DB の ensureSchema() と同じ ASSET_TABLE_DDL を流すので、二つの DB の資産テーブルは
+ *  いつも同じ形になる。migrations/ は本番 DB 用（作業日報やオプチャのテーブルも作る）なので、
+ *  ウォレット2には適用しない。資産テーブルを ALTER で変えるときは、ここにも同じ ALTER を足す。
+ *  版は本番と同じ SCHEMA_VERSION を使う（上がるたびに、ここも一度だけ流し直す）。 */
+export async function ensureWallet2Schema() {
+  if (wallet2SchemaReady) return;
+  const db = env.DB_WALLET2;
+  if ((await recordedSchemaVersion(db)) === SCHEMA_VERSION) {
+    wallet2SchemaReady = true;
+    return;
+  }
+  await db.batch([
+    db.prepare(`CREATE TABLE IF NOT EXISTS schema_meta (
+      id INTEGER PRIMARY KEY CHECK (id = 1), version INTEGER NOT NULL
+    )`),
+    ...ASSET_TABLE_DDL.map((sql) => db.prepare(sql)),
+  ]);
+  await db.prepare(ASSET_SNAPSHOT_UNIQUE_INDEX).run();
+  await db.prepare(
+    "INSERT INTO schema_meta (id, version) VALUES (1, ?) ON CONFLICT(id) DO UPDATE SET version = excluded.version",
+  ).bind(SCHEMA_VERSION).run();
+  wallet2SchemaReady = true;
 }

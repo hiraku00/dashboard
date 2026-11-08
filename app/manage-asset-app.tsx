@@ -10,6 +10,8 @@ import { LocationsView } from "./manage-asset-locations";
 import { CurrencyView } from "./manage-asset-currency";
 import { SettingsView } from "./manage-asset-settings";
 import { SyncView } from "./manage-asset-sync-view";
+import { AssetWalletSwitch } from "./manage-asset-wallet-switch";
+import type { AssetWallet } from "@/app/lib/asset-wallet-choice";
 
 const assetViews = [
   ["overview", "資産概要"],
@@ -39,6 +41,7 @@ export function ManageAssetApp({
   initialLidoRewards = null,
   initialUsdJpyRates = null,
   initialLatestSyncRun = null,
+  wallet = "1",
 }: {
   initialView?: AssetView;
   initialState?: AssetStateData | null;
@@ -49,6 +52,8 @@ export function ManageAssetApp({
   initialLidoRewards?: AssetRow[] | null;
   initialUsdJpyRates?: AssetRow[] | null;
   initialLatestSyncRun?: AssetRow | null;
+  /** 表示中のウォレット。データは全部、サーバーがこのウォレットの DB から読んで渡す。 */
+  wallet?: AssetWallet;
 } = {}) {
   const [view, setView] = useState<AssetView>(initialView);
 
@@ -167,6 +172,7 @@ export function ManageAssetApp({
               {label}
             </button>
           ))}
+          <AssetWalletSwitch wallet={wallet} />
         </nav>
       </PortalHeader>
       {/* Every view stays mounted and is only CSS-hidden when inactive (the
@@ -187,7 +193,7 @@ export function ManageAssetApp({
         <SyncView latestRun={latestSyncRun} today={today} active={view === "update"} />
       </div>
       <div hidden={view !== "settings"}>
-        <SettingsView state={state} />
+        <SettingsView state={state} wallet={wallet} active={view === "settings"} />
       </div>
     </main>
   );

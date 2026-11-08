@@ -12,6 +12,7 @@ export default async function ManageAssetLocationsPage() {
       initialLidoRewards={initial?.lidoRewards ?? null}
       initialUsdJpyRates={initial?.usdJpyRates ?? null}
       initialLatestSyncRun={initial?.latestSyncRun ?? null}
+      wallet={initial?.wallet ?? "1"}
     />
   );
 }

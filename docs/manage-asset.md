@@ -61,6 +61,17 @@ launchd
 
 Macが起動していない、またはcollectorのlaunchdが停止している間は依頼は反映されない。
 
+## ウォレット1 / ウォレット2
+
+Manage Assetのヘッダーの右端に「ウォレット1 / ウォレット2」の切り替えがある。ウォレット1は本番のデータ、ウォレット2はダミーデータで。
+
+- **データの置き場所**: ウォレット2は別のD1データベース（`hiraku-manage-asset-wallet2`、binding `DB_WALLET2`）に、本番と同じ資産テーブル（`db/index.ts`の`ASSET_TABLE_DDL`）で持つ。読み取りの関数（`app/lib/queries/manage-asset.ts`）はSQLを分けず、読むDBだけを差し替える。`migrations/`は本番用なので、ウォレット2には流さない（テーブルは`ensureWallet2Schema()`が作る）。
+- **倍率**: stETH 8倍、BTC 20倍、USDT 1000倍、それ以外（wstETH・WBTCを含む）は100倍。数量と評価額（USD・JPY）に掛け、単価・為替レート・日付・APRはそのまま。スナップショットの総額は「元の総額 + Σ(倍率−1)×明細の評価額」で作り直すので、DeBankの整数丸めによる「総額と明細の差」は本番と同じだけ残る。規則は`app/lib/manage-asset-wallet2.ts`に一本化してある。
+- **アドレス**: ウォレット2では、本物のアドレスから決まる偽のアドレス（長さと形は同じ）に置き換える。本物を見せるとチェーン上で残高を調べられてしまうため。取引所名はそのまま。
+- **毎日の作成**: 朝の同期（`/api/manage-asset/sync`の`sources`）で本番に保存できたsourceを、同じ`storeEntry()`で倍率を掛けてウォレット2にも書く。runの行も同じidで写し、`complete`では本番の結果（状態・件数）を写す。ウォレット2はR2に原本を置かない。ウォレット2側で失敗しても本番の同期は失敗にせず、Workerのログに残すだけ。
+- **過去分**: 一度だけ`scripts/build-wallet2-history.mjs`で作る（手順はスクリプト冒頭のコメント）。本番の資産テーブルを書き出し、ウォレット2を空にしてから全部を入れ直すので、何度流しても、その時点の本番から作った同じ結果になる。
+- **どちらを表示するか**: ヘッダーで選んだもの（cookie `asset_wallet`、ブラウザを閉じるまで有効）→ 設定タブの「表示するウォレット」（`portal_settings`の`manage_asset_wallet`）→ ウォレット1、の順。資産概要・保管場所・通貨推移・データ更新・設定の一覧に加え、**ホームの資産合計**も同じ規則で選ぶ（本番の合計がホームから見えないように）。「今すぐ再取得」の依頼は本番だけのもの。
+
 ## Keychain
 
 APIキーは次の命名規則でmacOS Keychainに保存します。
@@ -112,6 +123,9 @@ APIキーは次の命名規則でmacOS Keychainに保存します。
 - `app/manage-asset-app.tsx`: ビュー切り替えとタブ間で共有する`state`/`history`の管理
 - `app/manage-asset-overview.tsx` / `manage-asset-locations.tsx` / `manage-asset-currency.tsx` / `manage-asset-settings.tsx` / `manage-asset-sync-view.tsx`: 各画面の実装
 - `app/lib/manage-asset-core.ts`: 計算ロジック（純関数、テスト済み）
+- `app/lib/manage-asset-wallet2.ts`: ウォレット2の倍率と偽のアドレス（純関数）
+- `app/lib/asset-wallet-choice.ts` / `app/lib/queries/asset-wallet.ts`: 表示するウォレットの決め方と、そのDB
+- `scripts/build-wallet2-history.mjs`: ウォレット2の過去分を一度だけ作る
 - `app/lib/queries/manage-asset.ts`: D1読み取りの共有ロジック（ページとAPIの両方が呼ぶ）
 - `app/api/manage-asset/`: 表示・同期API（`sync`は取り込みと「今すぐ再取得」依頼の両方を扱う）
 - `collector/`: ローカル取得処理

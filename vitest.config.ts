@@ -83,6 +83,8 @@ export default defineConfig({
             "tests/manage-asset-core.test.mjs",
             "tests/manage-asset-history-fields.test.mjs",
             "tests/manage-asset-steth-history.test.mjs",
+            "tests/manage-asset-wallet2.test.mjs",
+            "tests/wallet2-history-script.test.mjs",
             "tests/link-preview.test.mjs",
             "tests/openchat-input.test.mjs",
             "tests/openchat-meta.test.mjs",

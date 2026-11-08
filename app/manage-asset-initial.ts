@@ -1,8 +1,13 @@
 import type { AssetHistoryData, AssetStateData } from "./manage-asset-overview";
 import type { AssetRow } from "@/app/lib/manage-asset-core";
+import { headers } from "next/headers";
 import { assetHistory, assetState, latestSyncRun, lidoRewards, usdJpyRates } from "@/app/lib/queries/manage-asset";
+import { assetWalletFor } from "@/app/lib/queries/asset-wallet";
+import type { AssetWallet } from "@/app/lib/asset-wallet-choice";
 
 export type ManageAssetInitial = {
+  /** 表示中のウォレット（画面上の切り替え、なければ設定の既定値）。下のデータは全部このウォレットの DB から読む。 */
+  wallet: AssetWallet;
   state: AssetStateData;
   history: AssetHistoryData;
   /** true: the rows with the tokens and positions the per-currency history reads.
@@ -30,12 +35,13 @@ export async function fetchManageAssetInitial({ currency = false }: { currency?:
   // itself on the client, exactly like the pre-RSC app did. See the matching
   // comment in app/watch-list/page.tsx.
   try {
+    const { wallet, db } = await assetWalletFor((await headers()).get("cookie"));
     if (currency) {
-      const [state, history, rewards, rates, run] = await Promise.all([assetState(), assetHistory("90", { fields: "currency" }), lidoRewards(), usdJpyRates(), latestSyncRun()]);
-      return { state: state as unknown as AssetStateData, history: history as unknown as AssetHistoryData, historyDetail: true, lidoRewards: rewards, usdJpyRates: rates, latestSyncRun: run };
+      const [state, history, rewards, rates, run] = await Promise.all([assetState(db), assetHistory("90", { fields: "currency" }, db), lidoRewards(db), usdJpyRates(db), latestSyncRun(db)]);
+      return { wallet, state: state as unknown as AssetStateData, history: history as unknown as AssetHistoryData, historyDetail: true, lidoRewards: rewards, usdJpyRates: rates, latestSyncRun: run };
     }
-    const [state, history, run] = await Promise.all([assetState(), assetHistory("90", { summary: true }), latestSyncRun()]);
-    return { state: state as unknown as AssetStateData, history: history as unknown as AssetHistoryData, historyDetail: false, lidoRewards: null, usdJpyRates: null, latestSyncRun: run };
+    const [state, history, run] = await Promise.all([assetState(db), assetHistory("90", { summary: true }, db), latestSyncRun(db)]);
+    return { wallet, state: state as unknown as AssetStateData, history: history as unknown as AssetHistoryData, historyDetail: false, lidoRewards: null, usdJpyRates: null, latestSyncRun: run };
   } catch {
     return null;
   }
