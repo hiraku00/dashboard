@@ -20,10 +20,10 @@ import {
 const close = (actual, expected, tolerance = 1e-6) =>
   expect(Math.abs(actual - expected) <= tolerance, `expected ${actual} to be within ${tolerance} of ${expected}`).toBeTruthy();
 
-test("demoFactor: stETH 8, BTC 20, USDT 1000, everything else (wstETH and WBTC too) 100", () => {
+test("demoFactor: stETH 8, BTC 15, USDT 1000, everything else (wstETH and WBTC too) 100", () => {
   expect(demoFactor("stETH")).toBe(8);
   expect(demoFactor("STETH")).toBe(8);
-  expect(demoFactor("BTC")).toBe(20);
+  expect(demoFactor("BTC")).toBe(15);
   expect(demoFactor("USDT")).toBe(1000);
   expect(demoFactor("wstETH")).toBe(100);
   expect(demoFactor("WBTC")).toBe(100);
@@ -139,9 +139,9 @@ test("scaleAssetRecord scales an exchange's positions and keeps its totals consi
     close(position.quantity, before[index].quantity * factor);
     close(position.valueUsd, before[index].valueUsd * factor);
   }
-  close(deltaUsd, 1000 * 19 + 100 * 99 - 100 * 999);
+  close(deltaUsd, 1000 * 14 + 100 * 99 - 100 * 999);
   close(Number(record.totals.net_asset_usd), 1000 + deltaUsd);
-  close(Number(record.totals.gross_asset_usd), 1100 + 1000 * 19 + 100 * 99);
+  close(Number(record.totals.gross_asset_usd), 1100 + 1000 * 14 + 100 * 99);
   close(Number(record.totals.liability_usd), 100 + 100 * 999);
   close(Number(record.totals.gross_asset_usd) - Number(record.totals.liability_usd), Number(record.totals.net_asset_usd));
   expect(record.positions[0].price).toBe("100000");

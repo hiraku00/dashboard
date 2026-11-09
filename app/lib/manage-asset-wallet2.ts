@@ -16,7 +16,7 @@
 
 type Row = Record<string, unknown>;
 
-const DEMO_FACTORS: Record<string, number> = { steth: 8, btc: 20, usdt: 1000 };
+const DEMO_FACTORS: Record<string, number> = { steth: 8, btc: 15, usdt: 1000 };
 const DEFAULT_FACTOR = 100;
 
 /** 記号ごとの倍率。大文字・小文字と前後の空白は区別しない（"stETH" も "STETH" も8倍）。 */
