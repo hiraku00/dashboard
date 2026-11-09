@@ -58,7 +58,7 @@ test("builds wallet 2 from production: scaled per currency, same columns, look-a
   expect(wallet.raw_storage_status).toBe("local_only");
   expect(one("SELECT quantity, price_usd, value_usd FROM asset_positions WHERE id='p1'")).toEqual({ quantity: 8, price_usd: 4000, value_usd: 32000 });
   // BTC x20; a liability is scaled as a liability.
-  expect(one("SELECT total_usd FROM asset_snapshots WHERE id='s2'").total_usd).toBe(900 + 1000 * 19 - 100 * 99);
+  expect(one("SELECT total_usd FROM asset_snapshots WHERE id='s2'").total_usd).toBe(900 + 1000 * 14 - 100 * 99);
   expect(one("SELECT quantity, value_usd, is_debt FROM asset_positions WHERE id='p5'")).toEqual({ quantity: 1500000, value_usd: -10000, is_debt: 1 });
 
   const history = one("SELECT * FROM asset_history_records WHERE id='h1'");

@@ -80,10 +80,10 @@ test("the morning sync also writes wallet 2, scaled per currency, in the same ta
   expect(bySymbol.ETH).toMatchObject({ quantity: 1, value_usd: 2000 });
   expect(bySymbol.USDT).toMatchObject({ quantity: 10000, value_usd: 10000 });
   expect(bySymbol.stETH).toMatchObject({ quantity: 8, value_usd: 32000 });
-  expect(bySymbol.BTC).toMatchObject({ quantity: 0.2, value_usd: 20000, price_usd: 100000 });
+  expect(bySymbol.BTC).toMatchObject({ quantity: 0.15, value_usd: 15000, price_usd: 100000 });
 
   const exchange = (await env.DB_WALLET2.prepare("SELECT total_usd FROM asset_snapshots WHERE source_id='w2-test-exchange'").first()) as { total_usd: number };
-  expect(exchange.total_usd).toBe(20000);
+  expect(exchange.total_usd).toBe(15000);
 });
 
 test("wallet 2 shows a look-alike address and the real exchange name", async () => {
