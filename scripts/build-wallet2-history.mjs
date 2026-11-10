@@ -17,10 +17,24 @@
  *       npx wrangler d1 execute hiraku-manage-asset-wallet2 --remote --file <dir>/wallet2.sql
  *
  *  作る SQL は、ウォレット2の資産テーブルを空にしてから全部を入れ直す（何度流しても、
- *  その時点の本番から作った同じ結果になる）。テーブルが無ければ、本番と同じ定義で作る。 */
+ *  その時点の本番から作った同じ結果になる）。テーブルが無ければ、本番と同じ定義で作る。
+ *
+ *  過去の倍率の調整（3つ目の引数、JSON ファイル）: 通貨ごとの倍率が違うと、ある通貨を別の通貨に
+ *  替えた日に、ウォレット2の総額だけが段になる。それを消すため、決めた source・通貨・日付より前の
+ *  数量だけ、別の倍率で数えられる。
+ *    [{ "sourceId": "...", "symbol": "USDT", "before": "YYYY-MM-DD", "restFactor": 100,
+ *       "lots": [{ "until": "YYYY-MM-DD", "quantity": 1234.5, "factor": 8 }] }]
+ *  （"from": "YYYY-MM-DD" を足すと、その日以降だけに絞れる）
+ *  `before` より前の日付で、その source のその通貨の数量のうち、`until` 以前の日なら lots の数量を
+ *  その倍率で、残りを restFactor で数える（blendedFactor()）。それ以外は通常の倍率のまま。
+ *  実際の数量が入るので、このファイルはリポジトリに置かない（collector/data/ など、手元だけに置く）。
+ *  作り直すときは、毎回同じファイルを渡す（渡さないと調整の無い倍率に戻る）。 */
 import { DatabaseSync } from "node:sqlite";
-import { writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
+import { exchangePositions, walletPositions } from "../app/lib/manage-asset-core.ts";
 import {
+  blendedFactor,
+  demoFactor,
   scaleAssetRecord,
   scaleLidoReward,
   scalePositionRow,
@@ -58,8 +72,25 @@ function number(value) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-/** 本番の資産テーブル（SQLite に読み込んだもの）から、ウォレット2に流す SQL の文を作る。 */
-export function buildWallet2Statements(db) {
+/** その source・日付の、その通貨の数量に使う倍率の関数（調整が無ければ demoFactor そのもの）。 */
+export function factorOfFor(adjustments, sourceId, date, quantityOf) {
+  const rule = adjustments.find((candidate) => candidate.sourceId === sourceId && String(date) < candidate.before && (!candidate.from || String(date) >= candidate.from));
+  if (!rule) return demoFactor;
+  const symbol = String(rule.symbol).toLowerCase();
+  const lots = (rule.lots ?? []).filter((lot) => !lot.until || String(date) <= lot.until);
+  const factor = blendedFactor(quantityOf(rule.symbol), lots, rule.restFactor);
+  return (candidate) => (String(candidate ?? "").trim().toLowerCase() === symbol ? factor : demoFactor(candidate));
+}
+
+/** 移行前の履歴1件の、ある通貨の数量（画面と同じ読み方。パネルの文字から読む分も含む）。 */
+function payloadQuantity(record, payload, symbol) {
+  const positions = record.record_type === "wallet" ? walletPositions([{ ...payload, wallet_id: record.source_id }]) : exchangePositions([{ ...payload, source_id: record.source_id }]);
+  return positions.filter((position) => position.symbol.toLowerCase() === String(symbol).toLowerCase()).reduce((sum, position) => sum + (position.quantity ?? 0), 0);
+}
+
+/** 本番の資産テーブル（SQLite に読み込んだもの）から、ウォレット2に流す SQL の文を作る。
+ *  `adjustments` は冒頭のコメントの「過去の倍率の調整」。 */
+export function buildWallet2Statements(db, { adjustments = [] } = {}) {
   const statements = [];
   const counts = {};
   const all = (sql) => db.prepare(sql).all();
@@ -89,8 +120,12 @@ export function buildWallet2Statements(db) {
   }
   for (const snapshot of all("SELECT * FROM asset_snapshots ORDER BY as_of_date, source_id")) {
     let delta = 0;
-    const scaledPositions = (positionsBySnapshot.get(snapshot.id) ?? []).map((position) => {
-      const { row, deltaUsd } = scalePositionRow(position);
+    const positions = positionsBySnapshot.get(snapshot.id) ?? [];
+    const factorOf = factorOfFor(adjustments, snapshot.source_id, snapshot.as_of_date, (symbol) => positions
+      .filter((position) => String(position.symbol).toLowerCase() === String(symbol).toLowerCase())
+      .reduce((sum, position) => sum + (Number(position.quantity) || 0), 0));
+    const scaledPositions = positions.map((position) => {
+      const { row, deltaUsd } = scalePositionRow(position, factorOf);
       delta += deltaUsd;
       return row;
     });
@@ -101,7 +136,9 @@ export function buildWallet2Statements(db) {
 
   // 移行前の履歴: payload を書き換え、列は history-import と同じく payload から出し直す。
   for (const record of all("SELECT * FROM asset_history_records ORDER BY as_of_date, source_id, captured_at")) {
-    const payload = scaleAssetRecord(JSON.parse(String(record.payload_json))).record;
+    const original = JSON.parse(String(record.payload_json));
+    const factorOf = factorOfFor(adjustments, record.source_id, String(record.as_of_date).slice(0, 10), (symbol) => payloadQuantity(record, original, symbol));
+    const payload = scaleAssetRecord(original, factorOf).record;
     emit("asset_history_records", {
       ...record,
       total_usd: number(payload.total_usd ?? payload.totals?.net_asset_usd),
@@ -123,13 +160,15 @@ export function buildWallet2Statements(db) {
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  const [input, output] = process.argv.slice(2);
+  const [input, output, adjustmentsPath] = process.argv.slice(2);
   if (!input || !output) {
-    console.error("Usage: node scripts/build-wallet2-history.mjs <prod-assets.db> <wallet2.sql>");
+    console.error("Usage: node scripts/build-wallet2-history.mjs <prod-assets.db> <wallet2.sql> [adjustments.json]");
     process.exit(2);
   }
   const db = new DatabaseSync(input, { readOnly: true });
-  const { statements, counts } = buildWallet2Statements(db);
+  const adjustments = adjustmentsPath ? JSON.parse(readFileSync(adjustmentsPath, "utf8")) : [];
+  const { statements, counts } = buildWallet2Statements(db, { adjustments });
+  if (adjustments.length) console.log(`adjustments: ${adjustments.length} rule(s) from ${adjustmentsPath}`);
   writeFileSync(output, `${statements.join("\n")}\n`);
   const rows = Object.values(counts).reduce((sum, count) => sum + count, 0);
   console.log(`${output}: ${statements.length} statements, ${rows} rows`);

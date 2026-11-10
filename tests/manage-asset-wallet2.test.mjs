@@ -2,6 +2,7 @@ import { expect, test } from "vitest";
 
 import { exchangePositions, normalizeSyncedPositions, reconciliation, total, walletPositions } from "../app/lib/manage-asset-core.ts";
 import {
+  blendedFactor,
   demoFactor,
   formatLike,
   scaleAssetRecord,
@@ -201,4 +202,11 @@ test("wallet2Address is a stable look-alike that never equals the real address",
   expect(wallet2Address(real)).toHaveLength(real.length);
   expect(wallet2Address("0x1111111111111111111111111111111111111111")).not.toBe(wallet2Address("0x2222222222222222222222222222222222222222"));
   expect(wallet2Address("")).toBe("");
+});
+
+test("blendedFactor counts the lots first, then the rest", () => {
+  expect(blendedFactor(5000, [{ quantity: 2500, factor: 8 }], 100)).toBe((2500 * 8 + 2500 * 100) / 5000);
+  expect(blendedFactor(1000, [{ quantity: 2500, factor: 8 }], 100)).toBe(8);
+  expect(blendedFactor(3000, [], 100)).toBe(100);
+  expect(blendedFactor(0, [{ quantity: 2500, factor: 8 }], 100)).toBe(100);
 });

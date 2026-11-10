@@ -24,6 +24,25 @@ export function demoFactor(symbol: unknown): number {
   return DEMO_FACTORS[String(symbol ?? "").trim().toLowerCase()] ?? DEFAULT_FACTOR;
 }
 
+/** 記号から倍率を返す関数。ふだんは demoFactor。過去分の作り直しで、ある source・日付の
+ *  ある通貨だけ別の倍率にしたいとき（scripts/build-wallet2-history.mjs の調整）に差し替える。 */
+export type FactorOf = (symbol: unknown) => number;
+
+/** ある通貨の数量のうち、先頭の `lots`（数量と倍率の組）をその倍率で、残りを `restFactor` で数えたときの、
+ *  数量全体に対する倍率。例えば 5,000 のうち 2,500 を8倍、残りを100倍なら (2,500×8 + 2,500×100) / 5,000 = 54。
+ *  数量が0以下なら restFactor。 */
+export function blendedFactor(quantity: number, lots: { quantity: number; factor: number }[], restFactor: number): number {
+  if (!(quantity > 0)) return restFactor;
+  let remaining = quantity;
+  let weighted = 0;
+  for (const lot of lots) {
+    const used = Math.min(remaining, Math.max(0, lot.quantity));
+    weighted += used * lot.factor;
+    remaining -= used;
+  }
+  return (weighted + remaining * restFactor) / quantity;
+}
+
 /** manage-asset-core.ts の number() と同じ読み方（"$1,234.5" → 1234.5、読めなければ0）。 */
 function parseNumber(value: unknown): number {
   const parsed = Number(String(value ?? "").replace(/[$,]/g, ""));
@@ -87,15 +106,15 @@ const EXCHANGE_AMOUNT_FIELDS = [
 ] as const;
 
 /** ウォレットのトークン（tokens[]）1件。評価額は walletPositions() と同じく usd_value_display を先に読む。 */
-function scaleWalletToken(token: Row): { item: Row; delta: number } {
-  const factor = demoFactor(token.symbol);
+function scaleWalletToken(token: Row, factorOf: FactorOf): { item: Row; delta: number } {
+  const factor = factorOf(token.symbol);
   const value = parseNumber(token.usd_value_display ?? token.usd_value);
   return { item: scaleFields(token, WALLET_AMOUNT_FIELDS, factor), delta: (factor - 1) * value };
 }
 
 /** DeFi のパネルの資産（protocols[].panels[].assets[]）1件。記号と評価額の読み方は walletPositions() と同じ。 */
-function scaleDeFiAsset(asset: Row): { item: Row; delta: number } {
-  const factor = demoFactor(asset.asset_symbol ?? asset.balance_token_symbol ?? asset.symbol);
+function scaleDeFiAsset(asset: Row, factorOf: FactorOf): { item: Row; delta: number } {
+  const factor = factorOf(asset.asset_symbol ?? asset.balance_token_symbol ?? asset.symbol);
   const value = parseNumber(asset.usd_value ?? asset.usd_value_display);
   return { item: scaleFields(asset, WALLET_AMOUNT_FIELDS, factor), delta: (factor - 1) * value };
 }
@@ -107,7 +126,7 @@ const PANEL_TEXT_ALTERNATE = new RegExp(/USD\s+Value\s+([A-Za-z0-9._-]+)\s+([A-Z
 
 /** 構造化された assets を持たない古いパネルは、display_text の文字から数量と評価額が読まれる。
  *  その2つの数字を倍率で書き換え、それ以外の文字はそのまま残す。 */
-export function scalePanelText(text: string): { text: string; delta: number } {
+export function scalePanelText(text: string, factorOf: FactorOf = demoFactor): { text: string; delta: number } {
   // legacyDeFiAsset() は空白を詰めてから読む。位置を合わせるため、同じく詰めた文字列を書き換える。
   const normalized = text.replace(/\s+/g, " ");
   const match = normalized.match(PANEL_TEXT);
@@ -115,7 +134,7 @@ export function scalePanelText(text: string): { text: string; delta: number } {
   const found = match ?? alternate;
   if (!found?.indices) return { text, delta: 0 };
   const quantityGroup = match ? 2 : 3;
-  const factor = demoFactor(found[1]);
+  const factor = factorOf(found[1]);
   const value = parseNumber(found[4]);
   const replacements = [quantityGroup, 4]
     .map((group) => ({ range: found.indices![group]!, value: found[group], dollar: group === 4 }))
@@ -129,7 +148,7 @@ export function scalePanelText(text: string): { text: string; delta: number } {
   return { text: next, delta: (factor - 1) * value };
 }
 
-function scaleProtocols(protocols: unknown[]): { protocols: unknown[]; delta: number } {
+function scaleProtocols(protocols: unknown[], factorOf: FactorOf): { protocols: unknown[]; delta: number } {
   let total = 0;
   const next = protocols.map((protocol) => {
     if (!protocol || typeof protocol !== "object") return protocol;
@@ -142,14 +161,14 @@ function scaleProtocols(protocols: unknown[]): { protocols: unknown[]; delta: nu
       if (assets.length) {
         const scaled = assets.map((asset) => {
           if (!asset || typeof asset !== "object") return asset;
-          const { item, delta } = scaleDeFiAsset(asset as Row);
+          const { item, delta } = scaleDeFiAsset(asset as Row, factorOf);
           protocolDelta += delta;
           return item;
         });
         return { ...row, assets: scaled };
       }
       if (typeof row.display_text !== "string") return row;
-      const { text, delta } = scalePanelText(row.display_text);
+      const { text, delta } = scalePanelText(row.display_text, factorOf);
       protocolDelta += delta;
       return { ...row, display_text: text };
     }) : source.panels;
@@ -160,8 +179,8 @@ function scaleProtocols(protocols: unknown[]): { protocols: unknown[]; delta: nu
 }
 
 /** 取引所のポジション1件。負債は exchangePositions() と同じく評価額をマイナスに数える。 */
-function scaleExchangePosition(position: Row): { item: Row; delta: number; assetDelta: number; liabilityDelta: number } {
-  const factor = demoFactor(position.symbol);
+function scaleExchangePosition(position: Row, factorOf: FactorOf): { item: Row; delta: number; assetDelta: number; liabilityDelta: number } {
+  const factor = factorOf(position.symbol);
   const value = parseNumber(position.usd_value ?? position.value_usd ?? position.usdValue);
   const liability = Boolean(position.is_liability ?? position.isDebt);
   return {
@@ -186,7 +205,7 @@ function jpyAfter(jpy: unknown, usdBefore: number, deltaUsd: number, fx: unknown
  *  asset_history_records.payload_json の両方がこの形。持っているキーだけを書き換え、
  *  それ以外（日付、ID、名前、単価、レート、変化率）はそのまま残す。
  *  `address` はウォレット2用の偽のアドレスに置き換える。 */
-export function scaleAssetRecord(record: Row): { record: Row; deltaUsd: number } {
+export function scaleAssetRecord(record: Row, factorOf: FactorOf = demoFactor): { record: Row; deltaUsd: number } {
   const next: Row = { ...record };
   let deltaUsd = 0;
   let assetDelta = 0;
@@ -194,20 +213,20 @@ export function scaleAssetRecord(record: Row): { record: Row; deltaUsd: number }
   if (Array.isArray(record.tokens)) {
     next.tokens = record.tokens.map((token) => {
       if (!token || typeof token !== "object") return token;
-      const { item, delta } = scaleWalletToken(token as Row);
+      const { item, delta } = scaleWalletToken(token as Row, factorOf);
       deltaUsd += delta;
       return item;
     });
   }
   if (Array.isArray(record.protocols)) {
-    const { protocols, delta } = scaleProtocols(record.protocols);
+    const { protocols, delta } = scaleProtocols(record.protocols, factorOf);
     next.protocols = protocols;
     deltaUsd += delta;
   }
   if (Array.isArray(record.positions)) {
     next.positions = record.positions.map((position) => {
       if (!position || typeof position !== "object") return position;
-      const scaled = scaleExchangePosition(position as Row);
+      const scaled = scaleExchangePosition(position as Row, factorOf);
       deltaUsd += scaled.delta;
       assetDelta += scaled.assetDelta;
       liabilityDelta += scaled.liabilityDelta;
@@ -263,8 +282,8 @@ export function scaleSyncEntry<T extends { source?: Row; snapshot?: Row; positio
 }
 
 /** D1 に保存済みの asset_positions 1行（過去分の作成用）。単価はそのまま。 */
-export function scalePositionRow(row: Row): { row: Row; deltaUsd: number } {
-  const factor = demoFactor(row.symbol);
+export function scalePositionRow(row: Row, factorOf: FactorOf = demoFactor): { row: Row; deltaUsd: number } {
+  const factor = factorOf(row.symbol);
   const value = Number(row.value_usd) || 0;
   return {
     row: { ...row, quantity: scaleNumberLike(row.quantity, factor), value_usd: scaleNumberLike(row.value_usd, factor), value_jpy: scaleNumberLike(row.value_jpy, factor) },
