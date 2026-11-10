@@ -88,3 +88,37 @@ test("running it twice gives the same wallet 2 (it empties the tables first)", (
   applyTo(wallet2, statements);
   expect(snapshot()).toEqual(first);
 });
+
+test("an adjustment re-counts one currency of one source before a date (lots first, the rest at restFactor)", () => {
+  const db = productionLike();
+  // A lent USDT position on wallet w1: 3,000 USDT before the cut-off, of which 1,000 later became stETH.
+  db.exec(`
+    INSERT INTO asset_sync_runs VALUES ('r2','c2','v','2026-01-02T00:00:00Z','2026-01-02T00:01:00Z','completed',1,1,0,'2026-01-02T00:00:00Z');
+    INSERT INTO asset_snapshots VALUES ('s3','r2','w1','2026-01-02T00:00:00Z','2026-01-02',3000,450000,150,NULL,NULL,NULL,'local_only');
+    INSERT INTO asset_positions VALUES ('p6','s3','USDT',3000,1,3000,450000,'defi','Aave','asset',0);
+    INSERT INTO asset_sync_runs VALUES ('r3','c3','v','2026-01-03T00:00:00Z','2026-01-03T00:01:00Z','completed',1,1,0,'2026-01-03T00:00:00Z');
+    INSERT INTO asset_snapshots VALUES ('s4','r3','w1','2026-01-03T00:00:00Z','2026-01-03',2000,300000,150,NULL,NULL,NULL,'local_only');
+    INSERT INTO asset_positions VALUES ('p7','s4','USDT',2000,1,2000,300000,'defi','Aave','asset',0);
+  `);
+  const adjustments = [{ sourceId: "w1", symbol: "USDT", before: "2026-01-10", restFactor: 100, lots: [{ until: "2026-01-02", quantity: 1000, factor: 8 }] }];
+  const wallet2 = new DatabaseSync(":memory:");
+  applyTo(wallet2, buildWallet2Statements(db, { adjustments }).statements);
+  const one = (sql) => wallet2.prepare(sql).get();
+  // 01-02: 1,000 x8 + 2,000 x100. 01-03 (after the lot's `until`): 2,000 x100.
+  expect(one("SELECT quantity, value_usd FROM asset_positions WHERE id='p6'")).toEqual({ quantity: 1000 * 8 + 2000 * 100, value_usd: 1000 * 8 + 2000 * 100 });
+  expect(one("SELECT quantity FROM asset_positions WHERE id='p7'").quantity).toBe(2000 * 100);
+  expect(one("SELECT total_usd FROM asset_snapshots WHERE id='s3'").total_usd).toBe(1000 * 8 + 2000 * 100);
+  // The same source's USDT on an earlier date is inside the lot too (10 <= 1,000, so x8).
+  expect(one("SELECT quantity FROM asset_positions WHERE id='p2'").quantity).toBe(10 * 8);
+  // Other currencies and other sources keep the normal factors.
+  expect(one("SELECT quantity FROM asset_positions WHERE id='p1'").quantity).toBe(8);
+  expect(one("SELECT quantity FROM asset_positions WHERE id='p4'").quantity).toBeCloseTo(0.01 * 15, 12);
+  // Old history: a lent USDT that only appears in panel text is re-counted too.
+  const payload = { wallet_id: "w1", as_of_date: "2025-12-02", captured_at: "2025-12-02T00:00:00Z", total_usd: "3000", tokens: [], protocols: [{ name: "Aave V3", panels: [{ assets: [], display_text: "Supplied Balance USD Value USDT 3,000.0000 USDT Withdraw $3,000.00" }] }] };
+  db.prepare("INSERT INTO asset_history_records VALUES (?,?,?,?,?,?,?,?,?)").run("h2", "wallet", "w1", "2025-12-02", "2025-12-02T00:00:00Z", 3000, 0, 150, JSON.stringify(payload));
+  const again = new DatabaseSync(":memory:");
+  applyTo(again, buildWallet2Statements(db, { adjustments }).statements);
+  const history = again.prepare("SELECT total_usd, payload_json FROM asset_history_records WHERE id='h2'").get();
+  expect(history.total_usd).toBe(1000 * 8 + 2000 * 100);
+  expect(JSON.parse(history.payload_json).protocols[0].panels[0].display_text).toBe("Supplied Balance USD Value USDT 208,000.0000 USDT Withdraw $208,000.00");
+});
