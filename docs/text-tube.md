@@ -35,7 +35,7 @@ TextTubeは単独アプリではなく、ポータルの共通ヘッダー・認
 - 再生ボタン（`a.timestamp-link`）: 記事ページに埋め込みプレーヤーはないので、記事の「元の動画」URLが YouTube なら、その秒数から（`&t=Ns`）新しいタブで開く。YouTube でなければ `href` のまま（`#t=N`）。
 - 用語注釈（`span.tip`）: PCはホバー、キーボードはフォーカス、スマホはタップで開閉する（もう一度タップか、外をタップで閉じる）。開いたときに画面からはみ出す分だけ横にずらす。
 - キーインサイト（`div.insight-card` > `p.insight-label` + `p.insight-text` + `p.insight-attr`）と数値カード（`div.stats-row` > `div.stat-card` > `div.stat-number` + `div.stat-label`、1〜3枚）: 数値カードはPC幅で横に並び、狭い画面では1枚ずつ縦に並ぶ（`minmax(160px, 1fr)` の自動折り返し）。
-- 要約欄は保存時に30,000文字で切られる（`app/api/text-tube/videos/[id]/route.ts`）。HTML部品入りの記事は長くなりやすく、上限を超えると末尾のHTMLが途中で切れる。
+- 要約欄の上限は200,000文字（`app/lib/text-tube-video-input.ts` の `SUMMARY_MAX_LENGTH`。追加・編集の両方が通る）。超えたときは切らずに保存をエラーにする。以前は30,000文字で黙って切っていたため、長いHTML部品入りの記事が章の途中で切れていた。
 
 ## 保存構成
 
