@@ -1,7 +1,7 @@
 /**
  * TextTube articles with HTML parts: Markdown prose mixed with a
  * fixed set of HTML parts (table of contents, chapter heads, speech bubbles,
- * term tips, figure boxes, key insights, stat cards, summary). Only articles that contain those parts
+ * term tips, figure boxes -- including numbered steps --, key insights, stat cards, summary). Only articles that contain those parts
  * are rendered with raw HTML enabled; every other article keeps going through
  * the plain Markdown path, where raw HTML is shown as text.
  */

@@ -9,6 +9,7 @@ import {
   formToPayload,
 } from "../text-tube-app";
 import { ApiError, readJson } from "../lib/json";
+import { lintArticle } from "../lib/text-tube-article-lint";
 
 const SUMMARY_CHAT_URL = "https://claude.ai/chat/c6268308-e70e-4257-a1ad-9efdcf450690";
 
@@ -187,6 +188,8 @@ export function TextTubeVideoEditApp({
         ...form,
         [key]: key === "viewCount" ? Number(e.target.value) : e.target.value,
       });
+  // Format warnings for an article with HTML parts. They never block saving.
+  const lintIssues = lintArticle(form.summary ?? "");
   return (
     <TextTubeChrome>
       <section className="tt-editor tt-editor-page" aria-labelledby="texttube-editor-title">
@@ -253,6 +256,20 @@ export function TextTubeVideoEditApp({
               </a>
             </div>
             <textarea id="tt-summary" rows={12} value={form.summary} onChange={set("summary")} />
+            {lintIssues.length > 0 && (
+              <div className="tt-lint" role="status" aria-label="記事の形式チェック">
+                <p>記事の形式に気になる点があります（このまま保存もできます）</p>
+                <ul>
+                  {lintIssues.map((issue, i) => (
+                    <li key={i} className={issue.level === "error" ? "is-error" : "is-warn"}>
+                      <b>{issue.level === "error" ? "エラー" : "注意"}</b>
+                      <span>{issue.message}</span>
+                      <code>{issue.code}</code>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </div>
           <label>
             詳細スクリプト（Markdown）
