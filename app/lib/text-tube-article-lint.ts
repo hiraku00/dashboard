@@ -24,8 +24,11 @@ export type ArticleLintCode =
 
 export type ArticleLintIssue = { level: "error" | "warn"; code: ArticleLintCode; message: string };
 
-/** Class names the article parts use (keep in sync with `.tt-article` in app/globals.css). */
-const KNOWN_CLASSES = new Set([
+/**
+ * Class names the article parts use: the list in the article prompt's spec, which
+ * tests/text-tube-article-lint.test.mjs checks this against. Some have no CSS rule.
+ */
+export const KNOWN_CLASSES = new Set([
   // Meta, lead, table of contents
   "article-meta", "article-lead", "article-toc", "article-toc-title", "toc-no", "toc-title", "toc-time",
   // Chapter heads
@@ -38,8 +41,8 @@ const KNOWN_CLASSES = new Set([
   // Figures
   "figure-box", "figure-box-title",
   "timeline", "timeline-item", "last", "timeline-year", "timeline-event",
-  "ba-card", "figure-card", "ba-label", "before", "after", "ba-arrow", "figure-arrow", "highlight", "highlight-green",
-  "compare-grid", "compare-item", "left", "right", "compare-label", "figure-vs",
+  "ba-card", "figure-card", "ba-label", "ba-text", "before", "after", "ba-arrow", "figure-arrow", "highlight", "highlight-green",
+  "compare-grid", "compare-item", "left", "right", "compare-label", "compare-body", "figure-vs",
   "keyword-cloud", "keyword-tag", "blue", "green", "orange",
   "table-wrap", "article-table",
   "steps-container", "step-row", "step-num", "step-content", "step-title", "step-desc", "step-line",
