@@ -58,6 +58,11 @@ test("unknown-class: compare-body inside a compare item is accepted", () => {
   expect(codes(article + html)).toEqual([]);
 });
 
+test("unknown-class: ba-text inside a BEFORE/AFTER card is accepted", () => {
+  const html = '\n<div class="ba-card before"><div class="ba-label before">BEFORE</div><div class="ba-text">a</div></div>\n';
+  expect(codes(article + html)).toEqual([]);
+});
+
 test("step-line-missing: one divider fewer than rows - 1", () => {
   expect(codes(article.replace('<div class="step-line"></div>\n', ""))).toEqual(["step-line-missing"]);
 });
