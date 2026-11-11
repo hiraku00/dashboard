@@ -88,6 +88,33 @@ test("key insight and stat cards are recognised and keep their structure", () =>
   expect(cards[1].querySelector(".stat-label")?.textContent).toBe("説明2");
 });
 
+test("step figures keep every row and the empty step-line dividers between them", () => {
+  const steps = `本文
+
+<div class="figure-box">
+<div class="figure-box-title"><span>手順</span></div>
+<div class="steps-container">
+<div class="step-row"><div class="step-num">1</div><div class="step-content"><div class="step-title">一</div><div class="step-desc">説明1</div></div></div>
+<div class="step-line"></div>
+<div class="step-row"><div class="step-num">2</div><div class="step-content"><div class="step-title">二</div><div class="step-desc">説明2</div></div></div>
+<div class="step-line"></div>
+<div class="step-row"><div class="step-num">3</div><div class="step-content"><div class="step-title">三</div><div class="step-desc">説明3</div></div></div>
+</div>
+</div>
+`;
+  expect(isPartsArticle(steps)).toBe(true);
+  const { container } = render(<MarkdownRenderer content={steps} />);
+  const box = container.querySelector(".tt-article div.figure-box > div.steps-container")!;
+  const children = Array.from(box.children).map((el) => el.className);
+  expect(children).toEqual(["step-row", "step-line", "step-row", "step-line", "step-row"]);
+  // The dividers are empty divs; they must survive sanitizing as elements.
+  box.querySelectorAll(".step-line").forEach((line) => expect(line.childNodes).toHaveLength(0));
+  const rows = box.querySelectorAll("div.step-row");
+  expect(rows[1].querySelector(":scope > div.step-num")?.textContent).toBe("2");
+  expect(rows[1].querySelector(":scope > div.step-content > div.step-title")?.textContent).toBe("二");
+  expect(rows[2].querySelector("div.step-desc")?.textContent).toBe("説明3");
+});
+
 test("the play button opens the article's YouTube video at that second", () => {
   const { container } = render(<MarkdownRenderer content={partsArticle} videoUrl="https://youtu.be/abcdefghijk" />);
   const link = container.querySelector("a.timestamp-link")!;

@@ -95,6 +95,7 @@ export default defineConfig({
             "tests/shared-helpers.test.mjs",
             "tests/sql-text.test.mjs",
             "tests/sync-summary.test.mjs",
+            "tests/text-tube-article-lint.test.mjs",
             "tests/text-tube-query.test.mjs",
             "tests/thumbnail.test.mjs",
             "tests/text-tube-video-input.test.mjs",
