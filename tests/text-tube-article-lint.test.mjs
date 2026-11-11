@@ -1,12 +1,35 @@
 import { readFileSync } from "node:fs";
 import { expect, test } from "vitest";
 
-import { lintArticle } from "../app/lib/text-tube-article-lint.ts";
+import { KNOWN_CLASSES, lintArticle } from "../app/lib/text-tube-article-lint.ts";
 
 // The test article from the article-prompt v3 hand-off: steps, four speakers,
 // key insight, summary. It is well-formed, so it must give no warnings.
 const article = readFileSync(new URL("./fixtures/text-tube-parts-article.md", import.meta.url), "utf8");
 const codes = (md) => lintArticle(md).map((i) => i.code);
+
+// Every class the article prompt's spec can output (76, from the Claude-side
+// hand-off). The lint list is built from this, not from the CSS, because some
+// of these have no CSS rule (compare-body, ba-text, ...).
+const SPEC_CLASSES = [
+  "after", "article-lead", "article-meta", "article-table", "article-toc", "article-toc-title",
+  "ba-arrow", "ba-card", "ba-label", "ba-text", "before", "blue", "bubble", "bubble-avatar",
+  "bubble-content", "bubble-group", "bubble-name", "bubble-row", "chapter-head",
+  "chapter-head-actions", "chapter-no", "compare-body", "compare-grid", "compare-item",
+  "compare-label", "figure-arrow", "figure-box", "figure-box-title", "figure-card", "figure-vs",
+  "green", "highlight", "highlight-green", "insight-attr", "insight-card", "insight-label",
+  "insight-text", "is-continued", "keyword-cloud", "keyword-tag", "last", "left", "mark", "orange",
+  "right", "speaker1", "speaker2", "speaker3", "speaker4", "stat-card", "stat-label",
+  "stat-number", "stats-row", "step-content", "step-desc", "step-line", "step-num", "step-row",
+  "step-title", "steps-container", "summary", "summary-intro", "summary-list", "summary-title",
+  "table-wrap", "timeline", "timeline-event", "timeline-item", "timeline-year", "timestamp-link",
+  "tip", "tip-pop", "tip-term", "toc-no", "toc-time", "toc-title",
+];
+
+test("KNOWN_CLASSES is exactly the article prompt's class list", () => {
+  expect(SPEC_CLASSES).toHaveLength(76);
+  expect([...KNOWN_CLASSES].sort()).toEqual([...SPEC_CLASSES].sort());
+});
 
 test("a well-formed article has no issues", () => {
   expect(lintArticle(article)).toEqual([]);
