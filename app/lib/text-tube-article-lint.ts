@@ -39,7 +39,7 @@ const KNOWN_CLASSES = new Set([
   "figure-box", "figure-box-title",
   "timeline", "timeline-item", "last", "timeline-year", "timeline-event",
   "ba-card", "figure-card", "ba-label", "before", "after", "ba-arrow", "figure-arrow", "highlight", "highlight-green",
-  "compare-grid", "compare-item", "left", "right", "compare-label", "figure-vs",
+  "compare-grid", "compare-item", "left", "right", "compare-label", "compare-body", "figure-vs",
   "keyword-cloud", "keyword-tag", "blue", "green", "orange",
   "table-wrap", "article-table",
   "steps-container", "step-row", "step-num", "step-content", "step-title", "step-desc", "step-line",

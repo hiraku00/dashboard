@@ -53,6 +53,11 @@ test("unknown-class names the class", () => {
   expect(issues[0].message).toContain("quote-card");
 });
 
+test("unknown-class: compare-body inside a compare item is accepted", () => {
+  const html = '\n<div class="compare-grid"><div class="compare-item left"><div class="compare-label">A</div><div class="compare-body"><p>a</p></div></div><div class="figure-vs">VS</div><div class="compare-item right"><div class="compare-label">B</div><div class="compare-body"><p>b</p></div></div></div>\n';
+  expect(codes(article + html)).toEqual([]);
+});
+
 test("step-line-missing: one divider fewer than rows - 1", () => {
   expect(codes(article.replace('<div class="step-line"></div>\n', ""))).toEqual(["step-line-missing"]);
 });
