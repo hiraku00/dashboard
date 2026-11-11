@@ -195,6 +195,13 @@ def test_helpers():
     assert extract_url("見て\nhttps://www.nhk.jp/p/ts/ABC/\nepisode/te/XYZ123/") == "https://www.nhk.jp/p/ts/ABC/episode/te/XYZ123/"
     assert extract_url("https://a.com/x\n次の行") == "https://a.com/x"
     assert extract_url("https://a.com/x\nnext line") == "https://a.com/x"
+    # OCR が記号を全角で読んでも繋ぐ(2026-11-11 実例: 2行目の「？」で繋がらず「…schedule-tep-」で切れた)
+    assert extract_url("米で急増ブーメラン・チルドレン\nhttps://one.nhk/www.web.nhk/tv/pl/schedule-tep-\ng1-130-20261109/ep/256FDEWV2F？startOffset=1832\nアメリカでは") \
+        == "https://one.nhk/www.web.nhk/tv/pl/schedule-tep-g1-130-20261109/ep/256FDEWV2F?startOffset=1832"
+    assert extract_url("https://a.com/x？b＝1＆c＝2") == "https://a.com/x?b=1&c=2"
+    # 全角の句読点・括弧はURLの終わりのまま。文末の「？」もURLに含めない
+    assert extract_url("https://a.com/x（参考）") == "https://a.com/x"
+    assert extract_url("これ見た？ https://a.com/x？") == "https://a.com/x"
 
 
 def test_from_portal_restores_ledger_that_matches_new_sightings():
