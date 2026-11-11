@@ -31,11 +31,17 @@ def first_line(text: str, limit: int = 120) -> str:
 
 _URL_CHARS = r"[A-Za-z0-9\-._~:/?#@!$&'()*+,;=%]"
 
+# OCR はURLの中の記号を全角で読むことがある(実例: 2026-11-11「米で急増ブーメラン・チルドレン」。
+# 折り返した2行目の「?startOffset=」を「？startOffset=」と読み、2行目が繋がらずリンクが途中で切れた)。
+# URLの中に出てくる記号だけを半角に直してから探す。全角の句読点・括弧(。、「」（）)はURLの終わりとして残す。
+_URL_SYMBOLS_HALF = str.maketrans("？＝＆／：＃％＿－．～＋", "?=&/:#%_-.~+")
+
 
 def extract_url(text: str) -> str:
     """本文から最初のURLを取り出す。URLが画面で折り返されて2行以上にまたがっていたら、1つに繋ぐ.
-    (繋ぐのは、URLが行末まで続いていて、次の行がURLに使える文字だけ(空白・日本語なし)のとき)"""
-    lines = text.splitlines()
+    (繋ぐのは、URLが行末まで続いていて、次の行がURLに使える文字だけ(空白・日本語なし)のとき)
+    全角で読まれたURLの記号(？＝＆／ など)は半角に直してから判定する。"""
+    lines = text.translate(_URL_SYMBOLS_HALF).splitlines()
     for i, line in enumerate(lines):
         m = re.search(r"https?://" + _URL_CHARS + "+", line)   # URLはASCIIのみ(全角の句読点で切る)
         if not m:
@@ -47,7 +53,7 @@ def extract_url(text: str) -> str:
                 if not re.fullmatch(_URL_CHARS + "+", cont) or re.match(r"https?://", cont):
                     break
                 url += cont
-        return url.rstrip(".,);:")
+        return url.rstrip(".,);:?")
     return ""
 
 
