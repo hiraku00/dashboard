@@ -27,7 +27,7 @@ export const POST = route(async (request: Request) => {
   const captions = await fetchYouTubeTranscript(
     info.value.originalUrl,
     supadataKey,
-    info.value.defaultAudioLanguage,
+    info.value,
   ).catch(() => ({
     script: "",
     notice: "字幕の取得に失敗しました。",

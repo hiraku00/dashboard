@@ -102,6 +102,28 @@ export const SAMPLE_SUPADATA_TRANSCRIPT_MISMATCH_EN_RETRY_RESPONSE = JSON.string
   availableLangs: ["ar", "en"],
 });
 
+/** A Japanese video (kana in the title) whose uploader-set
+ *  defaultAudioLanguage says English -- as happens with videos that have
+ *  YouTube's auto-dubbed English audio, which also brings English captions
+ *  made from the dub. Supadata answers in whichever language it's asked for,
+ *  so the test can tell which one the app requested. */
+export const JA_TITLE_VIDEO_ID = "jaTitleVid1";
+export const SAMPLE_YOUTUBE_DATA_API_VIDEOS_JA_TITLE_RESPONSE = JSON.stringify({
+  items: [
+    {
+      snippet: {
+        title: "カネを持ってりゃ偉いのか!? 資本主義の正体",
+        channelTitle: "Sample Channel",
+        channelId: "sample-channel-id",
+        publishedAt: "2026-01-01T00:00:00Z",
+        thumbnails: { high: { url: "https://example.com/thumb.jpg" } },
+        defaultAudioLanguage: "en-US",
+      },
+      contentDetails: { duration: "PT5M30S" },
+    },
+  ],
+});
+
 /** A video id for which the YouTube Data API mock answers with no items at
  *  all (as it would for a private/deleted video) -- exercises
  *  app/lib/text-tube-import.ts's failure path (fetchYouTubeVideoInfo()
@@ -183,13 +205,18 @@ export function mockOutboundResponse(request: Request): Response {
   }
   if (url.hostname === "www.googleapis.com" && url.pathname.includes("/videos")) {
     const id = url.searchParams.get("id");
-    const body = id === LANG_MISMATCH_VIDEO_ID ? SAMPLE_YOUTUBE_DATA_API_VIDEOS_LANG_MISMATCH_RESPONSE : id === MISSING_VIDEO_ID ? SAMPLE_YOUTUBE_DATA_API_VIDEOS_MISSING_RESPONSE : SAMPLE_YOUTUBE_DATA_API_VIDEOS_RESPONSE;
+    const body = id === LANG_MISMATCH_VIDEO_ID ? SAMPLE_YOUTUBE_DATA_API_VIDEOS_LANG_MISMATCH_RESPONSE : id === JA_TITLE_VIDEO_ID ? SAMPLE_YOUTUBE_DATA_API_VIDEOS_JA_TITLE_RESPONSE : id === MISSING_VIDEO_ID ? SAMPLE_YOUTUBE_DATA_API_VIDEOS_MISSING_RESPONSE : SAMPLE_YOUTUBE_DATA_API_VIDEOS_RESPONSE;
     return new Response(body, { status: 200, headers: { "content-type": "application/json" } });
   }
   if (url.hostname === "www.googleapis.com" && url.pathname.includes("/channels")) {
     return new Response(SAMPLE_YOUTUBE_DATA_API_CHANNELS_RESPONSE, { status: 200, headers: { "content-type": "application/json" } });
   }
   if (url.hostname === "api.supadata.ai") {
+    if (url.searchParams.get("url")?.includes(JA_TITLE_VIDEO_ID)) {
+      const lang = url.searchParams.get("lang") === "ja" ? "ja" : "en";
+      const body = JSON.stringify({ content: [{ text: `${lang} caption line`, offset: 1000 }], lang, availableLangs: ["en", "ja"] });
+      return new Response(body, { status: 200, headers: { "content-type": "application/json", "x-billable-requests": "1" } });
+    }
     if (url.searchParams.get("url")?.includes(LANG_MISMATCH_VIDEO_ID)) {
       const body = url.searchParams.get("lang") === "en" ? SAMPLE_SUPADATA_TRANSCRIPT_MISMATCH_EN_RETRY_RESPONSE : SAMPLE_SUPADATA_TRANSCRIPT_MISMATCH_FIRST_RESPONSE;
       return new Response(body, { status: 200, headers: { "content-type": "application/json", "x-billable-requests": "1" } });
