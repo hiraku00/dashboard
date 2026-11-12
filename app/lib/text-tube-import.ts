@@ -126,7 +126,7 @@ async function importVideo(
   const captions = await fetchYouTubeTranscript(
     info.value.originalUrl,
     supadataKey,
-    info.value.defaultAudioLanguage,
+    info.value,
   ).catch(() => ({ script: "", notice: "" }));
 
   const videoId = crypto.randomUUID();

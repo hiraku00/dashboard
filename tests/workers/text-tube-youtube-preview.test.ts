@@ -2,7 +2,7 @@ import { env } from "cloudflare:test";
 import { beforeAll, expect, test } from "vitest";
 import { ensureSchema } from "@/db";
 import { POST as textTubePreviewPost } from "@/app/api/text-tube/youtube-preview/route";
-import { LANG_MISMATCH_VIDEO_ID } from "./fixtures/outbound-mocks";
+import { JA_TITLE_VIDEO_ID, LANG_MISMATCH_VIDEO_ID } from "./fixtures/outbound-mocks";
 
 // Replaces tests/rendered-html.test.mjs's "imports TextTube captions
 // through the managed transcript API and records actual usage" (Issue #94).
@@ -70,4 +70,22 @@ test("retries in English when the transcript in the video's own language comes b
   // Supadata calls and both cost credits -- both must be recorded.
   const after = await env.DB.prepare("SELECT COUNT(*) AS c FROM text_tube_api_usage WHERE provider='supadata'").first<{ c: number }>();
   expect(after!.c).toBe(before!.c + 2);
+});
+
+// A Japanese video whose defaultAudioLanguage says English (auto-dubbed
+// English audio brings English captions with it) used to come back with
+// those English captions. Kana in the title marks it as Japanese.
+test("requests Japanese captions for a video with a Japanese title even when its defaultAudioLanguage says English", async () => {
+  const response = await textTubePreviewPost(
+    new Request("http://x/api/text-tube/youtube-preview", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ url: `https://www.youtube.com/watch?v=${JA_TITLE_VIDEO_ID}` }),
+    }),
+  );
+  expect(response.status).toBe(200);
+  const body = (await response.json()) as { preview: { detailedScript: string }; captionNotice: string };
+  expect(body.preview.detailedScript).toContain("ja caption line");
+  expect(body.preview.detailedScript).not.toContain("en caption line");
+  expect(body.captionNotice).toBe("");
 });

@@ -44,8 +44,8 @@ export type YouTubeVideoInfo = {
   publishedAt: string;
   duration: string;
   // BCP 47 (e.g. "en-US"), set by whoever uploaded the video, not always
-  // present -- fetchYouTubeTranscript()'s primaryLangSubtag() normalizes it
-  // and falls back to English when it's missing.
+  // present or right -- fetchYouTubeTranscript()'s preferredTranscriptLang()
+  // weighs it against the title and falls back to English when it's missing.
   defaultAudioLanguage?: string;
 };
 
@@ -180,6 +180,21 @@ function primaryLangSubtag(tag: string | undefined) {
   return /^[a-z]{2}$/.test(code) ? code : "";
 }
 
+/** The language to ask Supadata for first. A title written with kana
+ *  (hiragana/katakana) is a Japanese video, whatever defaultAudioLanguage
+ *  says: that field is set by the uploader and is often missing or wrong,
+ *  and a video with YouTube's auto-dubbed English audio track also carries
+ *  English captions made from that dub -- asking for English (the fallback
+ *  when the field is missing) then returns those instead of the original
+ *  Japanese. Kanji alone doesn't count, since Chinese titles use it too. */
+function preferredTranscriptLang(video: {
+  title?: string;
+  defaultAudioLanguage?: string;
+}) {
+  if (/[\u3040-\u30ff]/.test(video.title ?? "")) return "ja";
+  return primaryLangSubtag(video.defaultAudioLanguage) || "en";
+}
+
 async function recordSupadataUsage(response: Response) {
   const credits = Math.max(
     0,
@@ -235,24 +250,22 @@ async function requestTranscript(
 }
 
 /** Fetches a video's transcript, timestamped and formatted as Markdown.
- *  `sourceLang` should be the video's own `defaultAudioLanguage` (from
- *  fetchYouTubeVideoInfo()) when known. Never throws -- a failure comes
- *  back as `{ script: "", notice: "<Japanese message>" }`. */
+ *  `video` is fetchYouTubeVideoInfo()'s result -- its title and
+ *  `defaultAudioLanguage` decide which language is requested first (see
+ *  preferredTranscriptLang()). Never throws -- a failure comes back as
+ *  `{ script: "", notice: "<Japanese message>" }`. */
 export async function fetchYouTubeTranscript(
   url: string,
   key: string | undefined,
-  sourceLang: string | undefined,
+  video: { title?: string; defaultAudioLanguage?: string },
 ) {
   if (!key) return { script: "", notice: "字幕APIが未設定です。" };
   const headers = { "x-api-key": key.trim() };
   // Request the video's own spoken-language track first, not a translated
   // one: a native caption (human-written, or YouTube's own speech-to-text
   // in that language) is more accurate than any machine translation of it,
-  // and that holds however this app's reader happens to read. `sourceLang`
-  // comes from YouTube Data API's snippet.defaultAudioLanguage (set by
-  // whoever uploaded the video); when YouTube has no answer for that,
-  // English is the most likely single guess to have a native track.
-  const preferredLang = primaryLangSubtag(sourceLang) || "en";
+  // and that holds however this app's reader happens to read.
+  const preferredLang = preferredTranscriptLang(video);
   let { response, body } = await requestTranscript(url, headers, preferredLang);
   // mode=native does not fall back to the video's own language when the
   // requested one has no track -- Supadata's own docs say it "returns a
