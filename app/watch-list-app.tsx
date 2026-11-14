@@ -18,7 +18,7 @@ export type Status = "backlog" | "in_progress" | "completed" | "dropped";
 export type TextTubeLinkStatus = { status: "reflected"; videoId: string } | { status: "running" } | { status: "failed"; error: string } | { status: "none" };
 export type Link = { id?: string; label: string; url: string; linkType?: string; textTube?: TextTubeLinkStatus };
 export type OpenchatMatch = { noteId: string; title: string };
-export type Item = { id: string; contentType: ContentType; creatorName: string; seriesTitle: string; title: string; description: string; priority: number | null; status: Status; addedOn: string | null; watchedOn: string | null; comment: string; thumbnailUrl: string; version: number; links: Link[]; openchat?: OpenchatMatch[] };
+export type Item = { id: string; contentType: ContentType; creatorName: string; seriesTitle: string; title: string; description: string; priority: number | null; status: Status; addedOn: string | null; watchedOn: string | null; airedAt: string | null; comment: string; thumbnailUrl: string; version: number; links: Link[]; openchat?: OpenchatMatch[] };
 type Draft = Omit<Item, "id" | "version">;
 /** app/lib/queries/watch-list.ts の WatchListStats と同じ形。creators は「人物・媒体」の絞り込みの選択肢(全件から)。 */
 export type Stats = { total: number; completed: number; movie: number; audio: number; text: number; byStatus: Record<Status, number>; creators: string[] };
@@ -27,10 +27,15 @@ type TextTubeRunResult = { status: "reflected" | "running" | "done" | "failed"; 
 
 const textTubeStatusLabel: Record<TextTubeLinkStatus["status"], string> = { reflected: "反映済", running: "登録中", failed: "失敗", none: "未反映" };
 
-const emptyDraft = (): Draft => ({ contentType: "movie", creatorName: "", seriesTitle: "", title: "", description: "", priority: null, status: "backlog", addedOn: new Date().toISOString().slice(0, 10), watchedOn: null, comment: "", thumbnailUrl: "", links: [{ label: "", url: "", linkType: "reference" }] });
+const emptyDraft = (): Draft => ({ contentType: "movie", creatorName: "", seriesTitle: "", title: "", description: "", priority: null, status: "backlog", addedOn: new Date().toISOString().slice(0, 10), watchedOn: null, airedAt: null, comment: "", thumbnailUrl: "", links: [{ label: "", url: "", linkType: "reference" }] });
 const typeLabel: Record<ContentType, string> = { movie: "映像", audio: "音声", text: "テキスト", other: "その他" };
 const statusLabel: Record<Status, string> = { backlog: "未着手", in_progress: "鑑賞中", completed: "完了", dropped: "見送り" };
 const dateLabel = (value: string | null) => value ? value.replaceAll("-", ".") : "未設定";
+/** 一覧の追加日の下に出す放送日時。追加日と同じ日(取り込みはふつうそう)なら時刻だけ。 */
+const airedLabel = (airedAt: string, addedOn: string | null) => {
+  const [date, time] = airedAt.split("T");
+  return date === addedOn ? time : `${dateLabel(date)} ${time}`;
+};
 const pageSize = 10;
 const emptyStats = (): Stats => ({ total: 0, completed: 0, movie: 0, audio: 0, text: 0, byStatus: { backlog: 0, in_progress: 0, completed: 0, dropped: 0 }, creators: [] });
 
@@ -295,7 +300,7 @@ export function WatchListApp({
               <td className="creator-cell"><strong>{item.creatorName || "—"}</strong>{item.seriesTitle && <span>{item.seriesTitle}</span>}</td>
               <td className="thumb-cell">{item.thumbnailUrl && <Image src={item.thumbnailUrl} alt="" width={72} height={40} unoptimized referrerPolicy="no-referrer" onError={(event) => { event.currentTarget.hidden = true; }} />}</td>
               <td className="title-cell"><button type="button" className="title-button" onClick={() => openEdit(item)} title={`${item.title} を編集`}>{item.title}</button><p className="description" title={item.description}>{item.description || " "}</p></td>
-              <td className="date-cell"><time dateTime={item.addedOn ?? undefined}>{dateLabel(item.addedOn)}</time>{item.status === "completed" && item.watchedOn && <span>完了 {dateLabel(item.watchedOn)}</span>}</td>
+              <td className="date-cell"><time dateTime={item.addedOn ?? undefined}>{dateLabel(item.addedOn)}</time>{item.airedAt && <span>放送 <time dateTime={item.airedAt}>{airedLabel(item.airedAt, item.addedOn)}</time></span>}{item.status === "completed" && item.watchedOn && <span>完了 {dateLabel(item.watchedOn)}</span>}</td>
               <td className="status-cell"><select value={item.status} onChange={(event) => updateStatus(item, event.target.value as Status)} aria-label={`${item.title} の状態`}>{(Object.keys(statusLabel) as Status[]).map((key) => <option key={key} value={key}>{statusLabel[key]}</option>)}</select>{item.priority && <span className="priority">優先 {item.priority}</span>}</td>
               <td className="links-cell">{item.links.length > 0 ? <div className="item-links" aria-label={`${item.title} のリンク`}>{item.links.map((link, index) => <a key={`${link.id ?? link.url}-${index}`} href={link.url} target="_blank" rel="noreferrer">{link.label || `リンク ${index + 1}`} <span aria-hidden="true">↗</span></a>)}</div> : <span className="empty-cell">—</span>}</td>
               <td className="texttube-cell is-openchat">{item.openchat?.length ? item.openchat.map((match) => <a key={match.noteId} className="texttube-badge texttube-reflected" href={`/chikirin/${encodeURIComponent(match.noteId)}`} target="_blank" rel="noreferrer" title={`ちきりんオプチャのスレッド「${match.title || "タイトル未設定"}」を開く`}>あり</a>) : <span className="empty-cell">—</span>}</td>
@@ -336,6 +341,7 @@ export function WatchListApp({
       <label className="title-field"><span>タイトル <b>必須</b></span><input required value={draft.title} onChange={(event) => patchDraft({ title: event.target.value })} placeholder="鑑賞したいコンテンツの名前" /></label>
       <label>内容・メモ<textarea value={draft.description} onChange={(event) => patchDraft({ description: event.target.value })} placeholder="内容、気になった理由など" rows={4} /></label>
       <div className="form-grid compact"><label>優先度<select value={draft.priority ?? ""} onChange={(event) => patchDraft({ priority: event.target.value ? Number(event.target.value) : null })}><option value="">未設定</option>{[1, 2, 3, 4, 5].map((value) => <option key={value} value={value}>{value}</option>)}</select></label><label>追加日<input type="date" value={draft.addedOn ?? ""} onChange={(event) => patchDraft({ addedOn: event.target.value || null })} /></label><label>鑑賞日<input type="date" value={draft.watchedOn ?? ""} onChange={(event) => patchDraft({ watchedOn: event.target.value || null })} /></label></div>
+      <div className="form-grid"><label>放送日時<input type="datetime-local" value={draft.airedAt ?? ""} onChange={(event) => patchDraft({ airedAt: event.target.value || null })} /></label></div>
       <label>感想・コメント<textarea value={draft.comment} onChange={(event) => patchDraft({ comment: event.target.value })} rows={4} /></label>
       <div className="links-editor"><div><span>リンク</span><button type="button" onClick={() => patchDraft({ links: [...draft.links, { label: "", url: "", linkType: "reference" }] })}>＋ リンクを追加</button></div>{draft.links.map((link, index) => <div className="link-row" key={`${link.id ?? "new"}-${index}`}><input aria-label="URL" type="url" value={link.url} onChange={(event) => patchDraft({ links: draft.links.map((value, i) => i === index ? { ...value, url: event.target.value } : value) })} placeholder="https://" /><input aria-label="リンク名" value={link.label} onChange={(event) => patchDraft({ links: draft.links.map((value, i) => i === index ? { ...value, label: event.target.value } : value) })} placeholder="表示名" /><button type="button" onClick={() => patchDraft({ links: draft.links.filter((_, i) => i !== index) })} aria-label="リンクを削除">×</button></div>)}</div>
       <div className="editor-actions"><button type="button" className="cancel-button" onClick={closeEditor}>キャンセル</button><button className="save-button" disabled={saving}>{saving ? "保存中…" : editing ? "変更を保存" : "追加する"}</button></div>

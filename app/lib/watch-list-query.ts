@@ -46,6 +46,8 @@ export type WatchListItem = {
   status: unknown;
   addedOn: unknown;
   watchedOn: unknown;
+  /** 放送日時(日本時間 "YYYY-MM-DDTHH:MM")。テレビ番組の取り込みで入る。無ければ null。 */
+  airedAt: unknown;
   comment: unknown;
   sourceSystem: unknown;
   externalId: unknown;
@@ -96,18 +98,21 @@ export function toItem(row: Record<string, unknown>, links: Array<Record<string,
   return {
     id: row.id, contentType: row.content_type, creatorName: row.creator_name, seriesTitle: row.series_title,
     title: row.title, description: row.description, priority: row.priority, status: row.status,
-    addedOn: row.added_on, watchedOn: row.watched_on, comment: row.comment, sourceSystem: row.source_system,
+    addedOn: row.added_on, watchedOn: row.watched_on, airedAt: row.aired_at ?? null, comment: row.comment, sourceSystem: row.source_system,
     externalId: row.external_id, thumbnailUrl: youTubeThumbnailFromLinks(links) || storedThumbnail, version: row.version, createdAt: row.created_at, updatedAt: row.updated_at,
     links: links.map((link) => ({ id: link.id, label: link.label, url: link.url, linkType: link.link_type, position: link.position })),
   };
 }
 
-/** The list's sort. `id` is the last key so two items with the same
- *  `added_on` and `created_at` (a bulk import stamps them alike) still have one
+/** The list's sort. 追加日の新しい順。同じ追加日の中では、放送日時(aired_at)の無い項目
+ *  (手で追加したもの)を先に、放送日時のある項目(テレビ番組の取り込み)はその新しい順に並べる。
+ *  取り込みは1日分をまとめて入れるので created_at がそろい、放送日時が無かった頃は放送順に並ばなかった。
+ *  `id` is the last key so two items with the same
+ *  sort keys (a bulk import stamps `created_at` alike) still have one
  *  fixed order: without it, LIMIT/OFFSET pages could repeat or skip such an
  *  item, and the list query and the links subquery in listItems() could
  *  disagree about which rows are on the page. */
-export const ITEMS_ORDER_BY = "ORDER BY added_on IS NULL ASC, added_on DESC, created_at DESC, id ASC";
+export const ITEMS_ORDER_BY = "ORDER BY added_on IS NULL ASC, added_on DESC, aired_at IS NULL DESC, aired_at DESC, created_at DESC, id ASC";
 
 export type ListItemsQuery = {
   q?: string | null;

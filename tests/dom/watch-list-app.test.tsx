@@ -18,7 +18,7 @@ afterEach(() => {
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 const item = (over: Partial<Item> = {}): Item => ({
   id: "i1", contentType: "movie", creatorName: "NHK", seriesTitle: "", title: "番組A", description: "", priority: null, status: "backlog",
-  addedOn: "2026-10-01", watchedOn: null, comment: "", thumbnailUrl: "", version: 1, links: [], ...over,
+  addedOn: "2026-10-01", watchedOn: null, airedAt: null, comment: "", thumbnailUrl: "", version: 1, links: [], ...over,
 });
 const stats: Stats = { total: 12, completed: 3, movie: 12, audio: 0, text: 0, byStatus: { backlog: 5, in_progress: 2, completed: 3, dropped: 2 }, creators: ["NHK", "テレ東", "ちきりん"] };
 
@@ -62,4 +62,14 @@ test("the creator select lists every creator from stats, not just the current pa
   render(<WatchListApp initialItems={{ items: [item()], pagination: { total: 1 } }} initialStats={stats} />);
   const select = screen.getByRole("combobox", { name: "人物・媒体" });
   expect(within(select).getAllByRole("option").map((o) => o.textContent)).toEqual(["すべての人物・媒体", "NHK", "テレ東", "ちきりん"]);
+});
+
+test("the date column shows the broadcast time under the added date", () => {
+  stubFetch();
+  const items = [item({ id: "a", title: "同じ日", airedAt: "2026-10-01T23:50" }), item({ id: "b", title: "別の日", airedAt: "2026-09-30T05:45" }), item({ id: "c", title: "時刻なし" })];
+  render(<WatchListApp initialItems={{ items, pagination: { total: 3 } }} initialStats={stats} />);
+  const rowOf = (title: string) => screen.getByRole("button", { name: title }).closest("tr")!;
+  expect(within(rowOf("同じ日")).getByText("23:50").getAttribute("datetime")).toBe("2026-10-01T23:50");
+  expect(within(rowOf("別の日")).getByText("2026.09.30 05:45")).toBeTruthy();
+  expect(within(rowOf("時刻なし")).queryByText(/放送/)).toBeNull();
 });

@@ -29,6 +29,9 @@ export type ItemInput = {
   status?: WatchStatus;
   addedOn?: string | null;
   watchedOn?: string | null;
+  /** 放送日時(日本時間、"YYYY-MM-DDTHH:MM")。テレビ番組の取り込み(scrape-tv-program)が入れる。
+   *  undefined は「送られてこなかった」で、PATCH は今の値を残す(null は「消す」)。 */
+  airedAt?: string | null;
   comment?: string;
   sourceSystem?: string;
   externalId?: string | null;
@@ -54,6 +57,8 @@ export function normalizeItem(input: unknown): { value?: ItemInput; error?: stri
   if (!statuses.has(status)) return { error: "ステータスが不正です。" };
   if (!title) return { error: "タイトルは必須です。" };
   if (!validDate(addedOn) || !validDate(watchedOn)) return { error: "日付は YYYY-MM-DD 形式で指定してください。" };
+  const airedAt = normalizeAiredAt(source.airedAt);
+  if (airedAt === false) return { error: "放送日時は YYYY-MM-DDTHH:MM 形式で指定してください。" };
   if (priority !== null && (!Number.isInteger(priority) || priority < 1 || priority > 5)) return { error: "優先度は1〜5で指定してください。" };
 
   const links = Array.isArray(source.links)
@@ -89,6 +94,7 @@ export function normalizeItem(input: unknown): { value?: ItemInput; error?: stri
       status,
       addedOn: addedOn || null,
       watchedOn: watchedOn || null,
+      airedAt,
       comment: cleanText(source.comment, 12000),
       sourceSystem: cleanText(source.sourceSystem, 100) || "manual",
       externalId: cleanText(source.externalId, 500) || null,
@@ -96,4 +102,22 @@ export function normalizeItem(input: unknown): { value?: ItemInput; error?: stri
       links,
     },
   };
+}
+
+/** 放送日時を "YYYY-MM-DDTHH:MM" にそろえる。キーが無ければ undefined、空なら null、
+ *  形式違いなら false。区切りは "T" と空白の両方を受け付け、秒は切り捨てる
+ *  (<input type="datetime-local"> は秒付きの値を返すことがある)。 */
+export function normalizeAiredAt(value: unknown): string | null | undefined | false {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  if (typeof value !== "string") return false;
+  const text = value.trim();
+  if (!text) return null;
+  const match = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::\d{2}(?:\.\d+)?)?$/.exec(text);
+  if (!match) return false;
+  const [, year, month, day, hour, minute] = match;
+  const date = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)));
+  if (date.getUTCMonth() !== Number(month) - 1 || date.getUTCDate() !== Number(day)) return false;
+  if (Number(hour) > 23 || Number(minute) > 59) return false;
+  return `${year}-${month}-${day}T${hour}:${minute}`;
 }

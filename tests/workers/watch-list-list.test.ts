@@ -1,6 +1,6 @@
 import { env } from "cloudflare:test";
 import { afterEach, beforeAll, describe, expect, test, vi } from "vitest";
-import { ensureSchema } from "@/db";
+import { ensureSchema, TV_PROGRAM_AIRED_AT_BACKFILL } from "@/db";
 import { attachLinks, listItems, watchListStats } from "@/app/lib/queries/watch-list";
 import { ROOM } from "@/app/lib/openchat-query";
 
@@ -222,5 +222,43 @@ describe("watchListStats", () => {
     await watchListStats();
     expect(batch).toHaveBeenCalledTimes(1);
     expect(batch.mock.calls[0][0]).toHaveLength(2);
+  });
+});
+
+describe("broadcast time (aired_at) order and backfill", () => {
+  test("within one added_on: items without a broadcast time first, then the latest broadcast first", async () => {
+    const created = "2019-03-04T01:00:00.000Z";
+    await env.DB.batch([
+      ["aired-0000", "2019-03-03T00:00"],
+      ["aired-2350", "2019-03-03T23:50"],
+      ["aired-manual", null],
+      ["aired-1930", "2019-03-03T19:30"],
+    ].map(([id, airedAt]) => env.DB.prepare("INSERT INTO items (id, content_type, title, added_on, aired_at, created_at, updated_at) VALUES (?, 'movie', ?, '2019-03-03', ?, ?, ?)").bind(id, `airedorder ${id}`, airedAt, created, created)));
+    const { items } = await listItems({ q: "airedorder", limit: 10 });
+    expect(items.map((item) => item.id)).toEqual(["aired-manual", "aired-2350", "aired-1930", "aired-0000"]);
+    expect(items[1].airedAt).toBe("2019-03-03T23:50");
+    expect(items[0].airedAt).toBeNull();
+  });
+
+  test("backfill reads raw_source first, else the description, and leaves other rows alone", async () => {
+    const insert = (id: string, source: string, rawSource: string | null, description: string, airedAt: string | null = null) =>
+      env.DB.prepare("INSERT INTO items (id, content_type, title, description, added_on, aired_at, source_system, external_id, raw_source) VALUES (?, 'movie', ?, ?, '2018-07-07', ?, ?, ?, ?)")
+        .bind(id, `backfill ${id}`, description, airedAt, source, `2018-07-07:${id}`, rawSource);
+    await env.DB.batch([
+      insert("bf-raw", "tv-program", JSON.stringify({ program_name: "WBS", channel: "テレ東", title: "t", url: "", broadcast_time: "22:00-22:58" }), "テレ東 21:00-21:58"),
+      insert("bf-desc", "tv-program", null, "NHK BS 10:40"),
+      insert("bf-none", "tv-program", null, "時刻なし"),
+      insert("bf-kept", "tv-program", null, "NHK総合 05:00-05:10", "2018-07-07T23:59"),
+      insert("bf-manual", "manual", null, "NHK総合 05:00-05:10"),
+    ]);
+    await env.DB.prepare(TV_PROGRAM_AIRED_AT_BACKFILL).run();
+    const { results } = await env.DB.prepare("SELECT id, aired_at FROM items WHERE id LIKE 'bf-%' ORDER BY id").all<{ id: string; aired_at: string | null }>();
+    expect(Object.fromEntries(results.map((r) => [r.id, r.aired_at]))).toEqual({
+      "bf-desc": "2018-07-07T10:40",
+      "bf-kept": "2018-07-07T23:59",
+      "bf-manual": null,
+      "bf-none": null,
+      "bf-raw": "2018-07-07T22:00",
+    });
   });
 });

@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 
-import { normalizeItem } from "../app/lib/watch-list-item-input.ts";
+import { normalizeAiredAt, normalizeItem } from "../app/lib/watch-list-item-input.ts";
 
 // normalizeItem() is the pure "is this a valid Watch List item, and what does
 // it normalize to" decision that app/api/items/route.ts's POST and
@@ -147,4 +147,21 @@ test("returns a full normalized value for a valid item", () => {
     rawSource: null,
     links: [],
   });
+});
+
+test("airedAt: missing stays undefined (PATCH keeps the stored value), empty clears it", () => {
+  expect(normalizeItem({ contentType: "movie", title: "t" }).value?.airedAt).toBeUndefined();
+  expect(normalizeItem({ contentType: "movie", title: "t", airedAt: "" }).value?.airedAt).toBeNull();
+  expect(normalizeItem({ contentType: "movie", title: "t", airedAt: null }).value?.airedAt).toBeNull();
+});
+
+test("airedAt: accepts T or a space, drops seconds, and rejects impossible times", () => {
+  expect(normalizeAiredAt("2026-11-12T23:50")).toBe("2026-11-12T23:50");
+  expect(normalizeAiredAt(" 2026-11-12 05:45 ")).toBe("2026-11-12T05:45");
+  expect(normalizeAiredAt("2026-11-12T00:00:30")).toBe("2026-11-12T00:00");
+  expect(normalizeAiredAt("2026-02-30T10:00")).toBe(false);
+  expect(normalizeAiredAt("2026-11-12T24:00")).toBe(false);
+  expect(normalizeAiredAt("23:50")).toBe(false);
+  expect(normalizeAiredAt(1234)).toBe(false);
+  expect(normalizeItem({ contentType: "movie", title: "t", airedAt: "2026-11-12" }).error).toBe("放送日時は YYYY-MM-DDTHH:MM 形式で指定してください。");
 });

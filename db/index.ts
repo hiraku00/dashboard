@@ -82,9 +82,22 @@ let schemaReady = false;
  *  that nothing read at runtime and that had drifted (it declared indexes,
  *  such as items_creator_idx, that were never created). It was removed rather
  *  than reconciled, since the drizzle ORM was never actually used to query. */
+/** テレビ番組の取り込み(source_system = 'tv-program')で、放送日時の列ができる前に入った項目の放送日時を埋める。
+ *  日付は追加日(取り込みは放送日を追加日にしていて、本番の全件で external_id 先頭の日付と一致)、
+ *  時刻は raw_source(scrape-tv-program の Episode を JSON にしたもの)の broadcast_time
+ *  ("HH:MM-HH:MM" か "HH:MM")の開始時刻。raw_source は画面で編集すると消える
+ *  (画面が送り返さない)ので、無ければ「内容・メモ」("NHK総合 23:50-00:35" の形)の最初の HH:MM を使う。
+ *  どちらからも読めない項目は NULL のまま。aired_at IS NULL だけを書くので、何度流しても同じ。 */
+export const TV_PROGRAM_AIRED_AT_BACKFILL = `UPDATE items SET aired_at = added_on || 'T' || COALESCE(
+    CASE WHEN json_valid(raw_source) AND substr(json_extract(raw_source, '$.broadcast_time'), 1, 5) GLOB '[0-2][0-9]:[0-5][0-9]'
+      THEN substr(json_extract(raw_source, '$.broadcast_time'), 1, 5) END,
+    CASE WHEN instr(description, ':') > 2 AND substr(description, instr(description, ':') - 2, 5) GLOB '[0-2][0-9]:[0-5][0-9]'
+      THEN substr(description, instr(description, ':') - 2, 5) END)
+  WHERE source_system = 'tv-program' AND aired_at IS NULL AND added_on GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'`;
+
 /** Bump whenever the DDL below changes, so existing databases re-run it once.
  *  A database whose schema_meta row already matches skips the whole batch. */
-const SCHEMA_VERSION = 17;
+const SCHEMA_VERSION = 18;
 
 /** Reads the recorded schema version. A database that predates schema_meta (or
  *  a brand new one) has no table, and the query fails rather than returning a
@@ -123,7 +136,7 @@ export async function ensureSchema({ seed = true }: { seed?: boolean } = {}) {
       comment TEXT NOT NULL DEFAULT '', source_system TEXT NOT NULL DEFAULT 'manual', external_id TEXT,
       raw_source TEXT, version INTEGER NOT NULL DEFAULT 1,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      deleted_at TEXT, thumbnail_url TEXT NOT NULL DEFAULT '',
+      deleted_at TEXT, thumbnail_url TEXT NOT NULL DEFAULT '', aired_at TEXT,
       CHECK(content_type IN ('text','audio','movie','other')),
       CHECK(status IN ('backlog','in_progress','completed','dropped')),
       CHECK(priority IS NULL OR priority BETWEEN 1 AND 5)
@@ -380,6 +393,10 @@ export async function ensureSchema({ seed = true }: { seed?: boolean } = {}) {
   // already has the column (a fresh one, from the CREATE above) throws and the
   // error is the expected "nothing to do".
   await env.DB.prepare("ALTER TABLE items ADD COLUMN thumbnail_url TEXT NOT NULL DEFAULT ''").run().catch(() => {});
+  // Schema version 18: 放送日時(日本時間 "YYYY-MM-DDTHH:MM")。一覧は同じ追加日の中でこの順に並ぶ
+  // (app/lib/watch-list-query.ts の ITEMS_ORDER_BY)。thumbnail_url と同じ理由でマイグレーションファイルは作らない。
+  await env.DB.prepare("ALTER TABLE items ADD COLUMN aired_at TEXT").run().catch(() => {});
+  await env.DB.prepare(TV_PROGRAM_AIRED_AT_BACKFILL).run();
   // Schema version 4. app/lib/text-tube-import.ts matches a Watch List
   // YouTube link to an already-imported video by this column, so an
   // existing database needs it backfilled once, not just created empty on

@@ -173,3 +173,26 @@ describe("textTubeCandidates (Watch List -> TextTube auto-import)", () => {
     expect(addLinkBody.textTubeCandidates).toEqual(["bbbbbbbbbbb"]);
   });
 });
+
+describe("aired_at on PATCH", () => {
+  async function patch(id: string, body: Record<string, unknown>) {
+    const response = await itemPatch(
+      new Request(`http://x/api/items/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }),
+      { params: Promise.resolve({ id }) },
+    );
+    return { status: response.status, item: ((await response.json()) as { item: { airedAt: string | null; version: number } }).item };
+  }
+
+  test("a PATCH without airedAt keeps it; an empty one clears it", async () => {
+    const { body: created } = await createItem({ contentType: "movie", title: "aired-patch", airedAt: "2026-11-12T19:30" });
+    const id = created.item!.id as string;
+    expect(created.item!.airedAt).toBe("2026-11-12T19:30");
+
+    const kept = await patch(id, { contentType: "movie", title: "aired-patch", status: "completed", watchedOn: "2026-11-13", version: 1 });
+    expect(kept.status).toBe(200);
+    expect(kept.item.airedAt).toBe("2026-11-12T19:30");
+
+    const cleared = await patch(id, { contentType: "movie", title: "aired-patch", airedAt: "", version: 2 });
+    expect(cleared.item.airedAt).toBeNull();
+  });
+});

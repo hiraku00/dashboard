@@ -64,8 +64,11 @@ export const PATCH = route(async (request: Request, { params }: { params: Promis
   // land. Checking result.meta.changes here is the only point that can
   // actually tell whether this request's version was the one still current
   // at write time.
-  const updateResult = await env.DB.prepare(`UPDATE items SET content_type=?, creator_name=?, series_title=?, title=?, description=?, priority=?, status=?, added_on=?, watched_on=?, comment=?, source_system=?, external_id=?, raw_source=?, thumbnail_url=?, version=version+1, updated_at=? WHERE id=? AND version=? AND deleted_at IS NULL`)
-    .bind(item.contentType, item.creatorName ?? "", item.seriesTitle ?? "", item.title, item.description ?? "", item.priority, item.status ?? "backlog", item.addedOn, item.watchedOn, item.comment ?? "", item.sourceSystem ?? "manual", item.externalId, item.rawSource, thumbnailUrl, now, id, expectedVersion).run();
+  // 放送日時は、送られてこなければ(airedAt が undefined)今の値を残す。状態だけの変更や、
+  // 放送日時を知らない API 呼び出しの保存で、取り込み時に入った値を消さないため。
+  const airedAtGiven = item.airedAt !== undefined ? 1 : 0;
+  const updateResult = await env.DB.prepare(`UPDATE items SET content_type=?, creator_name=?, series_title=?, title=?, description=?, priority=?, status=?, added_on=?, watched_on=?, aired_at=CASE WHEN ? = 1 THEN ? ELSE aired_at END, comment=?, source_system=?, external_id=?, raw_source=?, thumbnail_url=?, version=version+1, updated_at=? WHERE id=? AND version=? AND deleted_at IS NULL`)
+    .bind(item.contentType, item.creatorName ?? "", item.seriesTitle ?? "", item.title, item.description ?? "", item.priority, item.status ?? "backlog", item.addedOn, item.watchedOn, airedAtGiven, item.airedAt ?? null, item.comment ?? "", item.sourceSystem ?? "manual", item.externalId, item.rawSource, thumbnailUrl, now, id, expectedVersion).run();
   if (!updateResult.meta.changes) {
     // meta.changes === 0 means either the id doesn't exist, or it exists but
     // its version has already moved on -- distinguish them with one cheap
