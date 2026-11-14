@@ -127,3 +127,19 @@ describe("imports save each item with its preview image", () => {
     expect((body as unknown as { thumbnails: unknown }).thumbnails).toEqual({ looked: 2, found: 1, skipped: 0 });
   });
 });
+
+describe("imports keep the broadcast time (aired_at)", () => {
+  test("stores airedAt, and an item without it gets NULL", async () => {
+    const { status } = await importItems([item(301, { airedAt: "2026-11-12T23:50" }), item(302)]);
+    expect(status).toBe(201);
+    expect((await row("imported 301"))?.aired_at).toBe("2026-11-12T23:50");
+    expect((await row("imported 302"))?.aired_at).toBeNull();
+  });
+
+  test("a malformed airedAt is reported for that item only", async () => {
+    const { status, body } = await importItems([item(303, { airedAt: "23:50" }), item(304, { airedAt: "2026-11-12 05:45" })]);
+    expect(status).toBe(207);
+    expect(body.messages).toEqual([{ index: 0, error: "放送日時は YYYY-MM-DDTHH:MM 形式で指定してください。" }]);
+    expect((await row("imported 304"))?.aired_at).toBe("2026-11-12T05:45");
+  });
+});

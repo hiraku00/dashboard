@@ -120,7 +120,7 @@ test("toItem returns an empty links array for a row with no links, not undefined
 // them alike), and listItems()'s links subquery can pick different rows than
 // the page query. See tests/workers/watch-list-list.test.ts for the D1 side.
 test("the list order ends in the id, after the date keys", () => {
-  expect(ITEMS_ORDER_BY).toBe("ORDER BY added_on IS NULL ASC, added_on DESC, created_at DESC, id ASC");
+  expect(ITEMS_ORDER_BY).toBe("ORDER BY added_on IS NULL ASC, added_on DESC, aired_at IS NULL DESC, aired_at DESC, created_at DESC, id ASC");
 });
 
 // resolveTextTubeStatus() decides one YouTube link's TextTube badge --
