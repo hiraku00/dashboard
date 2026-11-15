@@ -51,14 +51,21 @@ export const SAMPLE_YOUTUBE_DATA_API_VIDEOS_RESPONSE = JSON.stringify({
         channelId: "sample-channel-id",
         publishedAt: "2026-01-01T00:00:00Z",
         thumbnails: { high: { url: "https://example.com/thumb.jpg" } },
+        description: "Sample description line\nhttps://example.com/full/link/not/truncated\n#sample",
       },
       contentDetails: { duration: "PT5M30S" },
+      statistics: { viewCount: "56401", likeCount: "668" },
     },
   ],
 });
 
 export const SAMPLE_YOUTUBE_DATA_API_CHANNELS_RESPONSE = JSON.stringify({
-  items: [{ snippet: { thumbnails: { high: { url: "https://example.com/channel-thumb.jpg" } } } }],
+  items: [
+    {
+      snippet: { thumbnails: { high: { url: "https://example.com/channel-thumb.jpg" } } },
+      statistics: { subscriberCount: "214000", hiddenSubscriberCount: false },
+    },
+  ],
 });
 
 export const SAMPLE_SUPADATA_TRANSCRIPT_RESPONSE = JSON.stringify({

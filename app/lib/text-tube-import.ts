@@ -17,6 +17,7 @@ import { ensureSchema } from "@/db";
 import {
   fetchYouTubeVideoInfo,
   fetchYouTubeTranscript,
+  detailedScriptMarkdown,
 } from "@/app/lib/youtube-video-fetch";
 import { saveVideoDocument } from "@/app/lib/text-tube-document";
 
@@ -152,13 +153,13 @@ async function importVideo(
     )
     .run();
 
-  if (captions.script) {
-    // ArrayBufferにしてsaveVideoDocument()へ -- POST .../documentが
-    // request.arrayBuffer()で受け取るのと同じ形。失敗しても動画自体の
-    // 作成は既に済んでいるので、取り込み全体は成功のまま扱う(字幕だけ
-    // 編集フォームで後から保存し直せる)。
-    await saveVideoDocument(videoId, new TextEncoder().encode(captions.script).buffer).catch(() => {});
-  }
+  // 字幕が無くても、動画情報(題名・概要欄など)の部分はいつもあるので、
+  // スクリプトは毎回保存する。ArrayBufferにしてsaveVideoDocument()へ --
+  // POST .../documentがrequest.arrayBuffer()で受け取るのと同じ形。失敗
+  // しても動画自体の作成は既に済んでいるので、取り込み全体は成功のまま
+  // 扱う(スクリプトは編集フォームで後から保存し直せる)。
+  const script = detailedScriptMarkdown(info.value, captions.script);
+  await saveVideoDocument(videoId, new TextEncoder().encode(script).buffer).catch(() => {});
 
   await env.DB.prepare(
     "UPDATE text_tube_imports SET status='done', video_id=?, updated_at=? WHERE id=?",
