@@ -35,6 +35,32 @@ test("fetches video metadata and a transcript, and records Supadata usage in D1"
   // fetches captions at all; this is what actually distinguishes TextTube's
   // preview from Watch List's.
   expect(body.preview.detailedScript).toContain("sample caption line");
+  // Above the captions: what the video's YouTube page shows from the title
+  // down to the end of the description.
+  expect(body.preview.detailedScript).toBe(
+    [
+      "# 動画情報",
+      "",
+      "- タイトル: Sample Video",
+      "- チャンネル: Sample Channel(登録者 21.4万人)",
+      "- 公開日 2026-01-01 / 56,401回視聴 / 高評価 668",
+      "",
+      "## 概要欄",
+      "",
+      "Sample description line",
+      "https://example.com/full/link/not/truncated",
+      "#sample",
+      "",
+      "# 字幕",
+      "",
+      "- 00:01 sample caption line",
+    ].join("\n"),
+  );
+  // YouTube's view count goes into the script only -- spread into the form,
+  // it would overwrite this app's own view count.
+  expect(body.preview).not.toHaveProperty("youtubeStats");
+  expect(body.preview).not.toHaveProperty("description");
+  expect(body.preview).not.toHaveProperty("viewCount");
 
   const after = await env.DB.prepare("SELECT COUNT(*) AS c FROM text_tube_api_usage WHERE provider='supadata'").first<{ c: number }>();
   expect(after!.c).toBe(before!.c + 1);

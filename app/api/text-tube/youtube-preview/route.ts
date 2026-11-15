@@ -2,7 +2,11 @@ import { env } from "cloudflare:workers";
 import { ensureSchema } from "@/db";
 import { youTubeVideoId } from "@/app/lib/youtube";
 import { route } from "@/app/lib/route";
-import { fetchYouTubeVideoInfo, fetchYouTubeTranscript } from "@/app/lib/youtube-video-fetch";
+import {
+  detailedScriptMarkdown,
+  fetchYouTubeVideoInfo,
+  fetchYouTubeTranscript,
+} from "@/app/lib/youtube-video-fetch";
 
 export const POST = route(async (request: Request) => {
   await ensureSchema({ seed: false });
@@ -32,8 +36,21 @@ export const POST = route(async (request: Request) => {
     script: "",
     notice: "字幕の取得に失敗しました。",
   }));
+  // Only the form's own fields: description and youtubeStats go into the
+  // script instead -- spread into the form, YouTube's view count would
+  // overwrite this app's own.
+  const video = info.value;
   return Response.json({
-    preview: { ...info.value, detailedScript: captions.script },
+    preview: {
+      title: video.title,
+      channelName: video.channelName,
+      originalUrl: video.originalUrl,
+      thumbnailUrl: video.thumbnailUrl,
+      channelThumbnailUrl: video.channelThumbnailUrl,
+      publishedAt: video.publishedAt,
+      duration: video.duration,
+      detailedScript: detailedScriptMarkdown(video, captions.script),
+    },
     captionNotice: captions.notice,
   });
 });

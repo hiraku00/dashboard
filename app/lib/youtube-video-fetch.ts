@@ -35,6 +35,57 @@ function duration(value: string) {
     .join(":");
 }
 
+/** The Data API returns counts as strings; undefined when missing or not
+ *  a number, so the header leaves that item out rather than showing 0. */
+function count(value: string | undefined) {
+  if (value === undefined || value === "") return undefined;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : undefined;
+}
+
+/** 214000 -> "21.4万", 1234 -> "1,234": the way YouTube's own page shows a
+ *  subscriber count. The API already rounds it to 3 significant digits. */
+function japaneseCount(value: number) {
+  if (value >= 100_000_000)
+    return `${Number((value / 100_000_000).toPrecision(3))}億`;
+  if (value >= 10_000) return `${Number((value / 10_000).toPrecision(3))}万`;
+  return value.toLocaleString("ja-JP");
+}
+
+/** The part of the detailed script above the captions: what the video's
+ *  own YouTube page shows from its title down to the end of the
+ *  description. Written into the script (not kept as separate fields) so
+ *  it can be edited, and read alongside the captions, like the rest of it. */
+export function videoHeaderMarkdown(video: YouTubeVideoInfo) {
+  const { viewCount, likeCount, subscriberCount } = video.youtubeStats;
+  const channel =
+    subscriberCount === undefined
+      ? video.channelName
+      : `${video.channelName}(登録者 ${japaneseCount(subscriberCount)}人)`;
+  const numbers = [
+    video.publishedAt ? `公開日 ${video.publishedAt}` : "",
+    viewCount === undefined ? "" : `${viewCount.toLocaleString("ja-JP")}回視聴`,
+    likeCount === undefined ? "" : `高評価 ${likeCount.toLocaleString("ja-JP")}`,
+  ].filter(Boolean);
+  const lines = [
+    "# 動画情報",
+    "",
+    `- タイトル: ${video.title}`,
+    `- チャンネル: ${channel}`,
+    ...(numbers.length ? [`- ${numbers.join(" / ")}`] : []),
+  ];
+  const description = video.description.trim();
+  if (description) lines.push("", "## 概要欄", "", description);
+  return lines.join("\n");
+}
+
+/** The detailed script as first saved: the video header, then the captions
+ *  when there are any. */
+export function detailedScriptMarkdown(video: YouTubeVideoInfo, captions: string) {
+  const header = videoHeaderMarkdown(video);
+  return captions ? `${header}\n\n${captions}` : header;
+}
+
 export type YouTubeVideoInfo = {
   title: string;
   channelName: string;
@@ -47,6 +98,17 @@ export type YouTubeVideoInfo = {
   // present or right -- fetchYouTubeTranscript()'s preferredTranscriptLang()
   // weighs it against the title and falls back to English when it's missing.
   defaultAudioLanguage?: string;
+  // Only for videoHeaderMarkdown() (the top of the detailed script), not
+  // for the form: the preview route leaves these out of its response, since
+  // spreading a `viewCount` into the form would overwrite this app's own
+  // view count with YouTube's. Each count is absent when YouTube hides it
+  // (likes, subscribers) or didn't return it.
+  description: string;
+  youtubeStats: {
+    viewCount?: number;
+    likeCount?: number;
+    subscriberCount?: number;
+  };
 };
 
 /** Fetches title/channel/thumbnails/duration/language for one video id via
@@ -64,7 +126,7 @@ export async function fetchYouTubeVideoInfo(
     videosUrl.search = new URLSearchParams({
       key,
       id: videoId,
-      part: "snippet,contentDetails",
+      part: "snippet,contentDetails,statistics",
     }).toString();
     const videosResponse = await fetch(videosUrl, {
       signal: AbortSignal.timeout(10_000),
@@ -95,8 +157,10 @@ export async function fetchYouTubeVideoInfo(
           publishedAt?: string;
           thumbnails?: Record<string, { url?: string }>;
           defaultAudioLanguage?: string;
+          description?: string;
         };
         contentDetails?: { duration?: string };
+        statistics?: { viewCount?: string; likeCount?: string };
       }>;
     };
     const video = data.items?.[0];
@@ -112,9 +176,9 @@ export async function fetchYouTubeVideoInfo(
     channelsUrl.search = new URLSearchParams({
       key,
       id: snippet.channelId,
-      part: "snippet",
+      part: "snippet,statistics",
     }).toString();
-    // Channel thumbnail is decorative -- a failure here shouldn't fail the
+    // Channel thumbnail (and subscriber count) is decorative -- a failure here shouldn't fail the
     // whole lookup, so its response is read leniently rather than checked
     // like videosResponse above.
     const channel = (await (
@@ -124,8 +188,13 @@ export async function fetchYouTubeVideoInfo(
       .catch(() => ({}))) as {
       items?: Array<{
         snippet?: { thumbnails?: Record<string, { url?: string }> };
+        statistics?: {
+          subscriberCount?: string;
+          hiddenSubscriberCount?: boolean;
+        };
       }>;
     };
+    const channelStatistics = channel.items?.[0]?.statistics;
     return {
       value: {
         title: snippet.title,
@@ -136,6 +205,14 @@ export async function fetchYouTubeVideoInfo(
         publishedAt: snippet.publishedAt?.slice(0, 10) ?? "",
         duration: duration(video?.contentDetails?.duration ?? ""),
         defaultAudioLanguage: snippet.defaultAudioLanguage,
+        description: snippet.description ?? "",
+        youtubeStats: {
+          viewCount: count(video?.statistics?.viewCount),
+          likeCount: count(video?.statistics?.likeCount),
+          subscriberCount: channelStatistics?.hiddenSubscriberCount
+            ? undefined
+            : count(channelStatistics?.subscriberCount),
+        },
       },
     };
   } catch {
