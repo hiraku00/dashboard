@@ -41,3 +41,28 @@ jobs:
 
       - name: Test and build
         run: npm test
+
+  # Mac 専用の collector のうち、純粋な Python の部分のテスト。macOS の画面操作・文字認識（pyobjc）が
+  # 要るテストは、Vision が入っていない環境では自動で飛ばされる（collector/tests/ の importorskip）。
+  collector:
+    name: Collector tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        # pyobjc は macOS 専用で Linux には入らない。playwright はテストが使わない。
+        run: |
+          grep -h -v -e '^#' -e '^$' -e pyobjc -e playwright collector/requirements.txt collector/line_openchat/requirements.txt | sort -u > "$RUNNER_TEMP/requirements.txt"
+          pip install -r "$RUNNER_TEMP/requirements.txt"
+
+      - name: Test
+        working-directory: collector
+        run: python -m pytest tests -q

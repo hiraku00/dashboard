@@ -140,6 +140,8 @@ def test_summary_is_json_serializable(tmp_path):
 
 
 def test_cli_explains_a_missing_note_window_instead_of_crashing(monkeypatch, capsys, tmp_path):
+    # 画面の文字認識は macOS の Vision フレームワークを使う。入っていない環境（CI の Linux）では飛ばす。
+    pytest.importorskip("Vision", reason="macOS only")
     """ノートが開いていないとき、スタックトレースではなく、直し方つきの説明を出して終了する(終了コード5)。"""
     from line_openchat import lineui, sync
     monkeypatch.setattr(lineui, "check_environment", lambda: None)

@@ -147,7 +147,8 @@ export async function cloudflareAnalyticsUsage(): Promise<CloudflareAnalyticsUsa
     const headers = { Authorization: `Bearer ${runtime.CF_ANALYTICS_TOKEN}` };
     const sizeResponse = await fetch(
       `https://api.cloudflare.com/client/v4/accounts/${runtime.CF_ACCOUNT_ID}/d1/database/${D1_DATABASE_ID}`,
-      { headers },
+      // 使用量の画面を開くたびに呼ぶ。応答しない API に画面ごと待たされないよう、上限を切る（外側の catch が拾う）。
+      { headers, signal: AbortSignal.timeout(10_000) },
     );
     const sizeBody = (await sizeResponse.json()) as {
       result?: { file_size?: number };
@@ -164,6 +165,7 @@ export async function cloudflareAnalyticsUsage(): Promise<CloudflareAnalyticsUsa
       "https://api.cloudflare.com/client/v4/graphql",
       {
         method: "POST",
+        signal: AbortSignal.timeout(10_000),
         headers: { ...headers, "content-type": "application/json" },
         body: JSON.stringify({
           query: `query D1Usage($accountTag: string!, $today: Date, $start: Date, $end: Date, $databaseId: string) {

@@ -5,6 +5,7 @@ import { reconcileStorageUsage } from "../app/lib/storage-usage";
 import { measureAllD1Tables } from "../app/lib/d1-table-usage";
 import { ensureSchema } from "../db";
 import { guardRequest } from "../app/lib/access";
+import { isCrossSiteWrite } from "../app/lib/request-guard";
 import { initTodo, materializeRoutines, todoDate } from "../app/lib/todo-lib";
 
 interface Env {
@@ -41,7 +42,9 @@ const worker = {
     // cover reaches this Worker unchecked. Re-verify its assertion here, ahead
     // of everything else including static assets and the image optimizer, so
     // the app is not relying on the edge alone. No-op until ACCESS_TEAM_DOMAIN
-    // and ACCESS_AUD are set.
+    // and ACCESS_AUD are set (production sets them as secrets).
+    // 別のサイトのページから送られた書き込みは、Access の認証より先に断る（JWKS の取得も要らない）。
+    if (isCrossSiteWrite(request)) return new Response("Forbidden", { status: 403 });
     const denied = await guardRequest(request, env as unknown as Record<string, unknown>);
     if (denied) return denied;
 

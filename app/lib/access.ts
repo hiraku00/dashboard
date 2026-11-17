@@ -8,10 +8,13 @@
  *  assertion here means such a route fails closed instead of serving data.
  *
  *  This is deliberately opt-in: with no team domain and audience configured,
- *  isAccessConfigured() is false and the Worker keeps its previous behaviour.
- *  Turning it on is a production change (a wrong audience locks everyone out,
- *  including the collector's service token), so it is enabled by setting the
- *  two values rather than by deploying this file. */
+ *  isAccessConfigured() is false and the Worker keeps its previous behaviour
+ *  (which is what local development and the tests run with). Turning it on is
+ *  a production change (a wrong audience locks everyone out, including the
+ *  collector's service token), so it is enabled by setting the two values
+ *  rather than by deploying this file. Production has them set as Worker
+ *  secrets (docs/deployment-and-access.md); never put them in wrangler.jsonc's
+ *  `vars`, which would also switch it on for local dev and the tests. */
 
 export type AccessConfig = { teamDomain: string; audience: string };
 
@@ -180,10 +183,10 @@ function deny() {
  *  Access attaches its assertion to every request it lets through, a service
  *  token's included; a service token's carries `common_name` (the client ID)
  *  and no `email`. When ACCESS_TEAM_DOMAIN / ACCESS_AUD are set the assertion
- *  is verified here as guardRequest() does. Until then (as in production
- *  today) it is only decoded: the edge has already validated it, and Access
- *  covers the whole hostname, so this check only has to tell the two kinds of
- *  caller apart, not stand in for Access. */
+ *  is verified here as guardRequest() does. Without them (local development
+ *  and the tests) it is only decoded: the edge has already validated it, and
+ *  Access covers the whole hostname, so this check only has to tell the two
+ *  kinds of caller apart, not stand in for Access. */
 export async function requireServiceToken(
   request: Request,
   env: Record<string, unknown>,

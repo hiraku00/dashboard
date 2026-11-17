@@ -99,6 +99,8 @@ def test_thread_reader_module_imports():
 
 
 def test_thread_reader_reads_from_the_current_screen_and_reports_when_no_thread_end_is_found():
+    # 画面の文字認識は macOS の Vision フレームワークを使う。入っていない環境（CI の Linux）では飛ばす。
+    pytest.importorskip("Vision", reason="macOS only")
     """read_thread は、今の画面から下へ撮り、コメント欄の終わり(「投稿」ボタン)で止める。合成の文書には「投稿」ボタンが
     無いので末尾まで撮り、その旨を警告に出す。撮影が長引いたときの途中経過(枚数)もログに出す。
     MacFrameSource(macOS専用)を使わず、capture.py のテストと同じ合成の FrameSource(synth.SynthSource)で動かす."""

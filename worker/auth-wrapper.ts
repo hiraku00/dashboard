@@ -13,6 +13,7 @@
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore -- module appears only after `npm run build`
 import app from "../dist/server/index.js";
+import { applySecurityHeaders } from "../app/lib/request-guard";
 
 // wrangler.jsonc's `main` points here, not at worker/index.ts. worker/index.ts
 // is the SOURCE that vite/vinext bundles (it imports the virtual module
@@ -24,12 +25,13 @@ import app from "../dist/server/index.js";
 const worker = {
   async fetch(request: Request, env: Env, ctx: ExecutionContext) {
     const response = await app.fetch(request, env, ctx);
-    if (!request.headers.get("accept")?.includes("text/html")) return response;
+    // 全レスポンスにセキュリティヘッダーを付ける（Access の 403 も、API も、HTML も）。
     const headers = new Headers(response.headers);
-    headers.set("cache-control", "no-store, max-age=0, must-revalidate");
+    applySecurityHeaders(headers);
+    if (request.headers.get("accept")?.includes("text/html")) headers.set("cache-control", "no-store, max-age=0, must-revalidate");
     return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
   },
-  // Without this re-export the daily cron trigger ("17 2 * * *" in
+  // Without this re-export the daily cron trigger ("0 17 * * *" in
   // wrangler.jsonc) fires into a Worker that has no scheduled handler at all:
   // dist/server/index.js's default export does have one (it runs the R2
   // reconciliation into storage_usage_daily), but this wrapper is what
