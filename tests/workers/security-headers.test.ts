@@ -27,3 +27,26 @@ test("responses carry the security headers, HTML and API alike", async () => {
     expect(response.headers.get("content-security-policy"), path).toContain("frame-ancestors 'none'");
   }
 });
+
+test("an HTML page gets a per-request script nonce, and every inline script carries it", async () => {
+  const load = async () => {
+    const response = await SELF.fetch(`${BASE}/no-such-page`, { headers: { accept: "text/html" } });
+    const csp = response.headers.get("content-security-policy") ?? "";
+    return { csp, html: await response.text(), nonce: /'nonce-([^']+)'/.exec(csp)?.[1] ?? "" };
+  };
+  const first = await load();
+  const second = await load();
+  expect(first.nonce).not.toBe("");
+  expect(second.nonce).not.toBe(first.nonce);
+  // The script policy is the nonce one: no unsafe-inline for scripts.
+  expect(first.csp.split("; ").find((directive) => directive.startsWith("script-src"))).toBe(`script-src 'self' 'nonce-${first.nonce}'`);
+
+  const inline = [...first.html.matchAll(/<script\b([^>]*)>/g)].map((match) => match[1]).filter((attributes) => !/\bsrc=/.test(attributes));
+  expect(inline.length).toBeGreaterThan(0);
+  for (const attributes of inline) expect(attributes).toContain(`nonce="${first.nonce}"`);
+});
+
+test("a response that is not an HTML page keeps the nonce-less policy", async () => {
+  const response = await SELF.fetch(`${BASE}/api/items`, { headers: { accept: "application/json" } });
+  expect(response.headers.get("content-security-policy")).toContain("script-src 'self' 'unsafe-inline'");
+});

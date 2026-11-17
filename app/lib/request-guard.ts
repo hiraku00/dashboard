@@ -21,36 +21,44 @@ export function isCrossSiteWrite(request: Request): boolean {
   }
 }
 
+/** HTML の 1 リクエストごとに作る、スクリプト用のノンス（推測できない一回限りの値）。 */
+export function newNonce(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  return btoa(String.fromCharCode(...bytes));
+}
+
 /** CSP。このアプリが実際に読み込んでいるものだけを許す:
- *  - script / style は自分のオリジンと、インライン（vinext が初期表示のデータをインラインの
- *    スクリプトで渡し、React・mermaid がインラインの style を使う）。外部のスクリプトや、
- *    eval は許さない。
+ *  - script は自分のオリジンと、ノンスの付いたインラインだけ。ノンスは HTML のリクエストごとに作り
+ *    （worker/index.ts）、vinext が初期表示のデータを渡すインラインのスクリプトに付ける。ノンスの無い
+ *    インラインのスクリプト（HTML に紛れ込んだ <script>、onclick などの属性）と、外部のスクリプト、
+ *    eval は動かない。ノンスを渡さない呼び出し（API など、HTML でない応答）は、従来どおり
+ *    'unsafe-inline' を許す形にする（そこにはスクリプトが無いので、実害は無い）。
+ *  - style は自分のオリジンとインライン（React・mermaid がインラインの style 属性を使う）。
  *  - 画像は https 全般（YouTube・TVer・リンク先の og:image など、保存した URL をそのまま表示する）と
  *    data: / blob:。
  *  - 通信（fetch）は自分のオリジンだけ。ページに仕込まれたスクリプトが、データを外へ送れない。
- *  - frame-ancestors 'none' は、他所から埋め込まれない（クリックジャッキング対策）。
- *  インラインのスクリプトを許している間は、XSS を止める力は限られる（ノンスを使う形にすれば
- *  止められるが、vinext 側の対応が要る）。それでも、外部への送信・外部スクリプト・base や form の
- *  差し替えは止まる。 */
-const CONTENT_SECURITY_POLICY = [
-  "default-src 'self'",
-  "script-src 'self' 'unsafe-inline'",
-  "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data: blob: https:",
-  "font-src 'self' data:",
-  "connect-src 'self'",
-  "object-src 'none'",
-  "base-uri 'self'",
-  "form-action 'self'",
-  "frame-ancestors 'none'",
-].join("; ");
+ *  - frame-ancestors 'none' は、他所から埋め込まれない（クリックジャッキング対策）。 */
+export function contentSecurityPolicy(nonce?: string): string {
+  return [
+    "default-src 'self'",
+    nonce ? `script-src 'self' 'nonce-${nonce}'` : "script-src 'self' 'unsafe-inline'",
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data: blob: https:",
+    "font-src 'self' data:",
+    "connect-src 'self'",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "frame-ancestors 'none'",
+  ].join("; ");
+}
 
 /** すべてのレスポンスに付ける。 */
 const SECURITY_HEADERS: Record<string, string> = {
   "x-content-type-options": "nosniff",
   "referrer-policy": "strict-origin-when-cross-origin",
   "x-frame-options": "DENY",
-  "content-security-policy": CONTENT_SECURITY_POLICY,
+  "content-security-policy": contentSecurityPolicy(),
   "permissions-policy": "camera=(), microphone=(), geolocation=()",
 };
 
