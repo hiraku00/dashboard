@@ -120,7 +120,7 @@ test("the setting picks which DB the API reads", async () => {
   const tokens = history.snapshots.find((row) => row.wallet_id === "w2-test-wallet")?.tokens ?? [];
   expect(tokens.find((token) => token.symbol === "stETH")?.amount_value).toBe(8);
   // The data-update tab's last run follows the wallet; the resync request stays production's.
-  const syncBody = await (await syncGet()).json() as { latest: { id: string } | null };
+  const syncBody = await (await syncGet(new Request("http://x/api/manage-asset/sync"))).json() as { latest: { id: string } | null };
   expect(syncBody.latest?.id).toBeTruthy();
 
   expect((await settingsPost(new Request("http://x/api/manage-asset/settings", { method: "POST", body: JSON.stringify({ defaultWallet: "3" }) }))).status).toBe(400);

@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 
-import { buildVideosFilter } from "../app/lib/text-tube-query.ts";
+import { buildVideosFilter, videosOffset } from "../app/lib/text-tube-query.ts";
 
 // buildVideosFilter() is the pure "which WHERE clause and binds does this
 // request produce" decision extracted out of listVideos() so it can be
@@ -45,4 +45,13 @@ test("a blank or whitespace-only q behaves like no query at all", () => {
   expect(buildVideosFilter({ q: "" }).where).toBe("WHERE deleted_at IS NULL");
   expect(buildVideosFilter({ q: "   " }).where).toBe("WHERE deleted_at IS NULL");
   expect(buildVideosFilter({ q: null }).where).toBe("WHERE deleted_at IS NULL");
+});
+
+test("offset accepts a non-negative integer and treats anything else as the first page", () => {
+  expect(videosOffset("100")).toBe(100);
+  expect(videosOffset(200)).toBe(200);
+  expect(videosOffset(" 7 ")).toBe(7);
+  for (const bad of [null, undefined, "", "-1", "1.5", "abc", "1e3", -5, 2.5, Number.NaN, "99999999999999999999"]) {
+    expect(videosOffset(bad)).toBe(0);
+  }
 });

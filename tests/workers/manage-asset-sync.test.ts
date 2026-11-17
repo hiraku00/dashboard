@@ -71,3 +71,23 @@ test("two wallets synced on the same date keep their positions correctly separat
   expect(snapshotA!.tokens.map((token) => token.symbol)).toEqual(["ETH"]);
   expect(snapshotB!.tokens.map((token) => token.symbol)).toEqual(["BTC"]);
 });
+
+test("GET ?only=resync returns just the pending resync request, and the indexes the polling relies on exist", async () => {
+  const { env } = await import("cloudflare:workers");
+  const { GET: syncGet } = await import("@/app/api/manage-asset/sync/route");
+  const polled = await (await syncGet(new Request("http://x/api/manage-asset/sync?only=resync"))).json() as Record<string, unknown>;
+  expect(Object.keys(polled).sort()).toEqual(["ok", "pendingResyncRequest"]);
+  expect(polled.pendingResyncRequest).toBeNull();
+
+  await sync({ action: "request_resync" });
+  const pending = (await (await syncGet(new Request("http://x/api/manage-asset/sync?only=resync"))).json() as { pendingResyncRequest: { id: string } | null }).pendingResyncRequest;
+  expect(pending?.id).toBeTruthy();
+  // The plain GET still answers both, as the data-update page's first render expects.
+  const full = await (await syncGet(new Request("http://x/api/manage-asset/sync"))).json() as Record<string, unknown>;
+  expect(Object.keys(full).sort()).toEqual(["latest", "ok", "pendingResyncRequest"]);
+  await sync({ action: "fulfill_resync", requestId: pending?.id });
+
+  const plan = async (sql: string) => ((await env.DB.prepare(`EXPLAIN QUERY PLAN ${sql}`).all<{ detail: string }>()).results ?? []).map((row) => row.detail).join(" | ");
+  expect(await plan("SELECT * FROM asset_sync_runs ORDER BY received_at DESC LIMIT 1")).toContain("asset_sync_runs_received_idx");
+  expect(await plan("SELECT * FROM asset_resync_requests WHERE fulfilled_at IS NULL ORDER BY requested_at DESC LIMIT 1")).toContain("asset_resync_requests_pending_idx");
+});

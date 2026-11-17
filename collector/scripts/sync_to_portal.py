@@ -80,12 +80,19 @@ def post(base_url: str, token: str, body: dict, timeout: int = 30) -> dict:
     raise last_error or RuntimeError("Portal sync failed")
 
 
-def get(base_url: str, token: str, timeout: int = 15) -> dict:
+# The resync check runs on every launchd tick (once a minute) and answers in
+# about half a second when the portal is reachable. When it is not, waiting
+# longer does not help -- the next tick asks again -- so give up early instead
+# of holding the tick for the full timeout.
+RESYNC_CHECK_TIMEOUT_S = 5
+
+
+def get(base_url: str, token: str, timeout: int = RESYNC_CHECK_TIMEOUT_S, query: str = "") -> dict:
     client_id = os.environ.get("PORTAL_SYNC_CLIENT_ID", "").strip()
     if not client_id:
         raise RuntimeError("PORTAL_SYNC_CLIENT_IDを設定してください")
     request = urllib.request.Request(
-        base_url.rstrip("/") + "/api/manage-asset/sync",
+        base_url.rstrip("/") + "/api/manage-asset/sync" + query,
         headers={
             "CF-Access-Client-Id": client_id,
             "CF-Access-Client-Secret": token,
@@ -100,7 +107,10 @@ def get(base_url: str, token: str, timeout: int = 15) -> dict:
 
 def check_pending_resync(base_url: str, token: str) -> str | None:
     """Return the pending「今すぐ再取得」request id, if the portal has one."""
-    pending = get(base_url, token).get("pendingResyncRequest")
+    # only=resync: the portal then skips reading the latest sync run, which this
+    # check never uses. A portal that predates the parameter ignores it and
+    # returns the same field.
+    pending = get(base_url, token, query="?only=resync").get("pendingResyncRequest")
     return str(pending["id"]) if isinstance(pending, dict) and pending.get("id") else None
 
 

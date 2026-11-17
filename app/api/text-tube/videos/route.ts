@@ -5,8 +5,8 @@ import { videoInput } from "@/app/lib/text-tube-video-input";
 import { route } from "@/app/lib/route";
 
 export const GET = route(async (request: Request) => {
-  const q = new URL(request.url).searchParams.get("q");
-  return Response.json(await listVideos({ q }));
+  const params = new URL(request.url).searchParams;
+  return Response.json(await listVideos({ q: params.get("q"), offset: params.get("offset") }));
 });
 
 export const POST = route(async (request: Request) => {

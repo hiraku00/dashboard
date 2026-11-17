@@ -28,6 +28,11 @@ from debank_auto import fetch_wallets_html  # noqa: E402
 LOCK_FILE = app.DATA / "daily-update.lock"
 STATE_FILE = app.DATA / "daily-update-state.json"
 CONFIG_FILE = ROOT / "config" / "app-config.json"
+RESYNC_CHECK_STATE_FILE = app.DATA / "resync-check-state.json"
+# Above sync_to_portal.RESYNC_CHECK_TIMEOUT_S (5s), leaving room for the
+# interpreter start and the Keychain lookup, so the child's own timeout is the
+# one that normally fires and reports why.
+RESYNC_CHECK_SUBPROCESS_TIMEOUT_S = 10
 LOG = logging.getLogger("manage_asset.daily_update")
 
 
@@ -219,6 +224,36 @@ def update_exchanges(run_id: str, source_ids: set[str] | None = None) -> tuple[i
     return success, failed, failed_ids, errors
 
 
+def note_resync_check_result(error: str | None, state_file: Path = RESYNC_CHECK_STATE_FILE) -> None:
+    """Log a failing resync check once per outage instead of once per tick.
+
+    Each tick is its own process, so the count of consecutive failures lives in
+    a small state file. While the portal is unreachable (the Mac is offline,
+    DNS does not resolve) every tick fails the same way; logging each one
+    buried the rest of the log under thousands of identical warnings. The first
+    failure is a WARNING, the following ones are silent, and the recovery says
+    how many were skipped.
+    """
+    try:
+        state = json.loads(state_file.read_text(encoding="utf-8")) if state_file.exists() else {}
+    except (OSError, ValueError):
+        state = {}
+    failures = int(state.get("failures") or 0) if isinstance(state, dict) else 0
+    try:
+        if error is None:
+            if failures:
+                LOG.info("Portal resync check recovered after %d failed checks (failing since %s)", failures, state.get("since"))
+                state_file.unlink(missing_ok=True)
+            return
+        if failures == 0:
+            LOG.warning("Could not check for a pending portal resync request: %s (not logged again until it recovers)", error)
+            state = {"since": datetime.now().astimezone().isoformat(timespec="seconds")}
+        state["failures"] = failures + 1
+        state_file.write_text(json.dumps(state), encoding="utf-8")
+    except OSError as exc:
+        LOG.warning("Could not update %s: %s", state_file.name, exc)
+
+
 def check_pending_resync_request(portal_url: str) -> str | None:
     """Ask the portal whether its「今すぐ再取得」button has an unfulfilled request.
 
@@ -230,14 +265,17 @@ def check_pending_resync_request(portal_url: str) -> str | None:
     try:
         result = subprocess.run(
             [sys.executable, str(ROOT / "scripts" / "sync_to_portal.py"), "--check-resync", portal_url],
-            check=False, capture_output=True, text=True, timeout=15,
+            check=False, capture_output=True, text=True, timeout=RESYNC_CHECK_SUBPROCESS_TIMEOUT_S,
         )
     except (OSError, subprocess.SubprocessError) as exc:
-        LOG.warning("Could not check for a pending portal resync request: %s", exc)
+        note_resync_check_result(str(exc))
         return None
     if result.returncode != 0:
-        LOG.warning("Could not check for a pending portal resync request: %s", result.stderr.strip())
+        # The child's stderr is a whole traceback; its last line names the error.
+        lines = [line for line in result.stderr.strip().splitlines() if line.strip()]
+        note_resync_check_result(lines[-1].strip() if lines else f"exit status {result.returncode}")
         return None
+    note_resync_check_result(None)
     return result.stdout.strip() or None
 
 
@@ -334,7 +372,9 @@ def main() -> int:
     # launchdティックに便乗するので、新しい常時ポーリングは増やさない。
     resync_request_id = check_pending_resync_request(portal_url) if portal_url else None
     if not force_run and not resync_request_id and (not schedule.get("enabled", True) or not slot or existing_state.get("last_run_slot") == slot_key):
-        LOG.info("Outside the scheduled run window; skipping")
+        # DEBUG, not INFO: this is the outcome of nearly every one of the 1,440
+        # ticks a day, and at INFO it was almost half of the log.
+        LOG.debug("Outside the scheduled run window; skipping")
         return 0
 
     lock = acquire_lock()
