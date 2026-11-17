@@ -22,6 +22,8 @@ export type Video = {
   channel_thumbnail_url: unknown;
   duration: unknown;
   detailed_script_object_key: unknown;
+  /** 読み終えた日時(ISO)。未読は null。 */
+  read_at: unknown;
   created_at: unknown;
   updated_at: unknown;
 };
@@ -37,7 +39,7 @@ export async function listVideos(query: VideosQuery = {}): Promise<{ videos: Vid
   await ensureSchema({ seed: false });
   const { where, values } = buildVideosFilter(query);
   // id を第2キーにするのは、created_at が同じ行があっても offset での続きが飛んだり重なったりしないため。
-  const rows = (await env.DB.prepare(`SELECT id,title,channel_name,thumbnail_url,original_url,published_at,view_count,channel_thumbnail_url,duration,detailed_script_object_key,created_at,updated_at FROM text_tube_videos ${where} ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`).bind(...values, VIDEOS_PAGE_SIZE + 1, videosOffset(query.offset)).all<Record<string, unknown>>()).results ?? [];
+  const rows = (await env.DB.prepare(`SELECT id,title,channel_name,thumbnail_url,original_url,published_at,view_count,channel_thumbnail_url,duration,detailed_script_object_key,read_at,created_at,updated_at FROM text_tube_videos ${where} ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`).bind(...values, VIDEOS_PAGE_SIZE + 1, videosOffset(query.offset)).all<Record<string, unknown>>()).results ?? [];
   return { videos: rows.slice(0, VIDEOS_PAGE_SIZE) as unknown as VideoListItem[], hasMore: rows.length > VIDEOS_PAGE_SIZE };
 }
 
@@ -62,4 +64,17 @@ export async function getVideo(id: string): Promise<Video | null> {
  *  個別に読む（app/api/text-tube/videos/[id]/document/route.ts）。 */
 export async function getVideoDetail(id: string): Promise<Video | null> {
   return getVideo(id);
+}
+
+/** 記事ページの横に出す「同じチャンネルの動画」の1行。 */
+export type ChannelVideo = { id: string; title: string; thumbnail_url: string; duration: string; published_at: string | null; read_at: string | null };
+
+/** 同じチャンネルの動画を、公開日の古い順に返す（公開日が無ければ記事の作成日）。
+ *  app/text-tube/watch/[id]/page.tsx が、前後の回と一覧を出すために呼ぶ。チャンネル名が空の動画は
+ *  「同じチャンネル」とは言えないので、空を返す。text_tube_videos_channel_idx を使う。 */
+export async function channelVideos(channelName: string): Promise<ChannelVideo[]> {
+  if (!channelName) return [];
+  await ensureSchema({ seed: false });
+  const rows = (await env.DB.prepare("SELECT id,title,thumbnail_url,duration,published_at,read_at FROM text_tube_videos WHERE deleted_at IS NULL AND channel_name=? ORDER BY COALESCE(published_at, created_at) ASC, id ASC LIMIT 300").bind(channelName).all<ChannelVideo>()).results ?? [];
+  return rows;
 }

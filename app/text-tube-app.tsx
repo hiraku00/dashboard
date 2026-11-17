@@ -1,12 +1,13 @@
 "use client";
 import Link from "next/link";
 import Image from "next/image";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { PortalHeader } from "./portal-nav";
 import { readJson } from "./lib/json";
 import { MAX_LIKE_TERM_BYTES, truncateUtf8Bytes, utf8ByteLength } from "./lib/sql-text.ts";
 import { useSearchReload } from "./lib/use-search-reload";
 import { useLatestRequest } from "./lib/use-latest-request";
+import { DEFAULT_SORT, listViewQuery, type ListView } from "./lib/text-tube-list-view.ts";
 
 export type Video = {
   id: string;
@@ -22,9 +23,13 @@ export type Video = {
   updated_at: string;
   detailed_script_object_key?: string | null;
   channel_thumbnail_url?: string;
+  /** 読み終えた日時(ISO)。未読は null。 */
+  read_at?: string | null;
 };
 /** 一覧のカードが持つ行。要約は一覧のAPIが返さない（app/lib/queries/text-tube.ts の VideoListItem）。 */
 export type VideoListItem = Omit<Video, "summary">;
+/** 最後に見ていた一覧の URL（絞り込み込み）を覚えておく sessionStorage のキー。 */
+export const LIST_URL_KEY = "tt-list-url";
 export type VideoForm = {
   title: string;
   channelName: string;
@@ -105,6 +110,7 @@ export function useDeleteVideo({
 export function TextTubeApp({
   initialVideos = null,
   initialHasMore = false,
+  initialView,
 }: {
   // Passed by app/text-tube/page.tsx (a Server Component) after fetching
   // this directly from D1 -- see app/lib/queries/text-tube.ts. It calls
@@ -116,24 +122,36 @@ export function TextTubeApp({
   initialVideos?: VideoListItem[] | null;
   /** サーバーが返した先頭ページの先に、まだ動画があるか。 */
   initialHasMore?: boolean;
+  /** URL のクエリから読んだ一覧の状態。サーバーは同じ q と unread で initialVideos を読んでいる。 */
+  initialView?: ListView;
 } = {}) {
   const [videos, setVideos] = useState<VideoListItem[]>(initialVideos ?? []),
     [hasMore, setHasMore] = useState(initialHasMore),
     [loadingMore, setLoadingMore] = useState(false),
-    [q, setQ] = useState(""),
-    [channel, setChannel] = useState("all"),
-    [sort, setSort] = useState("created_at-desc"),
+    [q, setQ] = useState(initialView?.q ?? ""),
+    [channel, setChannel] = useState(initialView?.channel ?? "all"),
+    [sort, setSort] = useState(initialView?.sort ?? DEFAULT_SORT),
+    [unread, setUnread] = useState(initialView?.unread ?? false),
     [notice, setNotice] = useState("");
+  // 一覧の状態を URL に残す。記事を開いて「戻る」で帰ってきたときや、再読み込みしたときに、
+  // 検索語・並び順・チャンネル・未読のみが元のままになる。履歴は増やさない（replaceState）。
+  useEffect(() => {
+    const next = `${window.location.pathname}${listViewQuery({ q, sort, channel, unread })}`;
+    if (next !== `${window.location.pathname}${window.location.search}`) window.history.replaceState(window.history.state, "", next);
+    // 記事ページの「一覧に戻る」が、この状態のままの一覧へ戻れるように覚えておく。
+    try { window.sessionStorage.setItem(LIST_URL_KEY, next); } catch { /* 保存できなくても、既定の一覧へ戻るだけ */ }
+  }, [q, sort, channel, unread]);
+  const listQuery = `q=${encodeURIComponent(q)}${unread ? "&unread=1" : ""}`;
   const { begin, isCurrent } = useLatestRequest();
   const load = useCallback(async () => {
     const requestId = begin();
-    const r = await fetch(`/api/text-tube/videos?q=${encodeURIComponent(q)}`);
+    const r = await fetch(`/api/text-tube/videos?${listQuery}`);
     if (!r.ok) return;
     const body = await readJson<{ videos: VideoListItem[]; hasMore?: boolean }>(r);
     if (!isCurrent(requestId)) return;
     setVideos(body.videos);
     setHasMore(Boolean(body.hasMore));
-  }, [q, begin, isCurrent]);
+  }, [listQuery, begin, isCurrent]);
   // 続きの読み込み。offset は「いま持っている本数」-- 削除した動画はサーバー側でも1本減っているので、
   // 持っている本数がそのまま次の位置になる。読み込みの間に検索語が変わったら、結果は捨てる（load と同じ）。
   // 間に動画が追加されて位置がずれても同じカードが二重に出ないよう、id で重なりを除く。
@@ -141,7 +159,7 @@ export function TextTubeApp({
     const requestId = begin();
     setLoadingMore(true);
     try {
-      const r = await fetch(`/api/text-tube/videos?q=${encodeURIComponent(q)}&offset=${videos.length}`);
+      const r = await fetch(`/api/text-tube/videos?${listQuery}&offset=${videos.length}`);
       if (!r.ok) throw new Error("続きを読み込めませんでした。");
       const body = await readJson<{ videos: VideoListItem[]; hasMore?: boolean }>(r);
       if (!isCurrent(requestId)) return;
@@ -155,7 +173,7 @@ export function TextTubeApp({
     } finally {
       setLoadingMore(false);
     }
-  }, [q, videos.length, begin, isCurrent]);
+  }, [listQuery, videos.length, begin, isCurrent]);
   // Skips exactly the mount-time reload when the server already rendered
   // this same default (q="") view. See app/lib/use-search-reload.ts.
   useSearchReload(load, q, Boolean(initialVideos));
@@ -163,13 +181,14 @@ export function TextTubeApp({
     onDeleted: (id) => setVideos((current) => current.filter((v) => v.id !== id)),
     onNotice: setNotice,
   });
-  const channels = useMemo(
-    () =>
-      Array.from(
-        new Set(videos.map((v) => v.channel_name).filter(Boolean)),
-      ).sort(),
-    [videos],
-  );
+  // チャンネルごとの本数（読み込んだ分）。絞り込みの選択肢に添える。URL で指定されたチャンネルが
+  // 読み込んだ分に無くても、選択肢からは消さない（消すと select が別の値を表示してしまう）。
+  const channels = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const v of videos) if (v.channel_name) counts.set(v.channel_name, (counts.get(v.channel_name) ?? 0) + 1);
+    if (channel !== "all" && !counts.has(channel)) counts.set(channel, 0);
+    return [...counts.entries()].sort(([a], [b]) => a.localeCompare(b, "ja"));
+  }, [videos, channel]);
   const shown = useMemo(
     () =>
       videos
@@ -189,8 +208,8 @@ export function TextTubeApp({
     <TextTubeChrome>
       <div className="tt-page-head">
         <div>
-          <p className="tt-kicker">HOME</p>
-          <h1>おすすめの要約</h1>
+          <p className="tt-kicker">LIBRARY</p>
+          <h1>要約一覧</h1>
         </div>
         <div className="tt-head-controls">
           <span className="tt-query-field">
@@ -216,16 +235,22 @@ export function TextTubeApp({
       {notice && <div className="tt-notice">{notice}</div>}
       <div className="tt-channel-filter">
         <span>{shown.length}本の要約{hasMore && "（続きがあります）"}</span>
-        <select value={channel} onChange={(e) => setChannel(e.target.value)}>
-          <option value="all">すべてのチャンネル</option>
-          {channels.map((c) => (
-            <option key={c}>{c}</option>
-          ))}
-        </select>
+        <div className="tt-filter-controls">
+          <label className="tt-unread-toggle">
+            <input type="checkbox" checked={unread} onChange={(e) => setUnread(e.target.checked)} />
+            未読のみ
+          </label>
+          <select value={channel} onChange={(e) => setChannel(e.target.value)} aria-label="チャンネルで絞り込む">
+            <option value="all">すべてのチャンネル</option>
+            {channels.map(([name, count]) => (
+              <option key={name} value={name}>{name}（{count}）</option>
+            ))}
+          </select>
+        </div>
       </div>
       <div className="tt-video-grid">
         {shown.map((v) => (
-          <article className="tt-video-card" key={v.id}>
+          <article className={v.read_at ? "tt-video-card is-read" : "tt-video-card"} key={v.id}>
             {/* prefetch={false}: this page renders 100 of these cards per
                 loaded page, and /text-tube/watch/[id] is a Server Component reading
                 D1 -- leaving prefetch on would mean simply scrolling this grid
@@ -252,6 +277,7 @@ export function TextTubeApp({
                   </span>
                 )}
                 {v.duration && <b>{v.duration}</b>}
+                {v.read_at && <em className="tt-read-badge">読了</em>}
               </div>
               <div className="tt-video-info">
                 <span className="tt-channel-avatar">
@@ -271,7 +297,8 @@ export function TextTubeApp({
                   <h3>{v.title}</h3>
                   <p>{v.channel_name || "チャンネル未設定"}</p>
                   <small>
-                    {views(v.view_count)} 閲覧 · 記事作成日 {date(v.created_at)}
+                    {/* 閲覧数は入っている動画だけに出す（入っていない動画がほとんどで、「0 閲覧」が並ぶだけだった）。 */}
+                    {v.view_count > 0 && <>{views(v.view_count)} 閲覧 · </>}記事作成日 {date(v.created_at)}
                     <br />
                     動画公開日 {date(v.published_at)}
                   </small>

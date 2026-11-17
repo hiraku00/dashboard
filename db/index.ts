@@ -100,7 +100,7 @@ export const TV_PROGRAM_AIRED_AT_BACKFILL = `UPDATE items SET aired_at = added_o
 
 /** Bump whenever the DDL below changes, so existing databases re-run it once.
  *  A database whose schema_meta row already matches skips the whole batch. */
-const SCHEMA_VERSION = 20;
+const SCHEMA_VERSION = 21;
 
 /** Reads the recorded schema version. A database that predates schema_meta (or
  *  a brand new one) has no table, and the query fails rather than returning a
@@ -192,7 +192,7 @@ export async function ensureSchema({ seed = true }: { seed?: boolean } = {}) {
       summary TEXT NOT NULL DEFAULT '', detailed_script_object_key TEXT,
       detailed_script_sha256 TEXT, detailed_script_size INTEGER, published_at TEXT,
       view_count INTEGER NOT NULL DEFAULT 0, channel_thumbnail_url TEXT NOT NULL DEFAULT '',
-      duration TEXT NOT NULL DEFAULT '', youtube_video_id TEXT,
+      duration TEXT NOT NULL DEFAULT '', youtube_video_id TEXT, read_at TEXT,
       created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
       deleted_at TEXT
     )`),
@@ -419,6 +419,9 @@ export async function ensureSchema({ seed = true }: { seed?: boolean } = {}) {
   // is reliable here -- unlike the general-purpose parsing
   // youTubeVideoId() does for arbitrary user input elsewhere.
   await env.DB.prepare("ALTER TABLE text_tube_videos ADD COLUMN youtube_video_id TEXT").run().catch(() => {});
+  // Schema version 21: 読み終えた日時(ISO)。NULL は未読。一覧の「未読のみ」と記事の「読了」が使う。
+  // youtube_video_id と同じ理由でマイグレーションファイルは作らない(tests/schema-parity.test.mjs の KNOWN_GAPS)。
+  await env.DB.prepare("ALTER TABLE text_tube_videos ADD COLUMN read_at TEXT").run().catch(() => {});
   await env.DB.prepare(
     "CREATE INDEX IF NOT EXISTS text_tube_videos_youtube_idx ON text_tube_videos(youtube_video_id)",
   ).run().catch(() => {});

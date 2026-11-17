@@ -1,6 +1,7 @@
 import { expect, test } from "vitest";
 
-import { buildVideosFilter, videosOffset } from "../app/lib/text-tube-query.ts";
+import { buildVideosFilter, videosOffset, videosUnread } from "../app/lib/text-tube-query.ts";
+import { listViewFromParams, listViewQuery } from "../app/lib/text-tube-list-view.ts";
 
 // buildVideosFilter() is the pure "which WHERE clause and binds does this
 // request produce" decision extracted out of listVideos() so it can be
@@ -54,4 +55,28 @@ test("offset accepts a non-negative integer and treats anything else as the firs
   for (const bad of [null, undefined, "", "-1", "1.5", "abc", "1e3", -5, 2.5, Number.NaN, "99999999999999999999"]) {
     expect(videosOffset(bad)).toBe(0);
   }
+});
+
+test("unread adds the read_at condition, with and without a search term", () => {
+  expect(buildVideosFilter({ unread: true }).where).toBe("WHERE deleted_at IS NULL AND read_at IS NULL");
+  const both = buildVideosFilter({ q: "steth", unread: true });
+  expect(both.where).toBe("WHERE deleted_at IS NULL AND read_at IS NULL AND (title LIKE ? OR channel_name LIKE ?)");
+  expect(both.values).toEqual(["%steth%", "%steth%"]);
+  expect(videosUnread("1")).toBe(true);
+  for (const other of [null, undefined, "", "0", "true"]) expect(videosUnread(other)).toBe(false);
+});
+
+test("the list view round-trips through the URL query, leaving defaults out", () => {
+  const defaults = listViewFromParams({});
+  expect(defaults).toEqual({ q: "", sort: "created_at-desc", channel: "all", unread: false });
+  expect(listViewQuery(defaults)).toBe("");
+
+  const view = { q: "資本論", sort: "title-asc", channel: "COTEN RADIO", unread: true };
+  const query = listViewQuery(view);
+  expect(query.startsWith("?")).toBe(true);
+  const parsed = Object.fromEntries(new URLSearchParams(query));
+  expect(listViewFromParams(parsed)).toEqual(view);
+
+  // An unknown sort falls back to the default instead of reaching the screen.
+  expect(listViewFromParams({ sort: "drop table" }).sort).toBe("created_at-desc");
 });
