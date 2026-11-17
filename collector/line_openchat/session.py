@@ -767,6 +767,8 @@ class Session:
             found_readable = True
             if identity.minutes_between(note["posted_at"], t.utc) <= HINT_TIME_TOLERANCE_MIN:
                 return False
+            if identity.month_one_dropped(note["posted_at"], t.utc):
+                return False                    # 「11.11」を「1.11」と読み落としただけ(同じ投稿)
         return found_readable
 
     def _seek_header(self, note: dict, want: str = "head"):

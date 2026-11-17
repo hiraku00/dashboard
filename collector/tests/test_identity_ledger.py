@@ -262,6 +262,43 @@ def test_a_dropped_ichi_does_not_split_one_note_into_two():
     assert len(led2.notes) == 1 and n["posted_at"] == "2026-10-29T00:24:00Z" and n["posted_at_raw"] == "一昨日 午前 7:24"
 
 
+def test_a_dropped_month_one_does_not_split_one_note_into_two():
+    """実機で(2026-11-17、ホーリー吉)、「11.11 午後 2:13」の頭の「1」を読み落として「1.11 午後 2:13」と読み、今年1月の別のノートとして
+    台帳に2件目ができた。本文を開いた後は正しく読めて2件目と一致せず、見出しを探して上下に動き続けた."""
+    body = "NHKの「100分de名著」、今月は最古層の仏典の一つ『ブッダのことば（スッタニパータ）』を取り上げています。"
+    led = Ledger()
+    real, _ = led.upsert_note(nobs(author="ホーリー吉", body=body, at="2026-11-11T07:13:00Z", raw="一昨日 午後2:13"), NOW)
+    stale, new = led.upsert_note(nobs(author="ホーリー吉", body=body, at="2026-01-11T07:13:00Z", raw="1.11 午後 2:13"), NOW)
+    assert not new and stale["id"] == real["id"] and len(led.notes) == 1
+    assert real["posted_at"] == "2026-11-11T07:13:00Z"           # 読み落とした月で上書きしない
+    # 読み落とした方が先に台帳に入っていても、後から正しい月を見れば直る
+    led2 = Ledger()
+    n, _ = led2.upsert_note(nobs(author="ホーリー吉", body=body, at="2026-01-11T07:13:00Z", raw="1.11 午後 2:13"), NOW)
+    led2.upsert_note(nobs(author="ホーリー吉", body=body, at="2026-11-11T07:13:00Z", raw="11.11 午後 2:13"), NOW)
+    assert len(led2.notes) == 1 and n["posted_at"] == "2026-11-11T07:13:00Z" and n["posted_at_raw"] == "11.11 午後 2:13"
+    # 本文が違えば、同じ日時の別のノートとして分けたまま
+    led3 = Ledger()
+    led3.upsert_note(nobs(author="ホーリー吉", body=body, at="2026-11-11T07:13:00Z"), NOW)
+    led3.upsert_note(nobs(author="ホーリー吉", body="クローズアップ現代 住まいの回を見ました。考えさせられることが多かったです。", at="2026-01-11T07:13:00Z"), NOW)
+    assert len(led3.notes) == 2
+    # 誤読でできた重複を削除済みにした後、同じ誤読がまた起きても、正しいノートの方に一致する
+    led4 = Ledger()
+    real4, _ = led4.upsert_note(nobs(author="ホーリー吉", body=body, at="2026-11-11T07:13:00Z"), NOW)
+    led4.notes.append({**real4, "id": "dup", "posted_at": "2026-01-11T07:13:00Z", "posted_at_raw": "1.11 午後 2:13", "deleted_at": NOW})
+    again, new4 = led4.upsert_note(nobs(author="ホーリー吉", body=body, at="2026-01-11T07:13:00Z", raw="1.11 午後 2:13"), NOW)
+    assert not new4 and again["id"] == real4["id"] and real4["posted_at"] == "2026-11-11T07:13:00Z"
+
+
+def test_month_one_dropped_pairs():
+    assert identity.month_one_dropped("2026-11-11T07:13:00Z", "2026-01-11T07:13:00Z") == "2026-11-11T07:13:00Z"
+    assert identity.month_one_dropped("2026-02-05T07:13:00Z", "2026-12-05T07:13:00Z") == "2026-12-05T07:13:00Z"
+    # 年明けに読むと、読み落とした「1.11」は今年、正しい「11.11」は前年になる
+    assert identity.month_one_dropped("2027-01-11T07:13:00Z", "2026-11-11T07:13:00Z") == "2026-11-11T07:13:00Z"
+    assert identity.month_one_dropped("2026-11-11T07:13:00Z", "2026-01-12T07:13:00Z") is None     # 日が違う
+    assert identity.month_one_dropped("2026-11-11T07:13:00Z", "2026-03-11T07:13:00Z") is None     # 11→3 は読み落としではない
+    assert identity.month_one_dropped("2026-10-11T07:13:00Z", "2026-01-11T07:13:00Z") is None     # 10→1 も違う(0が落ちても1にならない)
+
+
 def test_same_minute_on_another_day_needs_the_same_body():
     led = Ledger()
     led.upsert_note(nobs(author="cosm", body="10月23日放送 ザ・ライフ 遺贈寄付の回を見ました。とても良かった", at="2026-10-29T00:24:00Z"), NOW)

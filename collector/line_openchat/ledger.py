@@ -148,7 +148,9 @@ class Ledger:
 
     # ---------- ノート ----------
     def match_note(self, obs: NoteObs) -> dict | None:
-        return identity.match_note(self.notes, obs.as_match_dict())
+        # 削除済み(誤読でできた重複を消したものなど)とは照合しない。同じ誤読がまた起きたとき、消した重複の方に
+        # ぴったり一致して(日時が完全に同じなので、正しいノートより高い点になる)、そちらを読み直しに行くのを防ぐ
+        return identity.match_note([n for n in self.notes if not n.get("deleted_at")], obs.as_match_dict())
 
     def upsert_note(self, obs: NoteObs, now_iso: str) -> tuple[dict, bool]:
         """見えたノートを台帳に反映する. 戻り値は (ノートの記録, 新規か)."""
@@ -174,6 +176,11 @@ class Ledger:
         if not new and identity.day_shifted(note, obs.as_match_dict()):
             # 日付だけが1〜2日ずれた: 「一昨日」の「一」の読み落としは本当より遅くなるので、早い方を残す
             posted = min(posted, (note["posted_at"], note["posted_at_precision"]))
+        if not new:
+            right = identity.month_one_dropped(note["posted_at"], obs.posted_at)
+            if right is not None and note["posted_at_precision"] == obs.posted_precision == identity.EXACT:
+                # 月だけがずれた: 「11.11」の頭の「1」を読み落とした方を捨て、月が2桁の方を残す
+                posted = (right, identity.EXACT)
         if posted != (note["posted_at"], note["posted_at_precision"]):
             note["posted_at"], note["posted_at_precision"], note["posted_at_raw"] = posted[0], posted[1], obs.posted_raw
             note["pending_upload"] = True
