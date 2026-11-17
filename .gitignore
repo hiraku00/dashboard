@@ -46,3 +46,6 @@ pnpm-debug.log*
 /collector/**/__pycache__/
 /collector/.pytest_cache/
 /collector/**/*.py[cod]
+
+# vinext が `vinext build` / `vinext dev` のたびに生成する型の参照
+/next-env.d.ts
