@@ -48,8 +48,10 @@ import { readFile, readdir } from "node:fs/promises";
  *  migrations/0008_text_tube_imports.sql for the same reason.
  *
  *  items.aired_at: 放送日時(schema version 18)。thumbnail_url と同じ形で、ensureSchema() の
- *  ALTER と、テレビ番組の取り込み分の埋め戻しだけで入れる。 */
-const KNOWN_GAPS = new Set(["todo_routines.default_due_time", "items.thumbnail_url", "text_tube_videos.youtube_video_id", "items.aired_at"]);
+ *  ALTER と、テレビ番組の取り込み分の埋め戻しだけで入れる。
+ *
+ *  text_tube_videos.read_at: 読み終えた日時(schema version 21)。同じ形で、ensureSchema() の ALTER だけで入れる。 */
+const KNOWN_GAPS = new Set(["todo_routines.default_due_time", "items.thumbnail_url", "text_tube_videos.youtube_video_id", "items.aired_at", "text_tube_videos.read_at"]);
 
 /** Finds the index of the `)` that closes the `(` at `openIndex`, honoring
  *  nesting and single-quoted string literals (SQLite uses '' to escape a

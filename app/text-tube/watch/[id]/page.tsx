@@ -1,5 +1,5 @@
 import { TextTubeWatchApp } from "../watch-app";
-import { getVideoDetail } from "@/app/lib/queries/text-tube";
+import { channelVideos, getVideoDetail, type ChannelVideo } from "@/app/lib/queries/text-tube";
 
 // Server Component: fetches the video (D1) directly at render time -- see
 // getVideoDetail() in app/lib/queries/text-tube.ts (app/api/text-tube/videos/[id]
@@ -14,11 +14,12 @@ export default async function TextTubeWatchPage({ params }: { params: Promise<{ 
       id={id}
       initialVideo={initial.video}
       initialError={initial.error}
+      siblings={initial.siblings}
     />
   );
 }
 
-async function fetchInitial(id: string): Promise<{ video: Record<string, unknown> | null; error: string }> {
+async function fetchInitial(id: string): Promise<{ video: Record<string, unknown> | null; error: string; siblings: ChannelVideo[] }> {
   try {
     const video = await getVideoDetail(id);
     // A real 404 (the video does not exist) is surfaced as an error so the
@@ -26,13 +27,15 @@ async function fetchInitial(id: string): Promise<{ video: Record<string, unknown
     // thrown exception below, which leaves both video and error empty and
     // falls through to the client's own fetch, matching the pre-RSC
     // fallback used throughout this migration (see app/page.tsx).
-    if (!video) return { video: null, error: "動画が見つかりません。" };
+    if (!video) return { video: null, error: "動画が見つかりません。", siblings: [] };
+    // 同じチャンネルの動画（前後の回と横の一覧）。読めなくても記事そのものは出す。
+    const siblings = await channelVideos(String(video.channel_name ?? "")).catch(() => []);
     // getVideoDetail() types each column as `unknown` because D1 does not
     // give back typed rows. The client already trusted this same JSON
     // blindly via readJson<T>() at the API boundary with no runtime
     // validation -- see the matching comment in app/watch-list/page.tsx.
-    return { video: video as unknown as Record<string, unknown>, error: "" };
+    return { video: video as unknown as Record<string, unknown>, error: "", siblings };
   } catch {
-    return { video: null, error: "" };
+    return { video: null, error: "", siblings: [] };
   }
 }

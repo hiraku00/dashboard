@@ -13,7 +13,12 @@ function clean(value: unknown, max = 4000): string {
   return typeof value === "string" ? value.trim().slice(0, max) : "";
 }
 
-export type VideosQuery = { q?: string | null; offset?: string | number | null };
+export type VideosQuery = { q?: string | null; offset?: string | number | null; /** true なら未読（read_at が NULL）だけ。 */ unread?: boolean };
+
+/** `?unread=` の値。"1" だけを「未読のみ」として扱う。 */
+export function videosUnread(value: unknown): boolean {
+  return value === "1" || value === true;
+}
 
 /** 一覧が1回に返す本数。続きは offset を付けて読む（画面の「さらに読み込む」）。 */
 export const VIDEOS_PAGE_SIZE = 100;
@@ -34,9 +39,10 @@ export function buildVideosFilter(query: VideosQuery = {}): VideosFilter {
   // see sql-text.ts for why: a longer term inside `%${q}%` makes D1 reject the
   // whole query rather than just matching fewer rows.
   const q = truncateUtf8Bytes(clean(query.q, 200), MAX_LIKE_TERM_BYTES);
-  if (!q) return { where: "WHERE deleted_at IS NULL", values: [] };
+  const unread = query.unread ? " AND read_at IS NULL" : "";
+  if (!q) return { where: `WHERE deleted_at IS NULL${unread}`, values: [] };
   return {
-    where: "WHERE deleted_at IS NULL AND (title LIKE ? OR channel_name LIKE ?)",
+    where: `WHERE deleted_at IS NULL${unread} AND (title LIKE ? OR channel_name LIKE ?)`,
     values: [`%${q}%`, `%${q}%`],
   };
 }
