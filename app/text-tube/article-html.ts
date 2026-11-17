@@ -20,6 +20,9 @@ const PART_CLASSES = [
   "insight-card",
   "stats-row",
   "summary",
+  "overview",
+  "part-head",
+  "chapter-answer",
 ];
 
 const PART_PATTERN = new RegExp(
