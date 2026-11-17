@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
+from datetime import datetime, timezone
 from difflib import SequenceMatcher
 
 from .timeparse import EXACT, minutes_between, tolerance_minutes
@@ -79,6 +80,21 @@ def day_shifted(a: dict, b: dict) -> bool:
     return any(abs(diff - 1440 * k) <= tol for k in range(1, DAY_SHIFT_MAX + 1))
 
 
+def month_one_dropped(a_utc: str, b_utc: str) -> str | None:
+    """2つの時刻が、「11.11」の頭の「1」を読み落として「1.11」と読んだ組か。そうなら正しい方(月が2桁の方)の時刻を返す.
+    実機で発生(2026-11-17、ホーリー吉): 「11.11 午後 2:13」を「1.11 午後 2:13」と読み、今年1月の別のノートとして台帳に2件目ができた。
+    本文を開いた後は正しく読めて2件目と一致せず、見出しを探して上下に動き続けた。読み落とすと月が 11→1・12→2 になり、
+    日・時・分はそのまま(年は、1月・2月に読めば前年の11月・12月が正しい)。月日の表示はMacのローカル時刻なので、ローカルで比べる。"""
+    fmt = "%Y-%m-%dT%H:%M:%SZ"
+    la = datetime.strptime(a_utc, fmt).replace(tzinfo=timezone.utc).astimezone()
+    lb = datetime.strptime(b_utc, fmt).replace(tzinfo=timezone.utc).astimezone()
+    for wrong, right, right_utc in ((la, lb, b_utc), (lb, la, a_utc)):
+        if (wrong.month in (1, 2) and right.month == wrong.month + 10 and right.year in (wrong.year, wrong.year - 1)
+                and wrong.day == right.day and abs((wrong.hour * 60 + wrong.minute) - (right.hour * 60 + right.minute)) <= 2):
+            return right_utc
+    return None
+
+
 def _diff(a: dict, b: dict) -> tuple[float, int]:
     ap, bp = a["posted_at_precision"], b["posted_at_precision"]
     return minutes_between(a["posted_at"], b["posted_at"]), tolerance_minutes(ap, bp)
@@ -101,6 +117,9 @@ def note_score(existing: dict, cand: dict) -> float:
         return 1.5 + body                          # 4. 「N時間前」の数字の読み違い(19→17)。作者・本文が同じ長い投稿は同じノート
     if day_shifted(existing, cand) and same_name >= 0.9 and body >= 0.97 and len(norm_text(cand["body_text"])) >= 20:
         return 1.5 + body                          # 5. 「一昨日」の「一」の読み落としで、日付だけが1日ずれた。作者・本文が同じ長い投稿は同じノート
+    if (both_exact and month_one_dropped(existing["posted_at"], cand["posted_at"])
+            and same_name >= 0.9 and body >= 0.97 and len(norm_text(cand["body_text"])) >= 20):
+        return 1.5 + body                          # 6. 「11.11」の頭の「1」の読み落としで、月だけがずれた。作者・本文が同じ長い投稿は同じノート
     return 0.0
 
 
