@@ -5,7 +5,7 @@ import { reconcileStorageUsage } from "../app/lib/storage-usage";
 import { measureAllD1Tables } from "../app/lib/d1-table-usage";
 import { ensureSchema } from "../db";
 import { guardRequest } from "../app/lib/access";
-import { isCrossSiteWrite } from "../app/lib/request-guard";
+import { contentSecurityPolicy, isCrossSiteWrite, newNonce } from "../app/lib/request-guard";
 import { initTodo, materializeRoutines, todoDate } from "../app/lib/todo-lib";
 
 interface Env {
@@ -57,6 +57,20 @@ const worker = {
           return result.response();
         },
       }, allowedWidths);
+    }
+
+    // HTML のページ（ブラウザの画面遷移）には、リクエストごとのノンスを付けた CSP を掛ける。vinext は、
+    // リクエストの content-security-policy ヘッダーからノンスを読み、初期表示のデータを渡すインラインの
+    // スクリプトに付ける。同じ CSP をレスポンスにも付ける（auth-wrapper は、アプリが付けたものを上書きしない）。
+    const isDocument = (request.method === "GET" || request.method === "HEAD") && (request.headers.get("accept") ?? "").includes("text/html");
+    if (isDocument) {
+      const csp = contentSecurityPolicy(newNonce());
+      const headers = new Headers(request.headers);
+      headers.set("content-security-policy", csp);
+      const response = await handler.fetch(new Request(request, { headers }), env, ctx);
+      const out = new Headers(response.headers);
+      out.set("content-security-policy", csp);
+      return new Response(response.body, { status: response.status, statusText: response.statusText, headers: out });
     }
 
     return handler.fetch(request, env, ctx);

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { applySecurityHeaders, isCrossSiteWrite } from "../app/lib/request-guard.ts";
+import { applySecurityHeaders, contentSecurityPolicy, isCrossSiteWrite, newNonce } from "../app/lib/request-guard.ts";
 
 const request = (method, origin, url = "https://dash.example/api/items") =>
   new Request(url, { method, headers: origin === undefined ? {} : { origin } });
@@ -37,4 +37,15 @@ test("applySecurityHeaders sets the headers but keeps one the app already set", 
   expect(csp).toMatch(/script-src 'self' 'unsafe-inline'(;|$)/);
   expect(csp).not.toContain("unsafe-eval");
   expect(headers.get("x-frame-options")).toBe("SAMEORIGIN");
+});
+
+test("a nonce replaces unsafe-inline for scripts, and each nonce is new", () => {
+  const nonce = newNonce();
+  expect(nonce).toMatch(/^[A-Za-z0-9+/]{22}==$/);
+  expect(newNonce()).not.toBe(nonce);
+  const csp = contentSecurityPolicy(nonce);
+  expect(csp).toContain(`script-src 'self' 'nonce-${nonce}'`);
+  expect(csp).not.toMatch(/script-src[^;]*unsafe-inline/);
+  // The nonce-less policy (API responses) keeps working as before.
+  expect(contentSecurityPolicy()).toMatch(/script-src 'self' 'unsafe-inline'(;|$)/);
 });
