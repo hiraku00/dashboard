@@ -56,7 +56,9 @@ npm run backup:d1                      # ~/Backups/dashboard/ に dashboard-d1-<
 node scripts/backup-d1.mjs <出力先>     # 出力先を変える（リポジトリの中は指定できない）
 ```
 
-- 読み取りだけです。全テーブルを1回読みます（いまは合計3万行ほど、約15MB）。週に1回ほどを目安にし、繰り返し呼びません。
+- 読み取りだけです。全テーブルを1回読みます（いまは合計3万行ほど、約15MB）。繰り返し呼ばず、週に1回ほどにします。
+- 書き出している間（数秒）、D1 は応答しません（wrangler の確認メッセージにも出ます）。朝の同期や、アプリを使っている最中は避けます。
+- `--keep 8` を付けると、保存に成功したあと、このスクリプトが作った古いファイルを新しい8件だけ残して消します。
 - 保存したファイルは個人データそのものです。リポジトリの外に置き、古いものは手で整理します。
 - R2（TextTube の詳細スクリプト、資産同期の原本）は含みません。
 - ウォレット2（`hiraku-manage-asset-wallet2`）は本番から作り直せるので、対象にしていません。
@@ -74,3 +76,17 @@ npx wrangler d1 time-travel restore hiraku-watch-list --timestamp <ISO日時>
 ```
 
 本番へ SQL ファイルを流し込む復元（`--remote --file`）は、既存の行と衝突するので、空の D1 に対してだけ行います。
+
+### 週次の自動実行（launchd）
+
+Mac の launchd に、毎週日曜 03:17（Mac の時刻。眠っていれば起きたあと）に `backup-d1.mjs --keep 8` を実行する登録があります。
+
+```bash
+sh scripts/install-backup-launchd.sh              # 登録する（リポジトリや node の場所を変えたら、もう一度）
+sh scripts/install-backup-launchd.sh --uninstall  # 登録を外す
+launchctl kickstart gui/$(id -u)/com.watch-list.d1-backup   # すぐに1回実行する
+tail ~/Library/Logs/dashboard-d1-backup.log                # 結果（成功なら「保存しました」）
+```
+
+- 認証は、`wrangler login` で保存された Cloudflare のログインを使います。ログインが切れると、ログに失敗が残ります。
+- 置き場は `~/Backups/dashboard/`（新しい8件）、ログは `~/Library/Logs/dashboard-d1-backup.log` です。

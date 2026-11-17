@@ -24,6 +24,6 @@ test("responses carry the security headers, HTML and API alike", async () => {
     const response = await SELF.fetch(`${BASE}${path}`, { headers: { accept } });
     expect(response.headers.get("x-content-type-options"), path).toBe("nosniff");
     expect(response.headers.get("x-frame-options"), path).toBe("DENY");
-    expect(response.headers.get("content-security-policy"), path).toBe("frame-ancestors 'none'");
+    expect(response.headers.get("content-security-policy"), path).toContain("frame-ancestors 'none'");
   }
 });

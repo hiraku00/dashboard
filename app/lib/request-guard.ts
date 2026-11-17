@@ -21,15 +21,36 @@ export function isCrossSiteWrite(request: Request): boolean {
   }
 }
 
-/** すべてのレスポンスに付ける。
- *  CSP は frame-ancestors だけにしてある: このアプリは自分のページを iframe に入れておらず、他所から
- *  埋め込まれる理由も無い（クリックジャッキング対策）。script-src などの CSP は、vinext の
- *  インラインスクリプトや mermaid が動かなくなるおそれがあるので、まだ入れていない。 */
+/** CSP。このアプリが実際に読み込んでいるものだけを許す:
+ *  - script / style は自分のオリジンと、インライン（vinext が初期表示のデータをインラインの
+ *    スクリプトで渡し、React・mermaid がインラインの style を使う）。外部のスクリプトや、
+ *    eval は許さない。
+ *  - 画像は https 全般（YouTube・TVer・リンク先の og:image など、保存した URL をそのまま表示する）と
+ *    data: / blob:。
+ *  - 通信（fetch）は自分のオリジンだけ。ページに仕込まれたスクリプトが、データを外へ送れない。
+ *  - frame-ancestors 'none' は、他所から埋め込まれない（クリックジャッキング対策）。
+ *  インラインのスクリプトを許している間は、XSS を止める力は限られる（ノンスを使う形にすれば
+ *  止められるが、vinext 側の対応が要る）。それでも、外部への送信・外部スクリプト・base や form の
+ *  差し替えは止まる。 */
+const CONTENT_SECURITY_POLICY = [
+  "default-src 'self'",
+  "script-src 'self' 'unsafe-inline'",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: blob: https:",
+  "font-src 'self' data:",
+  "connect-src 'self'",
+  "object-src 'none'",
+  "base-uri 'self'",
+  "form-action 'self'",
+  "frame-ancestors 'none'",
+].join("; ");
+
+/** すべてのレスポンスに付ける。 */
 const SECURITY_HEADERS: Record<string, string> = {
   "x-content-type-options": "nosniff",
   "referrer-policy": "strict-origin-when-cross-origin",
   "x-frame-options": "DENY",
-  "content-security-policy": "frame-ancestors 'none'",
+  "content-security-policy": CONTENT_SECURITY_POLICY,
   "permissions-policy": "camera=(), microphone=(), geolocation=()",
 };
 

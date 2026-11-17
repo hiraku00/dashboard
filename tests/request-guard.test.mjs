@@ -29,6 +29,12 @@ test("applySecurityHeaders sets the headers but keeps one the app already set", 
   applySecurityHeaders(headers);
   expect(headers.get("x-content-type-options")).toBe("nosniff");
   expect(headers.get("referrer-policy")).toBe("strict-origin-when-cross-origin");
-  expect(headers.get("content-security-policy")).toBe("frame-ancestors 'none'");
+  const csp = headers.get("content-security-policy");
+  expect(csp).toContain("default-src 'self'");
+  expect(csp).toContain("connect-src 'self'");
+  expect(csp).toContain("frame-ancestors 'none'");
+  // No external script origin and no eval.
+  expect(csp).toMatch(/script-src 'self' 'unsafe-inline'(;|$)/);
+  expect(csp).not.toContain("unsafe-eval");
   expect(headers.get("x-frame-options")).toBe("SAMEORIGIN");
 });
