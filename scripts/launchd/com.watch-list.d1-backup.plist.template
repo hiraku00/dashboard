@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.watch-list.d1-backup</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>__NODE__</string>
+    <string>__PROJECT_ROOT__/scripts/backup-d1.mjs</string>
+    <string>--keep</string>
+    <string>8</string>
+  </array>
+  <!-- 毎週日曜の 03:17（Mac の時刻）。その時刻に Mac が眠っていたら、起きたあとに実行される。 -->
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Weekday</key>
+    <integer>0</integer>
+    <key>Hour</key>
+    <integer>3</integer>
+    <key>Minute</key>
+    <integer>17</integer>
+  </dict>
+  <key>RunAtLoad</key>
+  <false/>
+  <key>WorkingDirectory</key>
+  <string>__PROJECT_ROOT__</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <!-- launchd の PATH は最小限なので、npx（wrangler を呼ぶ）の置き場所を足す。 -->
+    <key>PATH</key>
+    <string>__NODE_DIR__:/usr/bin:/bin</string>
+  </dict>
+  <key>StandardOutPath</key>
+  <string>__HOME__/Library/Logs/dashboard-d1-backup.log</string>
+  <key>StandardErrorPath</key>
+  <string>__HOME__/Library/Logs/dashboard-d1-backup.log</string>
+</dict>
+</plist>
