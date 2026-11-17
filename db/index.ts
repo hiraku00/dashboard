@@ -27,6 +27,9 @@ export const ASSET_TABLE_DDL: readonly string[] = [
     source_count INTEGER NOT NULL DEFAULT 0, success_count INTEGER NOT NULL DEFAULT 0,
     error_count INTEGER NOT NULL DEFAULT 0, received_at TEXT NOT NULL
   )`,
+  // Schema version 19: 「最新の同期」は received_at の新しい順に1行だけ読む。索引が無いと全行を読んで並べ替える
+  // (migrations/0022_sync_polling_indexes.sql)。
+  "CREATE INDEX IF NOT EXISTS asset_sync_runs_received_idx ON asset_sync_runs(received_at DESC)",
   `CREATE TABLE IF NOT EXISTS asset_snapshots (
     id TEXT PRIMARY KEY, run_id TEXT NOT NULL, source_id TEXT NOT NULL,
     captured_at TEXT NOT NULL, as_of_date TEXT NOT NULL, total_usd REAL NOT NULL DEFAULT 0,
@@ -97,7 +100,7 @@ export const TV_PROGRAM_AIRED_AT_BACKFILL = `UPDATE items SET aired_at = added_o
 
 /** Bump whenever the DDL below changes, so existing databases re-run it once.
  *  A database whose schema_meta row already matches skips the whole batch. */
-const SCHEMA_VERSION = 18;
+const SCHEMA_VERSION = 19;
 
 /** Reads the recorded schema version. A database that predates schema_meta (or
  *  a brand new one) has no table, and the query fails rather than returning a
@@ -285,6 +288,11 @@ export async function ensureSchema({ seed = true }: { seed?: boolean } = {}) {
     env.DB.prepare(`CREATE TABLE IF NOT EXISTS asset_resync_requests (
       id TEXT PRIMARY KEY, requested_at TEXT NOT NULL, fulfilled_at TEXT
     )`),
+    // Schema version 19: collector が60秒ごとに読むのは未処理の依頼だけ。済んだ依頼が増えても読む行が増えないよう、
+    // 未処理の行だけの索引にする(migrations/0022_sync_polling_indexes.sql)。
+    env.DB.prepare(
+      "CREATE INDEX IF NOT EXISTS asset_resync_requests_pending_idx ON asset_resync_requests(requested_at DESC) WHERE fulfilled_at IS NULL",
+    ),
     // 作業日報の取り込み(schema version 13、docs/daily-report-ingest-design.md §3)。原本は markdown 列に置き、
     // 正規化とタグのテーブルは取り込みのたびにその日付の分を作り直す。同じ内容が migrations/0017_daily_reports.sql にもある。
     env.DB.prepare(`CREATE TABLE IF NOT EXISTS daily_reports (

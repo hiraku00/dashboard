@@ -159,7 +159,13 @@ async function completeWallet2Run(runId: string) {
 }
 
 // `latest`（データ更新タブの最終同期）は設定で選んだウォレットの DB から読む。「今すぐ再取得」の依頼は本番だけのもの。
-export const GET = route(async () => Response.json({ ok: true, latest: await latestSyncRun((await assetWalletFor()).db), pendingResyncRequest: await pendingResyncRequest() }));
+/** `?only=resync` は未処理の「今すぐ再取得」依頼だけを返す。Mac 側 collector(60秒ごと)と
+ *  データ更新ページ(15秒ごと)のポーリングはこの値しか使わないので、最新の同期と表示中ウォレットの
+ *  読み取りを省く。引数なしの GET はこれまで通り両方を返す。 */
+export const GET = route(async (request: Request) => {
+  if (new URL(request.url).searchParams.get("only") === "resync") return Response.json({ ok: true, pendingResyncRequest: await pendingResyncRequest() });
+  return Response.json({ ok: true, latest: await latestSyncRun((await assetWalletFor()).db), pendingResyncRequest: await pendingResyncRequest() });
+});
 
 export const POST = route(async (request: Request) => {
   // Cloudflare Access validates the Service Token at the edge. Its client-secret

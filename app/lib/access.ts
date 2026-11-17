@@ -70,8 +70,13 @@ type Jwks = { keys: Array<JsonWebKey & { kid?: string; alg?: string }> };
 const JWKS_TTL_MS = 10 * 60 * 1000;
 let jwksCache: { teamDomain: string; fetchedAt: number; keys: Jwks["keys"] } | null = null;
 
+/** Without a limit, a JWKS endpoint that accepts the connection and then never
+ *  answers would hold every request that needs a key until the platform gives
+ *  up. Timing out throws, which guardRequest() turns into its 503. */
+const JWKS_FETCH_TIMEOUT_MS = 5000;
+
 async function fetchJwks(teamDomain: string): Promise<Jwks["keys"]> {
-  const response = await fetch(`https://${teamDomain}/cdn-cgi/access/certs`);
+  const response = await fetch(`https://${teamDomain}/cdn-cgi/access/certs`, { signal: AbortSignal.timeout(JWKS_FETCH_TIMEOUT_MS) });
   if (!response.ok) throw new Error(`Access JWKS fetch failed: ${response.status}`);
   const body = (await response.json()) as Jwks;
   return Array.isArray(body.keys) ? body.keys : [];

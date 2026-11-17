@@ -23,6 +23,8 @@ export type Video = {
   detailed_script_object_key?: string | null;
   channel_thumbnail_url?: string;
 };
+/** 一覧のカードが持つ行。要約は一覧のAPIが返さない（app/lib/queries/text-tube.ts の VideoListItem）。 */
+export type VideoListItem = Omit<Video, "summary">;
 export type VideoForm = {
   title: string;
   channelName: string;
@@ -101,6 +103,7 @@ export function useDeleteVideo({
 }
 export function TextTubeApp({
   initialVideos = null,
+  initialHasMore = false,
 }: {
   // Passed by app/text-tube/page.tsx (a Server Component) after fetching
   // this directly from D1 -- see app/lib/queries/text-tube.ts. It calls
@@ -109,9 +112,13 @@ export function TextTubeApp({
   // is present does not skip past a filtered view the server never
   // rendered. Optional so this component still works exactly as before
   // (client-side fetch on mount) if ever rendered without it.
-  initialVideos?: Video[] | null;
+  initialVideos?: VideoListItem[] | null;
+  /** サーバーが返した先頭ページの先に、まだ動画があるか。 */
+  initialHasMore?: boolean;
 } = {}) {
-  const [videos, setVideos] = useState<Video[]>(initialVideos ?? []),
+  const [videos, setVideos] = useState<VideoListItem[]>(initialVideos ?? []),
+    [hasMore, setHasMore] = useState(initialHasMore),
+    [loadingMore, setLoadingMore] = useState(false),
     [q, setQ] = useState(""),
     [channel, setChannel] = useState("all"),
     [sort, setSort] = useState("created_at-desc"),
@@ -121,10 +128,33 @@ export function TextTubeApp({
     const requestId = begin();
     const r = await fetch(`/api/text-tube/videos?q=${encodeURIComponent(q)}`);
     if (!r.ok) return;
-    const videos = (await readJson<{ videos: Video[] }>(r)).videos;
+    const body = await readJson<{ videos: VideoListItem[]; hasMore?: boolean }>(r);
     if (!isCurrent(requestId)) return;
-    setVideos(videos);
+    setVideos(body.videos);
+    setHasMore(Boolean(body.hasMore));
   }, [q, begin, isCurrent]);
+  // 続きの読み込み。offset は「いま持っている本数」-- 削除した動画はサーバー側でも1本減っているので、
+  // 持っている本数がそのまま次の位置になる。読み込みの間に検索語が変わったら、結果は捨てる（load と同じ）。
+  // 間に動画が追加されて位置がずれても同じカードが二重に出ないよう、id で重なりを除く。
+  const loadMore = useCallback(async () => {
+    const requestId = begin();
+    setLoadingMore(true);
+    try {
+      const r = await fetch(`/api/text-tube/videos?q=${encodeURIComponent(q)}&offset=${videos.length}`);
+      if (!r.ok) throw new Error("続きを読み込めませんでした。");
+      const body = await readJson<{ videos: VideoListItem[]; hasMore?: boolean }>(r);
+      if (!isCurrent(requestId)) return;
+      setVideos((current) => {
+        const known = new Set(current.map((v) => v.id));
+        return [...current, ...body.videos.filter((v) => !known.has(v.id))];
+      });
+      setHasMore(Boolean(body.hasMore));
+    } catch (error) {
+      if (isCurrent(requestId)) setNotice(error instanceof Error ? error.message : "続きを読み込めませんでした。");
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [q, videos.length, begin, isCurrent]);
   // Skips exactly the mount-time reload when the server already rendered
   // this same default (q="") view. See app/lib/use-search-reload.ts.
   useSearchReload(load, q, Boolean(initialVideos));
@@ -184,7 +214,7 @@ export function TextTubeApp({
       </div>
       {notice && <div className="tt-notice">{notice}</div>}
       <div className="tt-channel-filter">
-        <span>{shown.length}本の要約</span>
+        <span>{shown.length}本の要約{hasMore && "（続きがあります）"}</span>
         <select value={channel} onChange={(e) => setChannel(e.target.value)}>
           <option value="all">すべてのチャンネル</option>
           {channels.map((c) => (
@@ -195,8 +225,8 @@ export function TextTubeApp({
       <div className="tt-video-grid">
         {shown.map((v) => (
           <article className="tt-video-card" key={v.id}>
-            {/* prefetch={false}: this page can render up to 100 of these
-                cards, and /text-tube/watch/[id] is a Server Component reading
+            {/* prefetch={false}: this page renders 100 of these cards per
+                loaded page, and /text-tube/watch/[id] is a Server Component reading
                 D1 -- leaving prefetch on would mean simply scrolling this grid
                 into view reads D1 once per visible card. */}
             <Link
@@ -263,6 +293,14 @@ export function TextTubeApp({
           </div>
         )}
       </div>
+      {/* 並べ替えとチャンネルの絞り込みは、読み込んだ分に対して行う。続きがある間は、それを伝えるボタンを出す。 */}
+      {hasMore && (
+        <div className="tt-more">
+          <button type="button" onClick={loadMore} disabled={loadingMore}>
+            {loadingMore ? "読み込み中…" : "さらに読み込む"}
+          </button>
+        </div>
+      )}
     </TextTubeChrome>
   );
 }

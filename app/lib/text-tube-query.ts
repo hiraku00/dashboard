@@ -13,13 +13,22 @@ function clean(value: unknown, max = 4000): string {
   return typeof value === "string" ? value.trim().slice(0, max) : "";
 }
 
-export type VideosQuery = { q?: string | null };
+export type VideosQuery = { q?: string | null; offset?: string | number | null };
+
+/** 一覧が1回に返す本数。続きは offset を付けて読む（画面の「さらに読み込む」）。 */
+export const VIDEOS_PAGE_SIZE = 100;
+
+/** `?offset=` の値を、0以上の整数にする。数でないもの・負の数は先頭（0）として扱う。 */
+export function videosOffset(value: unknown): number {
+  const parsed = typeof value === "number" ? value : typeof value === "string" && /^\d{1,9}$/.test(value.trim()) ? Number(value.trim()) : 0;
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : 0;
+}
 export type VideosFilter = { where: string; values: string[] };
 
 /** app/api/text-tube/videos の GET と、/text-tube の
  *  初期表示が両方これを経由する（listVideos() 経由）。q以外のフィルタは
- *  無く、ページネーションも無い（呼び出し元のSQLに固定 LIMIT 100 がある）
- *  ので、ここでの仕事はWHERE句の組み立てだけ。 */
+ *  無いので、ここでの仕事はWHERE句の組み立てだけ（続きの読み込みは
+ *  呼び出し元のSQLが VIDEOS_PAGE_SIZE と videosOffset() で行う）。 */
 export function buildVideosFilter(query: VideosQuery = {}): VideosFilter {
   // Truncated to a byte-safe length in addition to clean()'s 200-JS-char cap --
   // see sql-text.ts for why: a longer term inside `%${q}%` makes D1 reject the

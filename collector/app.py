@@ -6,10 +6,12 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+from logging.handlers import RotatingFileHandler
 import mimetypes
 import os
 import re
 import subprocess
+import sys
 import threading
 import time
 import uuid
@@ -27,10 +29,19 @@ from exchange import CONNECTORS, ExchangeError, supported_providers, usd_jpy_rat
 ROOT = Path(__file__).resolve().parent
 DATA = ROOT / "data"
 DATA.mkdir(exist_ok=True)
+# app.log is capped (5MB x 3 backups) -- it used to grow without limit. The
+# console handler is only for a terminal: under launchd stderr is redirected
+# to data/launchd.stderr.log, which nothing rotates and which would otherwise
+# receive a second copy of every line.
+_log_handlers: list[logging.Handler] = [
+    RotatingFileHandler(DATA / "app.log", maxBytes=5 * 1024 * 1024, backupCount=3, encoding="utf-8")
+]
+if sys.stderr is not None and sys.stderr.isatty():
+    _log_handlers.append(logging.StreamHandler())
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(name)s %(message)s",
-    handlers=[logging.FileHandler(DATA / "app.log", encoding="utf-8"), logging.StreamHandler()],
+    handlers=_log_handlers,
 )
 WALLETS_FILE = DATA / "wallets.json"
 SNAPSHOTS_FILE = DATA / "snapshots.jsonl"

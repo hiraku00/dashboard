@@ -8,7 +8,7 @@
  *  分離してある。理由は app/lib/watch-list-query.ts と同じ。 */
 import { env } from "cloudflare:workers";
 import { ensureSchema } from "@/db";
-import { buildVideosFilter, type VideosQuery } from "@/app/lib/text-tube-query";
+import { buildVideosFilter, videosOffset, VIDEOS_PAGE_SIZE, type VideosQuery } from "@/app/lib/text-tube-query";
 
 export type Video = {
   id: unknown;
@@ -26,13 +26,19 @@ export type Video = {
   updated_at: unknown;
 };
 
+/** 一覧の1行。要約（summary）は入れない -- 一覧のカードは使わないのに、1本あたり数万文字あり、
+ *  入れると一覧の応答が動画の本数ぶんの要約で数MBになる。要約は getVideo() が返す。 */
+export type VideoListItem = Omit<Video, "summary">;
+
 /** app/api/text-tube/videos の GET と、/text-tube の
- *  初期表示が両方呼ぶ。 */
-export async function listVideos(query: VideosQuery = {}): Promise<{ videos: Video[] }> {
+ *  初期表示が両方呼ぶ。新しい順に VIDEOS_PAGE_SIZE 本ずつ返し、まだ続きがあれば hasMore が true
+ *  （1本多く読んで確かめるので、件数を数える別のクエリは要らない）。 */
+export async function listVideos(query: VideosQuery = {}): Promise<{ videos: VideoListItem[]; hasMore: boolean }> {
   await ensureSchema({ seed: false });
   const { where, values } = buildVideosFilter(query);
-  const rows = (await env.DB.prepare(`SELECT id,title,channel_name,thumbnail_url,original_url,summary,published_at,view_count,channel_thumbnail_url,duration,detailed_script_object_key,created_at,updated_at FROM text_tube_videos ${where} ORDER BY created_at DESC LIMIT 100`).bind(...values).all<Record<string, unknown>>()).results ?? [];
-  return { videos: rows as unknown as Video[] };
+  // id を第2キーにするのは、created_at が同じ行があっても offset での続きが飛んだり重なったりしないため。
+  const rows = (await env.DB.prepare(`SELECT id,title,channel_name,thumbnail_url,original_url,published_at,view_count,channel_thumbnail_url,duration,detailed_script_object_key,created_at,updated_at FROM text_tube_videos ${where} ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`).bind(...values, VIDEOS_PAGE_SIZE + 1, videosOffset(query.offset)).all<Record<string, unknown>>()).results ?? [];
+  return { videos: rows.slice(0, VIDEOS_PAGE_SIZE) as unknown as VideoListItem[], hasMore: rows.length > VIDEOS_PAGE_SIZE };
 }
 
 /** app/api/text-tube/videos/[id] の GET と、編集フォーム展開

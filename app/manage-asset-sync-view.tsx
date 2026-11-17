@@ -23,7 +23,7 @@ export function SyncView({ latestRun, today, active }: { latestRun: AssetRow | n
     if (!active) return;
     let cancelled = false;
     const check = () =>
-      fetch("/api/manage-asset/sync", { cache: "no-store" })
+      fetch("/api/manage-asset/sync?only=resync", { cache: "no-store" })
         .then((response) => (response.ok ? response.json() : null))
         .then((body) => {
           if (cancelled || !body) return;
