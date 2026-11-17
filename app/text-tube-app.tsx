@@ -93,7 +93,8 @@ export function useDeleteVideo({
     if (!confirm(`「${video.title}」を削除しますか？`)) return;
     try {
       const r = await fetch(`/api/text-tube/videos/${video.id}`, { method: "DELETE" });
-      if (!r.ok) throw new Error("削除できませんでした。");
+      // 404 は、ほかの画面でもう削除されていたとき。結果は同じなので、一覧からも外す。
+      if (!r.ok && r.status !== 404) throw new Error("削除できませんでした。");
       onNotice("削除しました。");
       onDeleted(video.id);
     } catch (error) {

@@ -3,6 +3,7 @@ import { ensureSchema } from "@/db";
 import { listVideos } from "@/app/lib/queries/text-tube";
 import { videoInput } from "@/app/lib/text-tube-video-input";
 import { route } from "@/app/lib/route";
+import { youTubeVideoId } from "@/app/lib/youtube";
 
 export const GET = route(async (request: Request) => {
   const params = new URL(request.url).searchParams;
@@ -15,6 +16,8 @@ export const POST = route(async (request: Request) => {
   const parsed = videoInput(body ?? {});
   if (!parsed.value) return Response.json({ error: parsed.error }, { status: 400 });
   const value = parsed.value; const id = crypto.randomUUID(); const now = new Date().toISOString();
-  await env.DB.prepare(`INSERT INTO text_tube_videos (id,title,channel_name,thumbnail_url,original_url,summary,published_at,view_count,channel_thumbnail_url,duration,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`).bind(id,value.title,value.channelName,value.thumbnailUrl,value.originalUrl,value.summary,value.publishedAt,value.viewCount,value.channelThumbnailUrl,value.duration,now,now).run();
+  // youtube_video_id は、Watch List のリンクから「もう TextTube にある動画か」を引く列(app/lib/text-tube-import.ts)。
+  // 手で追加した動画にも入れておかないと、同じ動画を Watch List に入れたときに二重に取り込まれる。
+  await env.DB.prepare(`INSERT INTO text_tube_videos (id,title,channel_name,thumbnail_url,original_url,summary,published_at,view_count,channel_thumbnail_url,duration,youtube_video_id,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`).bind(id,value.title,value.channelName,value.thumbnailUrl,value.originalUrl,value.summary,value.publishedAt,value.viewCount,value.channelThumbnailUrl,value.duration,youTubeVideoId(value.originalUrl) || null,now,now).run();
   return Response.json({ id }, { status: 201 });
 });

@@ -91,3 +91,35 @@ test("GET ?only=resync returns just the pending resync request, and the indexes 
   expect(await plan("SELECT * FROM asset_sync_runs ORDER BY received_at DESC LIMIT 1")).toContain("asset_sync_runs_received_idx");
   expect(await plan("SELECT * FROM asset_resync_requests WHERE fulfilled_at IS NULL ORDER BY requested_at DESC LIMIT 1")).toContain("asset_resync_requests_pending_idx");
 });
+
+test("a repeated start for a run still in progress returns the same run; after it completes it is a 409", async () => {
+  const clientRunId = crypto.randomUUID();
+  const first = await sync({ action: "start", clientRunId, sourceCount: 0 });
+  const again = await sync({ action: "start", clientRunId, sourceCount: 0 });
+  expect(again.response.status).toBe(200);
+  expect(again.body.runId).toBe(first.body.runId);
+  expect(again.body.resumed).toBe(true);
+  await sync({ action: "complete", clientRunId });
+  expect((await sync({ action: "start", clientRunId, sourceCount: 0 })).response.status).toBe(409);
+});
+
+test("a re-sync replaces a snapshot's positions in full, including more than fit in one statement", async () => {
+  const { env } = await import("cloudflare:workers");
+  const clientRunId = crypto.randomUUID();
+  await sync({ action: "start", clientRunId, sourceCount: 1 });
+  const send = (count: number) => sync({
+    action: "source", clientRunId,
+    source: { sourceId: "sync-test-many-positions", sourceType: "exchange", provider: "manual", displayName: "Many" },
+    snapshot: { capturedAt: "2026-02-01T00:00:00Z", asOfDate: "2026-02-01", totalUsd: count, fxUsdjpy: 150 },
+    positions: Array.from({ length: count }, (_, index) => ({ symbol: `T${index}`, quantity: 1, valueUsd: 1, locationType: "exchange", positionType: "spot" })),
+  });
+  const countRows = async (snapshotId: unknown) => Number((await env.DB.prepare("SELECT COUNT(*) AS n FROM asset_positions WHERE snapshot_id = ?").bind(snapshotId).first<{ n: number }>())?.n);
+
+  const first = await send(500);
+  expect(first.response.status).toBe(200);
+  expect(await countRows(first.body.snapshotId)).toBe(500);
+
+  const second = await send(20);
+  expect(second.body.snapshotId).toBe(first.body.snapshotId);
+  expect(await countRows(second.body.snapshotId)).toBe(20);
+});

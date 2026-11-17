@@ -3,6 +3,7 @@ import { ensureSchema } from "@/db";
 import { videoInput } from "@/app/lib/text-tube-video-input";
 import { getVideo } from "@/app/lib/queries/text-tube";
 import { route } from "@/app/lib/route";
+import { youTubeVideoId } from "@/app/lib/youtube";
 
 type Context = { params: Promise<{ id: string }> };
 
@@ -18,13 +19,15 @@ export const PATCH = route(async (request: Request, context: Context) => {
   const parsed = videoInput(body ?? {});
   if (!parsed.value) return Response.json({ error: parsed.error }, { status: 400 });
   const value = parsed.value; const now = new Date().toISOString();
-  const result = await env.DB.prepare("UPDATE text_tube_videos SET title=?,channel_name=?,thumbnail_url=?,original_url=?,summary=?,published_at=?,view_count=?,channel_thumbnail_url=?,duration=?,updated_at=? WHERE id=? AND deleted_at IS NULL").bind(value.title,value.channelName,value.thumbnailUrl,value.originalUrl,value.summary,value.publishedAt,value.viewCount,value.channelThumbnailUrl,value.duration,now,id).run();
-  if (!result.success) return Response.json({ error: "動画を更新できませんでした。" }, { status: 500 });
+  const result = await env.DB.prepare("UPDATE text_tube_videos SET title=?,channel_name=?,thumbnail_url=?,original_url=?,summary=?,published_at=?,view_count=?,channel_thumbnail_url=?,duration=?,youtube_video_id=?,updated_at=? WHERE id=? AND deleted_at IS NULL").bind(value.title,value.channelName,value.thumbnailUrl,value.originalUrl,value.summary,value.publishedAt,value.viewCount,value.channelThumbnailUrl,value.duration,youTubeVideoId(value.originalUrl) || null,now,id).run();
+  // 当たった行が無いのは、id が無いか、もう削除されているとき。以前は result.success だけを見ていたので、
+  // 存在しない動画の保存も「成功」と返していた。
+  if (!result.meta.changes) return Response.json({ error: "動画が見つかりません。" }, { status: 404 });
   return Response.json({ ok: true });
 });
 
 export const DELETE = route(async (_request: Request, context: Context) => {
   await ensureSchema({ seed: false }); const { id } = await context.params;
-  await env.DB.prepare("UPDATE text_tube_videos SET deleted_at=?,updated_at=? WHERE id=? AND deleted_at IS NULL").bind(new Date().toISOString(),new Date().toISOString(),id).run();
-  return Response.json({ ok: true });
+  const result = await env.DB.prepare("UPDATE text_tube_videos SET deleted_at=?,updated_at=? WHERE id=? AND deleted_at IS NULL").bind(new Date().toISOString(),new Date().toISOString(),id).run();
+  return result.meta.changes ? Response.json({ ok: true }) : Response.json({ error: "動画が見つかりません。" }, { status: 404 });
 });

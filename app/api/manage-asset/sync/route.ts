@@ -13,6 +13,12 @@ import { route } from "@/app/lib/route";
 // allows 10ms of CPU per invocation, and the collector chunks well below this.
 const MAX_BATCH_ENTRIES = 50;
 
+/** 1つのスナップショットが持てる内訳の行数。 */
+const MAX_POSITIONS_PER_SNAPSHOT = 2000;
+const POSITION_ROWS_PER_INSERT = 9;
+/** 古い内訳の DELETE と同じ batch に入れる INSERT の文の数（batch は50文までにそろえる）。 */
+const FIRST_BATCH_INSERTS = 47;
+
 function containsCredential(value: unknown): boolean {
   if (Array.isArray(value)) return value.some(containsCredential);
   if (!value || typeof value !== "object") return false;
@@ -100,21 +106,43 @@ async function storeEntry(db: D1Database, runId: string, entry: Entry, now: stri
   // difference from before is that even in this residual case the totals and
   // positions already committed above are never lost -- only the archived
   // raw payload's link is temporarily missing, not the numbers anyone reads.
-  await db.batch([
-    db.prepare("UPDATE asset_sources SET last_success_at=? WHERE id=?").bind(capturedAt,sourceId),
-    // The upsert may have reused an existing snapshot row, whose positions now
-    // describe the earlier sync. Replace them rather than adding to them.
-    db.prepare("DELETE FROM asset_positions WHERE snapshot_id=?").bind(snapshotId),
-    ...(storedRaw ? [db.prepare("UPDATE asset_snapshots SET raw_object_key=?,raw_sha256=?,raw_size=?,raw_storage_status='stored' WHERE id=?").bind(storedRaw.key,storedRaw.sha256,storedRaw.size,snapshotId)] : []),
-  ]);
-  if (storedRaw) storageStatus = "stored";
   const suppliedPositions = (Array.isArray(entry.positions) ? entry.positions : []).filter((position): position is Record<string, unknown> => Boolean(position && typeof position === "object"));
   // A wallet's stETH is nested under protocols[].panels[].assets[] in the local
   // DeBank snapshot. Never rely only on the flattened positions payload here.
   const positions = normalizeSyncedPositions(entry.source, entry.snapshot, suppliedPositions);
-  const statements = positions.slice(0, 2000).map((position) => db.prepare("INSERT INTO asset_positions (id,snapshot_id,symbol,quantity,price_usd,value_usd,value_jpy,location_type,protocol,position_type,is_debt) VALUES (?,?,?,?,?,?,?,?,?,?,?)").bind(crypto.randomUUID(),snapshotId,clean(position.symbol,100)||"UNKNOWN",position.quantity ?? 0,position.quantity && position.valueUsd ? position.valueUsd / position.quantity : null,position.valueUsd,fx ? position.valueUsd * fx : null,position.locationType,clean(position.protocol,200),position.positionType,position.positionType === "debt" ? 1 : 0));
-  for (let start = 0; start < statements.length; start += 50) await db.batch(statements.slice(start,start+50));
-  return { sourceId, snapshotId, rawStorageStatus: storageStatus, rawStorageError, usedBytes: usedBytesResult ?? knownUsedBytes };
+  // 上限を超えた分は保存しない。以前は黙って切り捨てていたので、合計と内訳が合わなくなっても気づけなかった。
+  // 切り捨てたことはログと応答(positionsDropped)に残す。
+  const positionsDropped = Math.max(0, positions.length - MAX_POSITIONS_PER_SNAPSHOT);
+  if (positionsDropped) console.warn(`asset_positions: ${sourceId} の内訳 ${positions.length} 件のうち ${positionsDropped} 件を保存しませんでした（上限 ${MAX_POSITIONS_PER_SNAPSHOT} 件）`);
+  // 1文で複数行を入れる。1行は11個の値を使い、D1 は1文あたり100個までなので、9行ずつ。
+  const kept = positions.slice(0, MAX_POSITIONS_PER_SNAPSHOT);
+  const inserts: D1PreparedStatement[] = [];
+  for (let start = 0; start < kept.length; start += POSITION_ROWS_PER_INSERT) {
+    const rows = kept.slice(start, start + POSITION_ROWS_PER_INSERT);
+    inserts.push(db.prepare(`INSERT INTO asset_positions (id,snapshot_id,symbol,quantity,price_usd,value_usd,value_jpy,location_type,protocol,position_type,is_debt) VALUES ${rows.map(() => "(?,?,?,?,?,?,?,?,?,?,?)").join(",")}`)
+      .bind(...rows.flatMap((position) => [crypto.randomUUID(),snapshotId,clean(position.symbol,100)||"UNKNOWN",position.quantity ?? 0,position.quantity && position.valueUsd ? position.valueUsd / position.quantity : null,position.valueUsd,fx ? position.valueUsd * fx : null,position.locationType,clean(position.protocol,200),position.positionType,position.positionType === "debt" ? 1 : 0])));
+  }
+  // The upsert may have reused an existing snapshot row, whose positions now
+  // describe the earlier sync, so they are replaced rather than added to. The
+  // DELETE and the first INSERTs share one batch (= one transaction): the old
+  // positions used to be deleted in one batch and the new ones inserted in
+  // later ones, so a failure in between left a snapshot with its total but no
+  // breakdown. A snapshot with more positions than fit in one batch
+  // (FIRST_BATCH_INSERTS x 9 = 423) still spills into follow-up batches.
+  const head = inserts.slice(0, FIRST_BATCH_INSERTS);
+  await db.batch([
+    db.prepare("UPDATE asset_sources SET last_success_at=? WHERE id=?").bind(capturedAt,sourceId),
+    db.prepare("DELETE FROM asset_positions WHERE snapshot_id=?").bind(snapshotId),
+    // Linking the uploaded R2 object to its snapshot row rides in this same
+    // transaction. If the whole batch fails, the snapshot keeps local_only
+    // while the object sits in R2; the key is deterministic per (source,
+    // date), so the next sync for it overwrites and links it.
+    ...(storedRaw ? [db.prepare("UPDATE asset_snapshots SET raw_object_key=?,raw_sha256=?,raw_size=?,raw_storage_status='stored' WHERE id=?").bind(storedRaw.key,storedRaw.sha256,storedRaw.size,snapshotId)] : []),
+    ...head,
+  ]);
+  if (storedRaw) storageStatus = "stored";
+  for (let start = FIRST_BATCH_INSERTS; start < inserts.length; start += 50) await db.batch(inserts.slice(start, start + 50));
+  return { sourceId, snapshotId, rawStorageStatus: storageStatus, rawStorageError, usedBytes: usedBytesResult ?? knownUsedBytes, positionsDropped };
 }
 
 /** ウォレット2（ダミーデータ、env.DB_WALLET2）にも、同じ同期を倍率を掛けて書く。
@@ -198,7 +226,11 @@ export const POST = route(async (request: Request) => {
   const clientRunId = clean(body.clientRunId, 200);
 
   if (body.action === "start") {
-    if ((await env.DB.prepare("SELECT id FROM asset_sync_runs WHERE client_run_id=?").bind(clientRunId).all()).results?.length) return Response.json({ error: "この同期はすでに開始されています。" }, { status: 409 });
+    // 同じ clientRunId の start がもう一度来るのは、collector が応答を受け取れずに送り直したとき。
+    // まだ終わっていない run ならその id を返す（以前は 409 を返し、届いていた start の run が started のまま残った）。
+    // 終わった run の id を使い回すのは別の話なので、従来どおり 409。
+    const existing = await env.DB.prepare("SELECT id,status FROM asset_sync_runs WHERE client_run_id=?").bind(clientRunId).first<{ id: string; status: string }>();
+    if (existing) return existing.status === "started" ? Response.json({ runId: existing.id, resumed: true }) : Response.json({ error: "この同期はすでに完了しています。" }, { status: 409 });
     const runId = crypto.randomUUID();
     await env.DB.prepare("INSERT INTO asset_sync_runs (id,client_run_id,client_version,started_at,status,source_count,received_at) VALUES (?,?,?,?,?,?,?)").bind(runId,clientRunId,clean(body.clientVersion,100),now,"started",Math.max(0,Number(body.sourceCount)||0),now).run();
     return Response.json({ runId });
@@ -240,7 +272,7 @@ export const POST = route(async (request: Request) => {
         const stored = await storeEntry(env.DB, run.id, entry, now, usedBytes);
         storedEntries.push(entry);
         usedBytes = stored.usedBytes ?? usedBytes;
-        results.push({ sourceId: stored.sourceId, snapshotId: stored.snapshotId, rawStorageStatus: stored.rawStorageStatus, ...(stored.rawStorageError ? { rawStorageError: stored.rawStorageError } : {}) });
+        results.push({ sourceId: stored.sourceId, snapshotId: stored.snapshotId, rawStorageStatus: stored.rawStorageStatus, ...(stored.rawStorageError ? { rawStorageError: stored.rawStorageError } : {}), ...(stored.positionsDropped ? { positionsDropped: stored.positionsDropped } : {}) });
       } catch (error) {
         // One bad source must not discard the sources that already stored, and
         // must not hide which one failed: report it per row and keep going.

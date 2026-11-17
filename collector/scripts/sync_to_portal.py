@@ -74,6 +74,13 @@ def post(base_url: str, token: str, body: dict, timeout: int = 30) -> dict:
                 return json.loads(response.read().decode("utf-8"))
         except (urllib.error.URLError, TimeoutError) as exc:
             last_error = exc
+            # A 4xx is the portal rejecting this request (bad payload, unknown
+            # run, Access refusing the token): sending the same bytes again
+            # gets the same answer, so fail now instead of after three more
+            # tries and 7 seconds of sleeping. 408 and 429 are the two that do
+            # ask for a retry.
+            if isinstance(exc, urllib.error.HTTPError) and 400 <= exc.code < 500 and exc.code not in (408, 429):
+                raise
             if attempt == 3:
                 raise
             time.sleep(2 ** attempt)
@@ -181,20 +188,33 @@ def main() -> int:
     client_run_id = "manage-asset-" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     start = post(base_url, token, {"action": "start", "clientRunId": client_run_id, "clientVersion": "manage-asset-local/2", "sourceCount": len(entries)})
     failures: list[dict] = []
-    for offset in range(0, len(entries), BATCH_SIZE):
-        chunk = entries[offset:offset + BATCH_SIZE]
-        result = post(
-            base_url,
-            token,
-            {"action": "sources", "clientRunId": client_run_id, "entries": chunk},
-            timeout=BATCH_TIMEOUT_S,
-        )
-        # Keep going through the remaining chunks so one bad source does not
-        # hold back the rest, then fail the run so the caller's retry (state
-        # file portal_sync_pending) picks it up on the next scheduled slot.
-        failures.extend(row for row in (result.get("results") or []) if row.get("error"))
-    if failures:
-        raise RuntimeError("Portal同期に失敗したsourceがあります: " + json.dumps(failures, ensure_ascii=False))
+    try:
+        for offset in range(0, len(entries), BATCH_SIZE):
+            chunk = entries[offset:offset + BATCH_SIZE]
+            result = post(
+                base_url,
+                token,
+                {"action": "sources", "clientRunId": client_run_id, "entries": chunk},
+                timeout=BATCH_TIMEOUT_S,
+            )
+            # Keep going through the remaining chunks so one bad source does not
+            # hold back the rest, then fail the run so the caller's retry (state
+            # file portal_sync_pending) picks it up on the next scheduled slot.
+            failures.extend(row for row in (result.get("results") or []) if row.get("error"))
+        if failures:
+            raise RuntimeError("Portal同期に失敗したsourceがあります: " + json.dumps(failures, ensure_ascii=False))
+    except Exception:
+        # Close the run before giving up. "complete" counts the snapshots that
+        # did land and records the shortfall as errors (completed_with_errors);
+        # without it the run stayed "started" forever and the portal could not
+        # tell a failed sync from one still in progress. Best effort: if the
+        # portal is unreachable this fails too, and the original error is the
+        # one worth reporting.
+        try:
+            post(base_url, token, {"action": "complete", "clientRunId": client_run_id})
+        except Exception as close_error:  # noqa: BLE001
+            print(f"失敗したrunを閉じられませんでした: {close_error}", file=sys.stderr)
+        raise
     done = post(base_url, token, {"action": "complete", "clientRunId": client_run_id})
     print(json.dumps({"ok": True, "run_id": start.get("runId"), "source_count": len(entries), "complete": done}, ensure_ascii=False))
     return 0

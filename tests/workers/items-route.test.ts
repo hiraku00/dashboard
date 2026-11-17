@@ -196,3 +196,50 @@ describe("aired_at on PATCH", () => {
     expect(cleared.item.airedAt).toBeNull();
   });
 });
+
+describe("PATCH keeps what it was not sent, and saves the item and its links together", () => {
+  async function patch(id: string, body: Record<string, unknown>) {
+    const response = await itemPatch(
+      new Request(`http://x/api/items/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }),
+      { params: Promise.resolve({ id }) },
+    );
+    return { status: response.status, body: (await response.json()) as { item?: { links: Array<{ url: string }> } } };
+  }
+  const stored = (id: string) => env.DB.prepare("SELECT source_system, external_id, raw_source, version FROM items WHERE id = ?").bind(id).first<Record<string, unknown>>();
+  const linkUrls = async (id: string) => ((await env.DB.prepare("SELECT url FROM item_links WHERE item_id = ? ORDER BY position").bind(id).all<{ url: string }>()).results ?? []).map((row) => row.url);
+
+  test("an edit from the screen (which has no rawSource) no longer wipes raw_source", async () => {
+    const { body: created } = await createItem({ contentType: "movie", title: "keeps-origin", sourceSystem: "tv-program", externalId: "keeps-origin-1", rawSource: "{\"original\":true}" });
+    const id = created.item!.id as string;
+
+    // What app/watch-list-app.tsx sends: the item as the API returned it -- sourceSystem and externalId, no rawSource.
+    expect((await patch(id, { contentType: "movie", title: "keeps-origin (edited)", sourceSystem: "tv-program", externalId: "keeps-origin-1", version: 1 })).status).toBe(200);
+    expect(await stored(id)).toMatchObject({ source_system: "tv-program", external_id: "keeps-origin-1", raw_source: "{\"original\":true}", version: 2 });
+
+    // A caller that sends none of the three keeps all of them.
+    expect((await patch(id, { contentType: "movie", title: "keeps-origin (status only)", version: 2 })).status).toBe(200);
+    expect(await stored(id)).toMatchObject({ source_system: "tv-program", external_id: "keeps-origin-1", raw_source: "{\"original\":true}" });
+
+    // Sending one explicitly still changes it.
+    expect((await patch(id, { contentType: "movie", title: "keeps-origin", rawSource: null, version: 3 })).status).toBe(200);
+    expect((await stored(id))?.raw_source).toBeNull();
+  });
+
+  test("the links are replaced with the save, and a stale save leaves them alone", async () => {
+    const { body: created } = await createItem({ contentType: "movie", title: "links-atomic", links: [{ url: "https://example.org/old-1" }, { url: "https://example.org/old-2" }] });
+    const id = created.item!.id as string;
+
+    const stale = await patch(id, { contentType: "movie", title: "links-atomic", links: [{ url: "https://example.org/stale" }], version: 7 });
+    expect(stale.status).toBe(409);
+    expect(await linkUrls(id)).toEqual(["https://example.org/old-1", "https://example.org/old-2"]);
+
+    const saved = await patch(id, { contentType: "movie", title: "links-atomic", links: [{ url: "https://example.org/new-1" }], version: 1 });
+    expect(saved.status).toBe(200);
+    expect(await linkUrls(id)).toEqual(["https://example.org/new-1"]);
+    expect(saved.body.item?.links.map((link) => link.url)).toEqual(["https://example.org/new-1"]);
+
+    const cleared = await patch(id, { contentType: "movie", title: "links-atomic", links: [], version: 2 });
+    expect(cleared.status).toBe(200);
+    expect(await linkUrls(id)).toEqual([]);
+  });
+});
