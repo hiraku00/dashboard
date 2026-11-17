@@ -183,6 +183,7 @@ export function TextTubeApp({
   });
   // チャンネルごとの本数（読み込んだ分）。絞り込みの選択肢に添える。URL で指定されたチャンネルが
   // 読み込んだ分に無くても、選択肢からは消さない（消すと select が別の値を表示してしまう）。
+  const hasViews = useMemo(() => videos.some((v) => v.view_count > 0), [videos]);
   const channels = useMemo(() => {
     const counts = new Map<string, number>();
     for (const v of videos) if (v.channel_name) counts.set(v.channel_name, (counts.get(v.channel_name) ?? 0) + 1);
@@ -223,7 +224,8 @@ export function TextTubeApp({
           </span>
           <select value={sort} onChange={(e) => setSort(e.target.value)}>
             <option value="created_at-desc">最新順（記事作成日）</option>
-            <option value="view_count-desc">人気順（閲覧数）</option>
+            {/* 閲覧数は手入力の項目で、ほとんどの動画が 0 のまま。入っている動画がある間だけ選べる。 */}
+            {(hasViews || sort === "view_count-desc") && <option value="view_count-desc">人気順（閲覧数）</option>}
             <option value="created_at-asc">古い順</option>
             <option value="title-asc">タイトル順</option>
           </select>
@@ -305,14 +307,18 @@ export function TextTubeApp({
                 </div>
               </div>
             </Link>
-            <div className="tt-card-actions">
-              <Link href={`/text-tube/watch/${v.id}/edit?from=list`} prefetch={false}>
-                編集
-              </Link>
-              <button type="button" className="danger" onClick={() => remove(v)}>
-                削除
-              </button>
-            </div>
+            {/* 編集と削除は記事ページにもあり、一覧で押す機会は少ないので、普段は「⋯」に畳む（開くとカードの下に出る）。 */}
+            <details className="tt-card-menu">
+              <summary aria-label={`「${v.title}」の操作`}>⋯</summary>
+              <div className="tt-card-actions">
+                <Link href={`/text-tube/watch/${v.id}/edit?from=list`} prefetch={false}>
+                  編集
+                </Link>
+                <button type="button" className="danger" onClick={() => remove(v)}>
+                  削除
+                </button>
+              </div>
+            </details>
           </article>
         ))}
         {!shown.length && (

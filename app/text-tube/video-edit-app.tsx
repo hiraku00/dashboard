@@ -35,6 +35,7 @@ export function TextTubeVideoEditApp({
     [saved, setSaved] = useState<VideoForm | null>(id ? null : blankVideo),
     [loadError, setLoadError] = useState(""),
     [notice, setNotice] = useState(""),
+    [moreOpen, setMoreOpen] = useState(false),
     [saving, setSaving] = useState(false),
     [createdId, setCreatedId] = useState<string | null>(null),
     [importing, setImporting] = useState(false),
@@ -200,7 +201,7 @@ export function TextTubeVideoEditApp({
           </div>
         </div>
         {notice && <div className="tt-notice" role="alert">{notice}</div>}
-        <form onSubmit={submit}>
+        <form onSubmit={submit} onInvalidCapture={() => setMoreOpen(true)}>
           <div className="tt-youtube-import">
             <label>
               {" "}
@@ -221,11 +222,14 @@ export function TextTubeVideoEditApp({
             タイトル <b>必須</b>
             <input required value={form.title} onChange={set("title")} />
           </label>
+          <label>
+            チャンネル
+            <input value={form.channelName} onChange={set("channelName")} />
+          </label>
+          {/* 「動画情報を取得」が埋める項目。普段は触らないので畳む。URL の形が不正で保存できないときは、開いて知らせる。 */}
+          <details className="tt-form-more" open={moreOpen} onToggle={(e) => setMoreOpen(e.currentTarget.open)}>
+            <summary>動画の詳細情報（サムネイル・公開日・動画時間・閲覧数）</summary>
           <div className="tt-form-grid">
-            <label>
-              チャンネル
-              <input value={form.channelName} onChange={set("channelName")} />
-            </label>
             <label>
               サムネイルURL
               <input type="url" value={form.thumbnailUrl} onChange={set("thumbnailUrl")} />
@@ -247,6 +251,7 @@ export function TextTubeVideoEditApp({
               <input type="number" value={form.viewCount} onChange={set("viewCount")} />
             </label>
           </div>
+          </details>
           <div className="tt-summary-field">
             <div className="tt-summary-head">
               <label htmlFor="tt-summary">要約</label>
