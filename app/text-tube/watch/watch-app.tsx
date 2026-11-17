@@ -9,7 +9,7 @@ import { ApiError, readJson } from "../../lib/json";
 type Video = Record<string, unknown>;
 /** 同じチャンネルの動画の1行（app/lib/queries/text-tube.ts の ChannelVideo）。 */
 export type Sibling = { id: string; title: string; thumbnail_url: string; duration: string; published_at: string | null; read_at: string | null };
-type TocEntry = { id: string; label: string };
+type TocEntry = { id: string; label: string; /** 本文の見出しの上に出ている章番号（"01"）。無い記事は並び順から振る。 */ no: string };
 
 /** sticky な上部（.portal-chrome）の下に見出しが隠れないよう、目次から飛ぶときに空ける高さ。 */
 const TOC_OFFSET = 150;
@@ -32,7 +32,9 @@ function useToc(body: React.RefObject<HTMLElement | null>, content: string) {
       // 「要約」という枠の見出し（本文の外）は目次に入れない。
       if (!label || heading.parentElement?.classList.contains("tt-reading-section")) return;
       if (!heading.id) heading.id = `tt-toc-${index + 1}`;
-      found.push({ id: heading.id, label });
+      // 章番号は、本文の見出しの上の .chapter-no にあるものをそのまま使う（目次と本文で番号を揃える）。
+      const no = heading.parentElement?.querySelector(".chapter-no")?.textContent?.trim() || String(found.length + 1).padStart(2, "0");
+      found.push({ id: heading.id, label, no });
     });
     // eslint-disable-next-line react-hooks/set-state-in-effect -- 描画済みの DOM から読むので、effect の中でしか決められない
     setEntries(found);
@@ -281,7 +283,8 @@ export function TextTubeWatchApp({
                 {toc.map((entry) => (
                   <li key={entry.id}>
                     <button type="button" className={entry.id === activeHeading ? "is-active" : undefined} aria-current={entry.id === activeHeading ? "location" : undefined} onClick={() => jumpTo(entry.id)}>
-                      {entry.label}
+                      <span className="tt-toc-no" aria-hidden="true">{entry.no}</span>
+                      <span>{entry.label}</span>
                     </button>
                   </li>
                 ))}

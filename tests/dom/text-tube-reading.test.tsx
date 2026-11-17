@@ -106,3 +106,23 @@ test("the article page lists the headings, the neighbouring videos, and the way 
   expect(hrefs(/このチャンネルの 3 本/)).toEqual(["/text-tube?channel=Ch"]);
   await waitFor(() => expect(hrefs(/一覧に戻る/)).toEqual(["/text-tube?unread=1"]));
 });
+
+test("the library tucks edit and delete behind a per-card menu, and offers the popularity sort only when views exist", () => {
+  vi.stubGlobal("fetch", () => Promise.reject(new Error("no fetch expected on mount")));
+  const { unmount } = render(<TextTubeApp initialVideos={[listed("1", "NO VIEWS", null)]} />);
+  expect(screen.getByLabelText("「NO VIEWS」の操作").tagName).toBe("SUMMARY");
+  expect(screen.getByRole("link", { name: "編集" }).closest("details")).not.toBeNull();
+  expect(screen.queryByRole("option", { name: /人気順/ })).toBeNull();
+  unmount();
+
+  render(<TextTubeApp initialVideos={[{ ...listed("2", "VIEWED", null), view_count: 120 }]} />);
+  expect(screen.getByRole("option", { name: /人気順/ })).toBeTruthy();
+});
+
+test("the article's table of contents numbers its entries like the chapters in the text", async () => {
+  vi.stubGlobal("fetch", () => Promise.resolve(new Response("{}", { status: 200 })));
+  render(<TextTubeWatchApp id="v2" initialVideo={article} siblings={siblings} />);
+  const intro = await screen.findByRole("button", { name: "はじめに" });
+  expect(intro.textContent).toBe("01はじめに");
+  expect(screen.getByRole("button", { name: "つぎに" }).textContent).toBe("02つぎに");
+});
