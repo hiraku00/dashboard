@@ -4,7 +4,9 @@ import { useEffect, useState } from "react";
 import type { AssetRow } from "@/app/lib/manage-asset-core";
 import { formatDate } from "@/app/lib/manage-asset-format";
 
-const statusLabels: Record<string, string> = { started: "実行中", completed: "完了", failed: "失敗" };
+// completed_with_errors は、いくつかの source が保存されないまま終わった同期（app/lib/sync-summary.ts）。
+// 以前は表示名が無く、英語の状態名がそのまま画面に出ていた。
+const statusLabels: Record<string, string> = { started: "実行中", completed: "完了", completed_with_errors: "一部失敗", failed: "失敗" };
 
 /** データ更新のAPI取得そのものは読み取り専用（取引所追加・認証情報変更・ウォレット
  *  編集はMac側アプリだけが書き込む）。「今すぐ再取得」ボタンだけは例外で、/api/
