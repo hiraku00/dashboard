@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { cleanup, fireEvent, render } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 import { MarkdownRenderer } from "@/app/text-tube/markdown-renderer";
@@ -166,4 +167,32 @@ test("youtubeUrlAt understands the usual YouTube URL shapes", () => {
   expect(youtubeUrlAt("https://m.youtube.com/live/abcdefghijk", 5)).toBe("https://www.youtube.com/watch?v=abcdefghijk&t=5s");
   expect(youtubeUrlAt("https://open.spotify.com/episode/x", 5)).toBeNull();
   expect(youtubeUrlAt("not a url", 5)).toBeNull();
+});
+
+test("structure parts and the added figure types survive sanitizing", () => {
+  // The worked example from the revised article prompt (overview, parts, chapter
+  // answers, summary table), plus one figure box per added figure type.
+  const article = readFileSync("tests/fixtures/text-tube-structure-article.md", "utf8");
+  expect(isPartsArticle(article)).toBe(true);
+  const { container } = render(<MarkdownRenderer content={article} />);
+  const root = container.querySelector(".tt-article")!;
+  const steps = root.querySelectorAll("section.overview .flow-row > a.flow-step");
+  expect(steps.length).toBeGreaterThan(1);
+  expect(steps[0].getAttribute("href")).toBe("#part-1");
+  expect(steps[0].getAttribute("target")).toBeNull();
+  expect(root.querySelector(".overview-item.answer .overview-text")?.textContent).not.toBe("");
+  expect(root.querySelector("nav.article-toc > p.toc-part > span.toc-part-no")?.textContent).toBe("第1部");
+  expect(root.querySelector("div.part-head#part-1 > p.part-title")?.textContent).toBe(
+    root.querySelector("nav.article-toc > p.toc-part")?.textContent?.replace("第1部", ""),
+  );
+  expect(root.querySelector("p.chapter-answer > span.chapter-answer-label")?.textContent).toBe("要点");
+  expect(root.querySelectorAll(".tree-branches > .tree-branch > ul.tree-leaves").length).toBe(3);
+  expect(root.querySelector(".matrix > .matrix-corner")).not.toBeNull();
+  expect(root.querySelectorAll(".matrix > .matrix-cell").length).toBe(4);
+  expect(Array.from(root.querySelectorAll(".bar-fill")).map((el) => el.className)).toEqual([
+    "bar-fill w100", "bar-fill w60", "bar-fill w20",
+  ]);
+  expect(root.querySelectorAll(".logic-reasons > .logic-reason").length).toBe(3);
+  expect(root.querySelectorAll(".qa-item > p.qa-q + p.qa-a").length).toBe(2);
+  expect(root.querySelector("table.article-table.summary-table")).not.toBeNull();
 });

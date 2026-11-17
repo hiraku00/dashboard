@@ -908,6 +908,136 @@ h1,h2,h3 { color:var(--ink); } h1 { margin:0; font-size:30px; line-height:1.1; l
 .tt-article .step-desc { margin-top: 2px; font-size: 0.92em; line-height: 1.65; color: var(--tt-text-2); }
 .tt-article .step-line { width: 2px; height: 14px; margin: 4px 0 4px 13px; background: var(--tt-border); }
 
+/* =========================================================
+   話の構造をつかむ部品と、追加の図解（記事プロンプトの改訂版）
+   依頼のCSSは :root に --ttx-* の色を置いていたが、ここでは既存の --tt-* に合わせた。
+   ========================================================= */
+
+/* ---- 全体マップ（導入文の直後） ---- */
+.tt-article .overview { border: 1px solid var(--tt-border); border-radius: 14px; padding: 18px 20px; margin: 1.6em 0; }
+.tt-article .overview-title { font-weight: 700; font-size: 1.05em; margin: 0 0 12px; }
+.tt-article .overview-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px; }
+.tt-article .overview-item { border-radius: 10px; padding: 12px 14px; background: var(--tt-surface); }
+.tt-article .overview-item.answer { background: var(--tt-primary-soft); }
+.tt-article .overview-label { font-size: 0.78em; font-weight: 700; letter-spacing: 0.04em; color: var(--tt-muted); margin: 0 0 6px; }
+.tt-article .overview > .overview-label { margin-top: 16px; }
+.tt-article .overview-text { margin: 0; font-weight: 600; line-height: 1.6; }
+.tt-article .flow-row { display: flex; align-items: stretch; gap: 8px; }
+.tt-article .flow-step {
+  flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 4px; padding: 12px;
+  border: 1px solid var(--tt-border); border-radius: 10px; text-decoration: none; color: inherit;
+}
+.tt-article .flow-step:hover { border-color: var(--tt-primary); }
+.tt-article .flow-no {
+  width: 22px; height: 22px; border-radius: 50%; background: var(--tt-primary); color: #fff;
+  font-size: 0.75em; font-weight: 700; display: inline-flex; align-items: center; justify-content: center;
+}
+.tt-article .flow-title { font-weight: 700; line-height: 1.4; }
+.tt-article .flow-desc { font-size: 0.85em; color: var(--tt-text-2); line-height: 1.5; }
+.tt-article .flow-arrow { display: flex; align-items: center; color: var(--tt-muted); flex: 0 0 auto; }
+.tt-article .overview .table-wrap { margin: 0; }
+
+/* ---- 目次の部の区切り ---- */
+.tt-article .toc-part { font-weight: 700; font-size: 0.9em; margin: 14px 0 4px; padding-top: 10px; border-top: 1px solid var(--tt-border); }
+.tt-article .article-toc-title + .toc-part { border-top: 0; padding-top: 0; }
+.tt-article .toc-part-no {
+  display: inline-block; margin-right: 8px; padding: 1px 8px; border-radius: 999px;
+  background: var(--tt-primary-soft); color: var(--tt-primary); font-size: 0.85em;
+}
+
+/* ---- 部の見出し（章の上の階層）。scroll-margin-top は章見出しと同じ理由で 200px ---- */
+.tt-article .part-head {
+  margin: 3.5em 0 0.5em; padding: 18px 20px; border-left: 5px solid var(--tt-primary);
+  background: var(--tt-surface); border-radius: 0 12px 12px 0; scroll-margin-top: 200px;
+}
+.tt-article .part-no { display: inline-block; font-size: 0.8em; font-weight: 700; color: var(--tt-primary); letter-spacing: 0.08em; }
+.tt-article .part-title { margin: 4px 0 6px; font-size: 1.35em; font-weight: 800; line-height: 1.4; }
+.tt-article .part-desc { margin: 0; font-size: 0.9em; color: var(--tt-text-2); line-height: 1.6; }
+/* 部の見出しの直後の章見出しは、上の余白と罫線を詰める */
+.tt-article .part-head + .chapter-head { margin-top: 1.6em; }
+
+/* ---- 章の答え（章見出しの直後） ---- */
+.tt-article .chapter-answer { margin: 10px 0 18px; padding: 12px 14px; border-radius: 10px; background: var(--tt-primary-soft); font-weight: 600; line-height: 1.7; }
+.tt-article .chapter-answer-label {
+  display: inline-block; margin-right: 10px; padding: 1px 8px; border-radius: 4px;
+  background: var(--tt-primary); color: #fff; font-size: 0.75em; font-weight: 700; vertical-align: 2px;
+}
+
+/* ---- 図解：連鎖の循環、VS比較の箇条書き ---- */
+.tt-article .figure-arrow.loop { font-size: 0.85em; }
+.tt-article .compare-body ul { margin: 0; }
+
+/* ---- 図解：ツリー ---- */
+.tt-article .tree { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+.tt-article .tree-root { padding: 8px 18px; border-radius: 999px; background: var(--tt-primary); color: #fff; font-weight: 700; }
+.tt-article .tree-branches { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; width: 100%; }
+.tt-article .tree-branch { border: 1px solid var(--tt-border); border-top: 3px solid var(--tt-primary); border-radius: 8px; padding: 10px 12px; background: var(--tt-bg); }
+.tt-article .tree-node { font-weight: 700; margin-bottom: 6px; }
+.tt-article .tree-leaves { margin: 0; padding-left: 1.1em; font-size: 0.9em; line-height: 1.6; }
+
+/* ---- 図解：マトリクス（2×2。左上は空の matrix-corner） ---- */
+.tt-article .matrix { display: grid; grid-template-columns: minmax(70px, auto) 1fr 1fr; gap: 6px; }
+.tt-article .matrix-col,
+.tt-article .matrix-row {
+  font-weight: 700; font-size: 0.85em; display: flex; align-items: center; justify-content: center;
+  text-align: center; padding: 6px; background: var(--tt-primary-soft); border-radius: 6px;
+}
+.tt-article .matrix-cell {
+  border: 1px solid var(--tt-border); border-radius: 8px; padding: 12px; min-height: 56px; background: var(--tt-bg);
+  display: flex; align-items: center; justify-content: center; text-align: center; line-height: 1.5;
+}
+
+/* ---- 図解：棒グラフ（幅は w10〜w100 の10刻み） ---- */
+.tt-article .bar-chart { display: flex; flex-direction: column; gap: 10px; }
+.tt-article .bar-row { display: grid; grid-template-columns: minmax(64px, 9em) 1fr minmax(48px, auto); gap: 10px; align-items: center; }
+.tt-article .bar-label { font-size: 0.9em; }
+.tt-article .bar-track { display: block; height: 18px; background: var(--tt-border); border-radius: 4px; overflow: hidden; }
+.tt-article .bar-fill { display: block; height: 100%; width: 0; background: var(--tt-primary); border-radius: 4px; }
+.tt-article .bar-value { font-weight: 700; font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+.tt-article .bar-fill.w10 { width: 10%; }
+.tt-article .bar-fill.w20 { width: 20%; }
+.tt-article .bar-fill.w30 { width: 30%; }
+.tt-article .bar-fill.w40 { width: 40%; }
+.tt-article .bar-fill.w50 { width: 50%; }
+.tt-article .bar-fill.w60 { width: 60%; }
+.tt-article .bar-fill.w70 { width: 70%; }
+.tt-article .bar-fill.w80 { width: 80%; }
+.tt-article .bar-fill.w90 { width: 90%; }
+.tt-article .bar-fill.w100 { width: 100%; }
+
+/* ---- 図解：主張と根拠 ---- */
+.tt-article .logic { display: flex; flex-direction: column; gap: 10px; }
+.tt-article .logic-claim { padding: 12px 14px; border-radius: 10px; background: var(--tt-primary-soft); border: 1px solid var(--tt-primary); font-weight: 700; }
+.tt-article .logic-reasons { display: flex; flex-direction: column; gap: 8px; margin-left: 18px; padding-left: 14px; border-left: 2px solid var(--tt-border); }
+.tt-article .logic-reason { padding: 10px 12px; border: 1px solid var(--tt-border); border-radius: 8px; background: var(--tt-bg); }
+.tt-article .logic-claim p,
+.tt-article .logic-reason p { margin: 4px 0 0; line-height: 1.6; }
+.tt-article .logic-tag { display: inline-block; font-size: 0.72em; font-weight: 700; padding: 1px 8px; border-radius: 4px; background: var(--tt-surface); color: var(--tt-text-2); }
+.tt-article .logic-claim .logic-tag { background: var(--tt-primary); color: #fff; }
+
+/* ---- 図解：Q&A ---- */
+.tt-article .qa-list { display: flex; flex-direction: column; gap: 10px; }
+.tt-article .qa-item { border: 1px solid var(--tt-border); border-radius: 10px; overflow: hidden; background: var(--tt-bg); }
+.tt-article .qa-q,
+.tt-article .qa-a { margin: 0; padding: 10px 14px 10px 40px; position: relative; line-height: 1.6; }
+.tt-article .qa-q { font-weight: 700; background: var(--tt-surface); }
+.tt-article .qa-q::before,
+.tt-article .qa-a::before { position: absolute; left: 14px; top: 10px; font-weight: 800; }
+.tt-article .qa-q::before { content: "Q"; color: var(--tt-primary); }
+.tt-article .qa-a::before { content: "A"; color: var(--tt-muted); }
+
+/* ---- まとめの論点の整理表 ---- */
+.tt-article .summary-table th:first-child,
+.tt-article .summary-table td:first-child { width: 40%; font-weight: 700; white-space: normal; }
+
+@media (max-width: 640px) {
+  .tt-article .overview-grid { grid-template-columns: 1fr; }
+  .tt-article .flow-row { flex-direction: column; }
+  .tt-article .flow-arrow { justify-content: center; transform: rotate(90deg); }
+  .tt-article .part-title { font-size: 1.2em; }
+  .tt-article .logic-reasons { margin-left: 8px; }
+}
+
 /* Manage Asset の設定タブの「ウォレット1 / ウォレット2」。 */
 .asset-wallet-switch { display:inline-flex; gap:2px; border:1px solid var(--line-strong); border-radius:9px; background:rgba(255,255,255,.82); padding:2px; }
 .asset-wallet-switch button { min-height:30px; border:0; border-radius:7px; background:transparent; color:var(--muted); padding:4px 10px; font-size:12px; font-weight:700; white-space:nowrap; cursor:pointer; }

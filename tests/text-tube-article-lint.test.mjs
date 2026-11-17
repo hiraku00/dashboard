@@ -8,8 +8,8 @@ import { KNOWN_CLASSES, lintArticle } from "../app/lib/text-tube-article-lint.ts
 const article = readFileSync(new URL("./fixtures/text-tube-parts-article.md", import.meta.url), "utf8");
 const codes = (md) => lintArticle(md).map((i) => i.code);
 
-// Every class the article prompt's spec can output (76, from the Claude-side
-// hand-off). The lint list is built from this, not from the CSS, because some
+// Every class the article prompt's spec can output (76 from the Claude-side
+// hand-off, plus the ones the revision with the structure parts added). The lint list is built from this, not from the CSS, because some
 // of these have no CSS rule (compare-body, ba-text, ...).
 const SPEC_CLASSES = [
   "after", "article-lead", "article-meta", "article-table", "article-toc", "article-toc-title",
@@ -24,10 +24,20 @@ const SPEC_CLASSES = [
   "step-title", "steps-container", "summary", "summary-intro", "summary-list", "summary-title",
   "table-wrap", "timeline", "timeline-event", "timeline-item", "timeline-year", "timestamp-link",
   "tip", "tip-pop", "tip-term", "toc-no", "toc-time", "toc-title",
+  // Added by the prompt revision with the structure parts and more figure types
+  "answer", "bar-chart", "bar-fill", "bar-label", "bar-row", "bar-track", "bar-value",
+  "chapter-answer", "chapter-answer-label", "flow-arrow", "flow-desc", "flow-no", "flow-row",
+  "flow-step", "flow-title", "logic", "logic-claim", "logic-reason", "logic-reasons", "logic-tag",
+  "loop", "matrix", "matrix-cell", "matrix-col", "matrix-corner", "matrix-row", "overview",
+  "overview-grid", "overview-item", "overview-label", "overview-text", "overview-title",
+  "part-desc", "part-head", "part-no", "part-title", "qa-a", "qa-item", "qa-list", "qa-q",
+  "question", "summary-table", "toc-part", "toc-part-no", "tree", "tree-branch", "tree-branches",
+  "tree-leaves", "tree-node", "tree-root",
+  "w10", "w20", "w30", "w40", "w50", "w60", "w70", "w80", "w90", "w100",
 ];
 
 test("KNOWN_CLASSES is exactly the article prompt's class list", () => {
-  expect(SPEC_CLASSES).toHaveLength(76);
+  expect(SPEC_CLASSES).toHaveLength(76 + 60);
   expect([...KNOWN_CLASSES].sort()).toEqual([...SPEC_CLASSES].sort());
 });
 

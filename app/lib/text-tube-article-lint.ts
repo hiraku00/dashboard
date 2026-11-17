@@ -50,6 +50,21 @@ export const KNOWN_CLASSES = new Set([
   "insight-card", "insight-label", "insight-text", "insight-attr",
   "stats-row", "stat-card", "stat-number", "stat-label",
   "summary", "summary-title", "summary-intro", "summary-list",
+  // Structure: overview map, parts, table-of-contents parts, chapter answers, summary table
+  "overview", "overview-title", "overview-grid", "overview-item", "question", "answer", "overview-label", "overview-text",
+  "flow-row", "flow-step", "flow-no", "flow-title", "flow-desc", "flow-arrow",
+  "toc-part", "toc-part-no",
+  "part-head", "part-no", "part-title", "part-desc",
+  "chapter-answer", "chapter-answer-label",
+  "summary-table",
+  // More figures: loop, tree, matrix, bar chart, claim and reasons, Q&A
+  "loop",
+  "tree", "tree-root", "tree-branches", "tree-branch", "tree-node", "tree-leaves",
+  "matrix", "matrix-corner", "matrix-col", "matrix-row", "matrix-cell",
+  "bar-chart", "bar-row", "bar-label", "bar-track", "bar-fill", "bar-value",
+  "w10", "w20", "w30", "w40", "w50", "w60", "w70", "w80", "w90", "w100",
+  "logic", "logic-claim", "logic-reasons", "logic-reason", "logic-tag",
+  "qa-list", "qa-item", "qa-q", "qa-a",
 ]);
 
 type Tag = { name: string; attrs: Record<string, string>; classes: string[]; start: number; end: number };
