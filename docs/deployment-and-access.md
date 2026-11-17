@@ -28,11 +28,11 @@ migration適用後は、主要APIと既存画面を確認します。既存デ�
 4. `npm run typecheck`でTypeScriptコンパイラチェックを実行
 5. `npm test`でbuildと回帰テストを実行
 6. 検証成功時だけ `wrangler deploy --config wrangler.jsonc` を実行
-7. 主要4ルートのHTTPスモークテストを実行
+7. 主要8ルートが Access に守られていること（未認証で Access のログインへ転送されること）を、HTTPスモークテストで確認
 
 PR時の検証は `.github/workflows/ci.yml`、本番デプロイは `.github/workflows/deploy-production.yml` で管理します。デプロイの同時実行は1件に制限し、先行デプロイが完了してから次のデプロイを開始します。
 
-`npm run typecheck`は、既存コードに残る意味型エラーを段階的に解消するまでの移行期間として、現在は`tsc --noEmit --noCheck`によるコンパイラ互換性チェックを実行します。厳密な意味型チェックの有効化は別途行います。
+`npm run typecheck`は、`wrangler types`で型定義を生成してから`tsc --noEmit`で型を検査します（意味型エラーも失敗になります）。PR時の `ci.yml` は、これに加えて本番依存の `npm audit --omit=dev --audit-level=high` を実行し、high 以上の既知の脆弱性があれば止めます。
 
 GitHubのproduction Environmentには、次のSecretsを登録します。値はリポジトリへ保存しません。
 
@@ -81,6 +81,16 @@ PORTAL_SYNC_CLIENT_ID=<Keychainから実行時に設定>
 ```
 
 secret値をファイルに固定保存せず、Service Tokenを再発行した場合はKeychainとAccess側を同時に更新します。
+
+### Worker側の検証
+
+Accessはホスト名ごとの設定なので、Accessに覆われないホスト名でWorkerに届いたリクエストは、Access側では何も検査されません。Worker自身も、Accessが付けるJWT（`cf-access-jwt-assertion`ヘッダー、またはブラウザの`CF_Authorization` Cookie）の署名・発行元・AUD・期限を検証し、無効なら403を返します（`app/lib/access.ts`）。
+
+- 有効にする値はWorkerのsecretです: `ACCESS_TEAM_DOMAIN`（`<team>.cloudflareaccess.com`）と`ACCESS_AUD`（Access ApplicationのAUD）。2つそろうと有効になり、どちらかが欠けると何もしません。
+- `wrangler.jsonc`の`vars`には書きません。ローカル開発とworkersテストにも効いて、JWTの無いリクエストがすべて403になるためです。
+- 本番では2026-11-17に有効化しました。値の確かめ方: 未認証で本番を叩いたときの転送先URLの`kid=`がAUD、ホスト名がチーム名です。
+- 全員が403になったときは、`npx wrangler secret delete ACCESS_TEAM_DOMAIN`で無効に戻せます。
+- 静的ファイル（CSS・JS・画像）はWorkerを通らないので対象外で、これまでどおりAccessだけが守ります。
 
 #### ちきりんオプチャの同期API
 

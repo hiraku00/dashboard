@@ -46,3 +46,31 @@ Portal同期はDNS解決や接続タイムアウトなどの一時的なネッ�
 ## ストレージ
 
 `/settings/storage` でD1/R2使用量とカテゴリを確認します。R2オブジェクトを手動削除した場合は `storage_objects` と実体の不一致が起きるため、reconciliationを実行してから台帳を修正します。
+
+## バックアップと復元
+
+D1（`hiraku-watch-list`）には Cloudflare 側の Time Travel（過去の時点への復元）がありますが、復元できる期間は限られます。手元にも SQL ファイルとして保存しておきます。
+
+```bash
+npm run backup:d1                      # ~/Backups/dashboard/ に dashboard-d1-<日時>.sql を保存
+node scripts/backup-d1.mjs <出力先>     # 出力先を変える（リポジトリの中は指定できない）
+```
+
+- 読み取りだけです。全テーブルを1回読みます（いまは合計3万行ほど、約15MB）。週に1回ほどを目安にし、繰り返し呼びません。
+- 保存したファイルは個人データそのものです。リポジトリの外に置き、古いものは手で整理します。
+- R2（TextTube の詳細スクリプト、資産同期の原本）は含みません。
+- ウォレット2（`hiraku-manage-asset-wallet2`）は本番から作り直せるので、対象にしていません。
+
+復元は、まず手元で中身を確かめてから行います。
+
+```bash
+# 1. 空のローカル D1 に入れて、件数を確かめる（本番には触らない）
+npx wrangler d1 execute hiraku-watch-list --local --persist-to /tmp/restore-check --file <保存したファイル>
+npx wrangler d1 execute hiraku-watch-list --local --persist-to /tmp/restore-check --command "SELECT COUNT(*) FROM items"
+
+# 2. 直近の誤操作なら、Time Travel で時点を指定して戻すほうが早い
+npx wrangler d1 time-travel info hiraku-watch-list
+npx wrangler d1 time-travel restore hiraku-watch-list --timestamp <ISO日時>
+```
+
+本番へ SQL ファイルを流し込む復元（`--remote --file`）は、既存の行と衝突するので、空の D1 に対してだけ行います。

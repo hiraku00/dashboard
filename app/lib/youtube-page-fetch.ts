@@ -13,6 +13,9 @@ function channelName(html: string) {
   return decodeHtml(tagContent(html, (tag) => attribute(tag, "itemprop").toLowerCase() === "name")).trim();
 }
 
+/** YouTube のページ・oEmbed を待つ上限。 */
+const PAGE_FETCH_TIMEOUT_MS = 10_000;
+
 /** Reads the title and channel name from the public watch page. From Cloudflare's
  *  egress YouTube sometimes answers 200 with a "confirm you're not a bot" page
  *  (playabilityStatus LOGIN_REQUIRED) that carries neither, so the caller must
@@ -20,7 +23,8 @@ function channelName(html: string) {
 async function scrapeWatchPage(videoId: string): Promise<YouTubeFetchResult> {
   let html: string;
   try {
-    const response = await fetch(`https://m.youtube.com/watch?v=${videoId}`, { headers: { "user-agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Version/17.0 Mobile/15E148 Safari/604.1", accept: "text/html" } });
+    // 応答しないまま待たされると、保存の操作ごと止まる。10秒で切り、「接続できませんでした」にする（下の catch）。
+    const response = await fetch(`https://m.youtube.com/watch?v=${videoId}`, { signal: AbortSignal.timeout(PAGE_FETCH_TIMEOUT_MS), headers: { "user-agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Version/17.0 Mobile/15E148 Safari/604.1", accept: "text/html" } });
     if (!response.ok) return { error: "YouTubeの動画ページを取得できませんでした。公開中の動画URLか確認してください。", status: 422 };
     html = await response.text();
   } catch {
@@ -37,7 +41,7 @@ async function scrapeWatchPage(videoId: string): Promise<YouTubeFetchResult> {
  *  way it does the watch page. It only knows embeddable public videos. */
 async function fetchOEmbed(url: string): Promise<YouTubeMetadata | null> {
   try {
-    const response = await fetch(`https://www.youtube.com/oembed?format=json&url=${encodeURIComponent(url)}`, { headers: { accept: "application/json" } });
+    const response = await fetch(`https://www.youtube.com/oembed?format=json&url=${encodeURIComponent(url)}`, { signal: AbortSignal.timeout(PAGE_FETCH_TIMEOUT_MS), headers: { accept: "application/json" } });
     if (!response.ok) return null;
     const data = await response.json() as { title?: unknown; author_name?: unknown } | null;
     const title = typeof data?.title === "string" ? data.title.trim() : "";
