@@ -11,6 +11,8 @@
  *  worker/index.ts is bundled by vite/vinext as the worker entry and takes its
  *  env from the handler argument, so this module has to stay free of that
  *  import to be usable from both sides. */
+import { todoDate } from "./todo-date.ts";
+
 export async function reconcileStorageUsage(
   bucket: R2Bucket,
   db: D1Database,
@@ -28,7 +30,9 @@ export async function reconcileStorageUsage(
     cursor = page.truncated ? page.cursor : undefined;
   } while (cursor);
   const now = new Date().toISOString();
-  const date = now.slice(0, 10);
+  // アプリの「1日」（Asia/Bangkok、todoDate()）の日付で記録する。以前は UTC の日付だったので、
+  // 同じ cron（バンコク 00:00 = UTC 17:00）で測る d1_table_usage_daily より1日前の日付になっていた。
+  const date = todoDate(new Date(now));
   await db
     .prepare(
       "INSERT INTO storage_usage_daily (usage_date,object_count,payload_bytes,source,updated_at) VALUES (?,?,?,?,?) ON CONFLICT(usage_date) DO UPDATE SET object_count=excluded.object_count,payload_bytes=excluded.payload_bytes,source=excluded.source,updated_at=excluded.updated_at",

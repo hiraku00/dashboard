@@ -9,6 +9,7 @@ import { MAX_LIKE_TERM_BYTES, truncateUtf8Bytes, utf8ByteLength } from "./lib/sq
 import { useSearchReload } from "./lib/use-search-reload";
 import { useLatestRequest } from "./lib/use-latest-request";
 import { youTubeVideoId } from "./lib/youtube.ts";
+import { todoDate } from "./lib/todo-date";
 import { CountFilter, EmptyState, ListHeading, Pagination } from "./list-ui";
 
 export type ContentType = "text" | "audio" | "movie" | "other";
@@ -27,7 +28,7 @@ type TextTubeRunResult = { status: "reflected" | "running" | "done" | "failed"; 
 
 const textTubeStatusLabel: Record<TextTubeLinkStatus["status"], string> = { reflected: "反映済", running: "登録中", failed: "失敗", none: "未反映" };
 
-const emptyDraft = (): Draft => ({ contentType: "movie", creatorName: "", seriesTitle: "", title: "", description: "", priority: null, status: "backlog", addedOn: new Date().toISOString().slice(0, 10), watchedOn: null, airedAt: null, comment: "", thumbnailUrl: "", links: [{ label: "", url: "", linkType: "reference" }] });
+const emptyDraft = (): Draft => ({ contentType: "movie", creatorName: "", seriesTitle: "", title: "", description: "", priority: null, status: "backlog", addedOn: todoDate(), watchedOn: null, airedAt: null, comment: "", thumbnailUrl: "", links: [{ label: "", url: "", linkType: "reference" }] });
 const typeLabel: Record<ContentType, string> = { movie: "映像", audio: "音声", text: "テキスト", other: "その他" };
 const statusLabel: Record<Status, string> = { backlog: "未着手", in_progress: "鑑賞中", completed: "完了", dropped: "見送り" };
 const dateLabel = (value: string | null) => value ? value.replaceAll("-", ".") : "未設定";
@@ -245,7 +246,7 @@ export function WatchListApp({
   }
 
   async function updateStatus(item: Item, nextStatus: Status) {
-    const watchedOn = nextStatus === "completed" ? item.watchedOn ?? new Date().toISOString().slice(0, 10) : null;
+    const watchedOn = nextStatus === "completed" ? item.watchedOn ?? todoDate() : null;
     try {
       const response = await fetch(`/api/items/${item.id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...item, status: nextStatus, watchedOn, version: item.version }) });
       if (!response.ok) { setNotice(await readErrorMessage(response, "更新に失敗しました。")); return; }

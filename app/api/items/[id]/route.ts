@@ -67,8 +67,35 @@ export const PATCH = route(async (request: Request, { params }: { params: Promis
   // 放送日時は、送られてこなければ(airedAt が undefined)今の値を残す。状態だけの変更や、
   // 放送日時を知らない API 呼び出しの保存で、取り込み時に入った値を消さないため。
   const airedAtGiven = item.airedAt !== undefined ? 1 : 0;
-  const updateResult = await env.DB.prepare(`UPDATE items SET content_type=?, creator_name=?, series_title=?, title=?, description=?, priority=?, status=?, added_on=?, watched_on=?, aired_at=CASE WHEN ? = 1 THEN ? ELSE aired_at END, comment=?, source_system=?, external_id=?, raw_source=?, thumbnail_url=?, version=version+1, updated_at=? WHERE id=? AND version=? AND deleted_at IS NULL`)
-    .bind(item.contentType, item.creatorName ?? "", item.seriesTitle ?? "", item.title, item.description ?? "", item.priority, item.status ?? "backlog", item.addedOn, item.watchedOn, airedAtGiven, item.airedAt ?? null, item.comment ?? "", item.sourceSystem ?? "manual", item.externalId, item.rawSource, thumbnailUrl, now, id, expectedVersion).run();
+  // 取り込み元の3列も同じ。画面は rawSource を持っていないので、以前は編集や状態変更のたびに
+  // raw_source が null で上書きされ、取り込み時の原本が消えていた。
+  const sourceSystemGiven = item.sourceSystem !== undefined ? 1 : 0;
+  const externalIdGiven = item.externalId !== undefined ? 1 : 0;
+  const rawSourceGiven = item.rawSource !== undefined ? 1 : 0;
+  // 項目の UPDATE とリンクの差し替えは、ひとつの batch(= ひとつのトランザクション)で行う。以前は UPDATE のあとに
+  // 別の batch でリンクを消して入れ直していたので、後者が失敗すると「項目は新しい版、リンクは古いまま」が残った。
+  // リンクの文は、この UPDATE が実際に当たったときだけ働くようにする: 当たっていれば、その行は
+  // version = expectedVersion + 1 かつ updated_at = now になっている(updated_at まで見るのは、ほかの保存が
+  // 先に版を進めた結果と取り違えないため)。当たっていなければ、既存のリンクには触らない。
+  const updated = "EXISTS (SELECT 1 FROM items WHERE id = ? AND version = ? AND updated_at = ? AND deleted_at IS NULL)";
+  const updatedBinds = [id, expectedVersion + 1, now] as const;
+  const statements: D1PreparedStatement[] = [
+    env.DB.prepare(`UPDATE items SET content_type=?, creator_name=?, series_title=?, title=?, description=?, priority=?, status=?, added_on=?, watched_on=?, aired_at=CASE WHEN ? = 1 THEN ? ELSE aired_at END, comment=?, source_system=CASE WHEN ? = 1 THEN ? ELSE source_system END, external_id=CASE WHEN ? = 1 THEN ? ELSE external_id END, raw_source=CASE WHEN ? = 1 THEN ? ELSE raw_source END, thumbnail_url=?, version=version+1, updated_at=? WHERE id=? AND version=? AND deleted_at IS NULL`)
+      .bind(item.contentType, item.creatorName ?? "", item.seriesTitle ?? "", item.title, item.description ?? "", item.priority, item.status ?? "backlog", item.addedOn, item.watchedOn, airedAtGiven, item.airedAt ?? null, item.comment ?? "", sourceSystemGiven, item.sourceSystem ?? "manual", externalIdGiven, item.externalId ?? null, rawSourceGiven, item.rawSource ?? null, thumbnailUrl, now, id, expectedVersion),
+    env.DB.prepare(`DELETE FROM item_links WHERE item_id = ? AND ${updated}`).bind(id, ...updatedBinds),
+  ];
+  for (const [position, link] of (item.links ?? []).entries()) {
+    // Same canonicalUrl() the POST path (app/api/items/route.ts) and
+    // /api/imports use -- strips the fragment and utm_*/fbclid params, not
+    // just the fragment. normalizeItem() already validated every link.url
+    // through canonicalUrl(), so this cannot produce an empty string here.
+    statements.push(env.DB.prepare(`INSERT INTO item_links (id, item_id, label, url, link_type, position, canonical_url) SELECT ?, ?, ?, ?, ?, ?, ? WHERE ${updated}`).bind(crypto.randomUUID(), id, link.label ?? "", link.url, link.linkType ?? "reference", position, canonicalUrl(link.url), ...updatedBinds));
+  }
+  // The version check lives in the UPDATE's WHERE clause (AND version=?), not
+  // in a separate SELECT-then-compare beforehand, so two concurrent saves
+  // cannot both pass it. Its meta.changes is the only thing that can tell
+  // whether this request's version was the one still current at write time.
+  const [updateResult] = await env.DB.batch(statements);
   if (!updateResult.meta.changes) {
     // meta.changes === 0 means either the id doesn't exist, or it exists but
     // its version has already moved on -- distinguish them with one cheap
@@ -78,23 +105,6 @@ export const PATCH = route(async (request: Request, { params }: { params: Promis
       ? Response.json({ error: "ほかの画面で更新されています。再読み込みしてください。" }, { status: 409 })
       : Response.json({ error: "見つかりません。" }, { status: 404 });
   }
-  // Only reached once the versioned UPDATE above actually matched a row --
-  // otherwise this DELETE would silently wipe an existing item's links even
-  // when the version check failed and nothing else about it was touched.
-  const statements: D1PreparedStatement[] = [env.DB.prepare("DELETE FROM item_links WHERE item_id = ?").bind(id)];
-  for (const [position, link] of (item.links ?? []).entries()) {
-    // Same canonicalUrl() the POST path (app/api/items/route.ts) and
-    // /api/imports use -- strips the fragment and utm_*/fbclid params, not
-    // just the fragment. This handler used to compute its own canonical_url
-    // inline with only the fragment stripped, so the same URL could get a
-    // different canonical_url depending on whether it arrived via POST or
-    // PATCH. normalizeItem() already validated every link.url through
-    // canonicalUrl() above (see the `links.some((link) => !canonicalUrl(...))`
-    // check in app/api/items/route.ts), so this cannot produce an empty string
-    // here.
-    statements.push(env.DB.prepare("INSERT INTO item_links (id, item_id, label, url, link_type, position, canonical_url) VALUES (?, ?, ?, ?, ?, ?, ?)").bind(crypto.randomUUID(), id, link.label ?? "", link.url, link.linkType ?? "reference", position, canonicalUrl(link.url)));
-  }
-  await env.DB.batch(statements);
   // 「今回のPATCHで新しく追加されたリンク」だけを取り込み候補にする --
   // 既にあったリンクは前回の保存時に扱われているはずで、状態変更だけの
   // 保存のたびにTextTubeへ登録し直そうとしないため。「新しく追加」の

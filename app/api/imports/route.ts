@@ -42,7 +42,9 @@ export const POST = route(async (request: Request) => {
   for (const [index, candidate] of body.items.entries()) {
     const normalized = normalizeItem(candidate);
     if (!normalized.value) { errors++; messages.push({ index, error: normalized.error ?? "不正なデータです。" }); continue; }
-    accepted.push({ index, item: normalized.value, source: normalized.value.sourceSystem || sourceName });
+    // 項目が sourceSystem を持たなければ、リクエストの sourceName を取り込み元にする。normalizeItem() は以前
+    // 無指定を "manual" に直していたので、sourceName が使われることが無かった。
+    accepted.push({ index, item: normalized.value, source: normalized.value.sourceSystem ?? sourceName });
   }
 
   // Look the external ids up in a handful of indexed queries instead of one
@@ -86,7 +88,7 @@ export const POST = route(async (request: Request) => {
   const inserted: number[] = [];
   for (const [position, { entry, id, now }] of toInsert.entries()) {
     const item = entry.item;
-    statements.push(env.DB.prepare("INSERT INTO items (id,content_type,creator_name,series_title,title,description,priority,status,added_on,watched_on,aired_at,comment,source_system,external_id,raw_source,thumbnail_url,version,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?)").bind(id,item.contentType,item.creatorName ?? "",item.seriesTitle ?? "",item.title,item.description ?? "",item.priority,item.status ?? "backlog",item.addedOn,item.watchedOn,item.airedAt ?? null,item.comment ?? "",entry.source,item.externalId,item.rawSource,thumbnails[position],now,now));
+    statements.push(env.DB.prepare("INSERT INTO items (id,content_type,creator_name,series_title,title,description,priority,status,added_on,watched_on,aired_at,comment,source_system,external_id,raw_source,thumbnail_url,version,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?)").bind(id,item.contentType,item.creatorName ?? "",item.seriesTitle ?? "",item.title,item.description ?? "",item.priority,item.status ?? "backlog",item.addedOn,item.watchedOn,item.airedAt ?? null,item.comment ?? "",entry.source,item.externalId ?? null,item.rawSource ?? null,thumbnails[position],now,now));
     // Same canonicalUrl() the /api/items POST path uses (strips the fragment
     // and utm_*/fbclid params), so an imported link and one entered manually
     // dedupe against item_links_canonical_idx the same way -- that index is

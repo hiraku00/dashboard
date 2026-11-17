@@ -143,3 +143,19 @@ describe("imports keep the broadcast time (aired_at)", () => {
     expect((await row("imported 304"))?.aired_at).toBe("2026-11-12T05:45");
   });
 });
+
+describe("imports: the request's sourceName is the origin of items that name none", () => {
+  test("an item without sourceSystem is stored under sourceName, and is skipped on a repeat", async () => {
+    const plain = { contentType: "movie", title: "source-name item", externalId: "source-name-1" };
+    expect((await importItems([plain], "my-feed")).body.created).toBe(1);
+    expect((await row("source-name item"))?.source_system).toBe("my-feed");
+    const repeat = await importItems([plain], "my-feed");
+    expect(repeat.body.created).toBe(0);
+    expect(repeat.body.messages[0]?.error).toContain("スキップ");
+  });
+
+  test("an item that names its own sourceSystem keeps it", async () => {
+    expect((await importItems([item(9001)], "my-feed")).body.created).toBe(1);
+    expect((await row("imported 9001"))?.source_system).toBe("tv-program");
+  });
+});

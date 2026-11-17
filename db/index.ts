@@ -100,7 +100,7 @@ export const TV_PROGRAM_AIRED_AT_BACKFILL = `UPDATE items SET aired_at = added_o
 
 /** Bump whenever the DDL below changes, so existing databases re-run it once.
  *  A database whose schema_meta row already matches skips the whole batch. */
-const SCHEMA_VERSION = 19;
+const SCHEMA_VERSION = 20;
 
 /** Reads the recorded schema version. A database that predates schema_meta (or
  *  a brand new one) has no table, and the query fails rather than returning a
@@ -123,10 +123,15 @@ export async function ensureSchema({ seed = true }: { seed?: boolean } = {}) {
   // first request re-ran ~40 DDL statements against D1 -- all no-ops on an
   // already-provisioned database, but each one still a write query against
   // the daily quota. One cheap single-row read replaces them.
-  if ((await recordedSchemaVersion()) === SCHEMA_VERSION) {
+  const recorded = await recordedSchemaVersion();
+  if (recorded === SCHEMA_VERSION) {
     schemaReady = true;
     return;
   }
+  // データを直す1回限りの処理は、その版をまだ通っていない DB でだけ流す。以前は版を上げるたびに全部が
+  // もう一度走っていた（どれも二度目は何も変えないが、テーブルを読み直す分だけ無駄だった）。
+  // 版の記録が無い DB（新規、または schema_meta より前のもの）は、すべて流す。
+  const needs = (version: number) => recorded === null || recorded < version;
 
   await env.DB.batch([
     env.DB.prepare(`CREATE TABLE IF NOT EXISTS schema_meta (
@@ -396,7 +401,7 @@ export async function ensureSchema({ seed = true }: { seed?: boolean } = {}) {
   await env.DB.prepare("ALTER TABLE openchat_comments ADD COLUMN body_edited INTEGER NOT NULL DEFAULT 0").run().catch(() => {});
   // Schema version 11: リンクカードの題名のOCR(link_title)は使わない(同期でも空で持つ。app/api/openchat/sync/route.ts)。
   // 顔アイコンの誤読(「あききます。」など)が入っていたので、残っている値を1回だけ空にする(migrations/0015_openchat_clear_link_title.sql)。
-  await env.DB.prepare("UPDATE openchat_notes SET link_title = '' WHERE link_title <> ''").run();
+  if (needs(11)) await env.DB.prepare("UPDATE openchat_notes SET link_title = '' WHERE link_title <> ''").run();
   // Schema version 3. SQLite has no ADD COLUMN IF NOT EXISTS, so a database that
   // already has the column (a fresh one, from the CREATE above) throws and the
   // error is the expected "nothing to do".
@@ -404,7 +409,7 @@ export async function ensureSchema({ seed = true }: { seed?: boolean } = {}) {
   // Schema version 18: 放送日時(日本時間 "YYYY-MM-DDTHH:MM")。一覧は同じ追加日の中でこの順に並ぶ
   // (app/lib/watch-list-query.ts の ITEMS_ORDER_BY)。thumbnail_url と同じ理由でマイグレーションファイルは作らない。
   await env.DB.prepare("ALTER TABLE items ADD COLUMN aired_at TEXT").run().catch(() => {});
-  await env.DB.prepare(TV_PROGRAM_AIRED_AT_BACKFILL).run();
+  if (needs(18)) await env.DB.prepare(TV_PROGRAM_AIRED_AT_BACKFILL).run();
   // Schema version 4. app/lib/text-tube-import.ts matches a Watch List
   // YouTube link to an already-imported video by this column, so an
   // existing database needs it backfilled once, not just created empty on
@@ -417,7 +422,8 @@ export async function ensureSchema({ seed = true }: { seed?: boolean } = {}) {
   await env.DB.prepare(
     "CREATE INDEX IF NOT EXISTS text_tube_videos_youtube_idx ON text_tube_videos(youtube_video_id)",
   ).run().catch(() => {});
-  await env.DB.prepare(
+  // Schema version 20 でもう一度流す: 手で追加した動画（POST /api/text-tube/videos）はこの列を入れていなかった。
+  if (needs(20)) await env.DB.prepare(
     "UPDATE text_tube_videos SET youtube_video_id = substr(original_url, instr(original_url, 'v=') + 2, 11) WHERE youtube_video_id IS NULL AND original_url LIKE '%watch?v=%'",
   ).run().catch(() => {});
   // One snapshot per source and date. The collector syncs 8-20 times a day and

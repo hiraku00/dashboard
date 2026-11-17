@@ -117,9 +117,16 @@ test("a missing linkType defaults to 'reference'", () => {
   expect(result.value?.links[0].linkType).toBe("reference");
 });
 
-test("sourceSystem defaults to 'manual' when omitted or blank", () => {
-  expect(normalizeItem({ contentType: "movie", title: "t" }).value?.sourceSystem).toBe("manual");
+test("the import-origin fields stay undefined when omitted (PATCH keeps the stored value); a blank sourceSystem is 'manual'", () => {
+  const omitted = normalizeItem({ contentType: "movie", title: "t" }).value;
+  expect(omitted?.sourceSystem).toBeUndefined();
+  expect(omitted?.externalId).toBeUndefined();
+  expect(omitted?.rawSource).toBeUndefined();
   expect(normalizeItem({ contentType: "movie", title: "t", sourceSystem: "" }).value?.sourceSystem).toBe("manual");
+  const given = normalizeItem({ contentType: "movie", title: "t", sourceSystem: "tv-program", externalId: "", rawSource: null }).value;
+  expect(given?.sourceSystem).toBe("tv-program");
+  expect(given?.externalId).toBeNull();
+  expect(given?.rawSource).toBeNull();
 });
 
 test("returns a full normalized value for a valid item", () => {
@@ -142,9 +149,9 @@ test("returns a full normalized value for a valid item", () => {
     addedOn: null,
     watchedOn: "2026-01-05",
     comment: "",
-    sourceSystem: "manual",
-    externalId: null,
-    rawSource: null,
+    sourceSystem: undefined,
+    externalId: undefined,
+    rawSource: undefined,
     links: [],
   });
 });

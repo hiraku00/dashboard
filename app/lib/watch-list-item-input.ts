@@ -33,6 +33,8 @@ export type ItemInput = {
    *  undefined は「送られてこなかった」で、PATCH は今の値を残す(null は「消す」)。 */
   airedAt?: string | null;
   comment?: string;
+  /** 取り込み元の3列。airedAt と同じく、undefined は「送られてこなかった」。新規作成は既定値
+   *  ("manual" / null / null)を入れ、PATCH は今の値を残し、/api/imports は sourceName を使う。 */
   sourceSystem?: string;
   externalId?: string | null;
   rawSource?: string | null;
@@ -96,9 +98,9 @@ export function normalizeItem(input: unknown): { value?: ItemInput; error?: stri
       watchedOn: watchedOn || null,
       airedAt,
       comment: cleanText(source.comment, 12000),
-      sourceSystem: cleanText(source.sourceSystem, 100) || "manual",
-      externalId: cleanText(source.externalId, 500) || null,
-      rawSource: typeof source.rawSource === "string" ? source.rawSource.slice(0, 30000) : null,
+      sourceSystem: source.sourceSystem === undefined ? undefined : cleanText(source.sourceSystem, 100) || "manual",
+      externalId: source.externalId === undefined ? undefined : cleanText(source.externalId, 500) || null,
+      rawSource: source.rawSource === undefined ? undefined : typeof source.rawSource === "string" ? source.rawSource.slice(0, 30000) : null,
       links,
     },
   };
