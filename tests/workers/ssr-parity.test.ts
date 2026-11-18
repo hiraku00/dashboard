@@ -243,6 +243,8 @@ describe("Storage usage page", () => {
     expect(html).toMatch(/r2-usage-panel/);
     expect(html).toMatch(/d1-usage-panel/);
     expect(html).toMatch(/transcript-usage-panel/);
+    // 日次上限と並べる本日の読み書きは Analytics 次第なので、未設定のこの環境では案内を出す
+    expect(html).toContain("上限に対する使用量");
   });
 
   // The R2 panel (categories/bytes) is entirely D1-backed and renders
@@ -255,7 +257,7 @@ describe("Storage usage page", () => {
       "INSERT INTO storage_objects (object_key,category,size_bytes,sha256,content_type,created_at) VALUES (?,?,?,?,?,?)",
     ).bind("ssr-parity-storage-object", "text-tube/videos", 2 * 1024 * 1024, "deadbeef", "text/plain", new Date().toISOString()).run();
     const html = await SELF.fetch(`${BASE}/settings/storage`).then((response) => response.text());
-    expect(html).toContain("TextTubeの保存済み本文");
+    expect(html).toContain("TextTube 保存済み本文");
     // React renders a text-node boundary comment between a dynamic value and
     // adjacent static text (e.g. `2.00<!-- --> MB`) -- see the matching
     // comment on the Watch List page's own SSR test above.
@@ -277,17 +279,19 @@ describe("Storage usage page", () => {
     ]);
     const html = await pageResponse.text();
     expect(html).toContain("主な保存データ");
-    // The count is the first text of the row's count cell
-    // (<strong class="usage-count">), so matching right after it is exact.
-    const watchListRow = html.match(/Watch List<\/span><strong[^>]*>(\d+)/);
-    expect(watchListRow, "expected a Watch List row with a numeric count in the raw HTML").toBeTruthy();
-    expect(Number(watchListRow![1])).toBe(apiBody.databaseRecords.watchList);
+    // 件数は行見出し(<th scope="row">)の次のセルの先頭。3桁区切りのカンマを外して比べる
+    const countOf = (name: string) => {
+      const match = html.match(new RegExp(`${name}</th><td[^>]*>([\\d,]+)`));
+      expect(match, `expected a ${name} row with a numeric count in the raw HTML`).toBeTruthy();
+      return Number(match![1].replaceAll(",", ""));
+    };
+    expect(countOf("Watch List")).toBe(apiBody.databaseRecords.watchList);
     // ちきりんオプチャ(D1のノート・コメント)も保存データとして数える
-    expect(Number(html.match(/ちきりんオプチャのノート<\/span><strong[^>]*>(\d+)/)?.[1])).toBe(apiBody.databaseRecords.openchatNotes);
-    expect(Number(html.match(/ちきりんオプチャのコメント<\/span><strong[^>]*>(\d+)/)?.[1])).toBe(apiBody.databaseRecords.openchatComments);
+    expect(countOf("オプチャ ノート")).toBe(apiBody.databaseRecords.openchatNotes);
+    expect(countOf("オプチャ コメント")).toBe(apiBody.databaseRecords.openchatComments);
     // To Do のタスクと作業日報も保存データとして数える
-    expect(Number(html.match(/To Doのタスク<\/span><strong[^>]*>(\d+)/)?.[1])).toBe(apiBody.databaseRecords.todoTasks);
-    expect(Number(html.match(/作業日報<\/span><strong[^>]*>(\d+)/)?.[1])).toBe(apiBody.databaseRecords.dailyReports);
+    expect(countOf("To Do タスク")).toBe(apiBody.databaseRecords.todoTasks);
+    expect(countOf("作業日報")).toBe(apiBody.databaseRecords.dailyReports);
   });
 
   // The functional tests above would all still pass even if someone
@@ -306,7 +310,7 @@ describe("Storage usage page", () => {
     // on timing -- the nav being a client component moved it from the first to
     // the second here. Both are the boundary doing its job; what this must catch
     // is no boundary at all, i.e. a blocking await.
-    expect(html).toMatch(/<!--\$\??-->(?:<template id="B:\d+"><\/template>)?<section class="settings-panel usage-panel d1-usage-panel"/);
+    expect(html).toMatch(/<!--\$\??-->(?:<template id="B:\d+"><\/template>)?<(?:article|div) class="usg-meter /);
     expect(html).toContain(`<!--/$-->`);
   });
 

@@ -10,7 +10,7 @@ export function MeasureButton({ measuredToday }: { measuredToday: boolean }) {
   const [message, setMessage] = useState("");
 
   if (measuredToday) {
-    return <button type="button" className="secondary-button usage-measure-button" disabled>今日の分は計測済み</button>;
+    return <button type="button" className="secondary-button usg-measure-button" disabled>今日の分は計測済み</button>;
   }
 
   const measure = async () => {
@@ -33,11 +33,11 @@ export function MeasureButton({ measuredToday }: { measuredToday: boolean }) {
   };
 
   return (
-    <span className="usage-measure">
-      <button type="button" className="secondary-button usage-measure-button" onClick={measure} disabled={state === "running"}>
+    <span className="usg-measure">
+      <button type="button" className="secondary-button usg-measure-button" onClick={measure} disabled={state === "running"}>
         {state === "running" ? "計測中…" : "今日の分を計測"}
       </button>
-      {message ? <span className="usage-measure-error" role="alert">{message}</span> : null}
+      {message ? <span className="usg-measure-error" role="alert">{message}</span> : null}
     </span>
   );
 }
