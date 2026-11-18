@@ -1,4 +1,4 @@
-import { Suspense } from "react";
+import { Suspense, cache, type ReactNode } from "react";
 import { PortalHeader } from "../../portal-nav";
 import { dailyResetWindows } from "../../lib/usage-window";
 import { R2_SOFT_LIMIT_BYTES } from "@/app/lib/r2-storage";
@@ -13,283 +13,305 @@ const D1_STORAGE_LIMIT_BYTES = 5 * 1024 * 1024 * 1024;
 const TRANSCRIPT_LIMIT = 100;
 const count = new Intl.NumberFormat("ja-JP");
 
+// 上段の D1 のメーター3枚と、下段の「直近30日の合計」の両方が使う。cache() で1リクエスト1回にする
+// (Cloudflare の外部 API で遅いので、2回呼ぶと画面がその分遅れる)。
+const analytics = cache(cloudflareAnalyticsUsage);
+
 function storageCategoryName(category: string) {
-  if (category === "manage-asset/raw") return "Manage Assetの取得原本";
-  if (category === "text-tube/videos") return "TextTubeの保存済み本文";
+  if (category === "manage-asset/raw") return "Manage Asset 取得原本";
+  if (category === "text-tube/videos") return "TextTube 保存済み本文";
   return category;
 }
 
-// Server Component (Issue #72). d1BackedUsage() is direct D1 I/O (fast) and
-// is awaited here so the R2/Supadata panels and the D1 panel's own "主な保存
-// データ" record counts are in the very first byte of HTML. The D1 panel's
-// storage/read-write meters depend on Cloudflare's external Analytics API
-// instead (an order of magnitude slower -- see
-// app/lib/queries/storage-usage.ts), so that fetch is isolated inside
-// <D1AnalyticsPanel> under its own <Suspense> boundary: the rest of the page
-// does not wait on it, the same way it never waited on the R2/Supadata data
-// either.
+/** 主な保存データの行(D1)。名前は1行に収まる短さにする。records の無い行(台帳など)は件数を持たない。 */
+const D1_ROWS: Array<{ group: UsageGroupKey; name: string; records?: keyof D1BackedUsage["databaseRecords"]; unit?: string }> = [
+  { group: "watchList", name: "Watch List", records: "watchList" },
+  { group: "manageAsset", name: "Manage Asset（ウォレット1）", records: "manageAsset" },
+  { group: "manageAssetWallet2", name: "Manage Asset（ウォレット2）", records: "manageAssetWallet2" },
+  { group: "textTube", name: "TextTube 動画", records: "textTube" },
+  { group: "openchatNotes", name: "オプチャ ノート", records: "openchatNotes" },
+  { group: "openchatComments", name: "オプチャ コメント", records: "openchatComments" },
+  { group: "todoTasks", name: "To Do タスク", records: "todoTasks" },
+  { group: "dailyReports", name: "作業日報", records: "dailyReports", unit: "日分" },
+  { group: "system", name: "台帳・同期の記録など" },
+];
+
+// Server Component (Issue #72). d1BackedUsage() は D1 への直接クエリ(速い)なので
+// ここで await し、R2・字幕API・主な保存データは最初の HTML に入れる。D1 の容量と
+// 読み書き行数は Cloudflare の外部 Analytics API (一桁遅い) に依存するので、その部分
+// だけ <Suspense> に分け、ページの残りを待たせない。
 export default async function StoragePage() {
   const month = new Date().toISOString().slice(0, 7);
   const d1Query = await d1BackedUsage(month);
-  const used = d1Query.usage.bytes;
-  const pct = Math.min(100, (used / R2_SOFT_LIMIT_BYTES) * 100);
+  const r2Used = d1Query.usage.bytes;
+  const r2Growth = d1Query.categories.reduce((sum, row) => sum + Number(row.bytes) - Number(row.bytes_30d_ago ?? row.bytes), 0);
   const transcript = { month, ...d1Query.transcriptUsage };
-  const transcriptPct = Math.min(100, (transcript.credits / TRANSCRIPT_LIMIT) * 100);
 
   return (
     <main className="portal-shell">
       <PortalHeader title="使用量・上限" active="/settings/storage" />
-      <div className="usage-page-stack">
-        <section className="settings-panel usage-panel r2-usage-panel">
-          <div className="panel-heading">
-            <div>
-              <p className="app-kicker usage-provider"><span>CLOUDFLARE</span><span>R2</span></p>
-              <h2>保存容量</h2>
-            </div>
-            <span>安全上限 8 GB</span>
-          </div>
-          <div className="usage-primary">
-            <strong>{(used / 1024 / 1024 / 1024).toFixed(2)} GB</strong>
-            <span>使用率 {pct.toFixed(2)}%</span>
-          </div>
-          <div className="usage-meter" aria-label={`R2保存容量 ${pct.toFixed(2)}%`}>
-            <div className="usage-bar"><span style={{ width: `${pct}%` }} /></div>
-            <p>ファイルを保存する領域です。Watch Listはファイルを持たず、D1に記録します。</p>
-          </div>
-          <div className="usage-breakdown r2-breakdown">
-            <div className="usage-section-label">保存しているファイル</div>
+      {!d1Query.ok && (
+        <p className="notice usg-notice" role="alert">
+          D1への直接クエリが失敗しています（{d1Query.error ?? "原因不明"}）。無料枠の日次上限を使い切っている可能性があります。D1の容量と読み書き行数（Cloudflare Analytics由来）は影響を受けません。
+        </p>
+      )}
+
+      <section className="usg-overview" aria-labelledby="usg-overview-title">
+        <h2 id="usg-overview-title" className="usg-section-title">上限に対する使用量</h2>
+        <div className="usg-meters">
+          <Meter
+            className="r2-usage-panel"
+            provider="R2"
+            label="ファイル保存容量"
+            value={formatBytes(r2Used)}
+            limit="安全上限 8 GB"
+            pct={(r2Used / R2_SOFT_LIMIT_BYTES) * 100}
+            sub={`30日で ${formatBytesDelta(r2Growth)}`}
+          />
+          <Suspense fallback={<><MeterSkeleton /><MeterSkeleton /><MeterSkeleton /></>}>
+            <D1Meters />
+          </Suspense>
+          <Meter
+            className="transcript-usage-panel"
+            provider="Supadata"
+            label={`字幕API（${Number(month.slice(5))}月）`}
+            value={count.format(transcript.credits)}
+            unit="回"
+            limit={`無料枠の目安 ${TRANSCRIPT_LIMIT}回/月`}
+            pct={(transcript.credits / TRANSCRIPT_LIMIT) * 100}
+            sub={`取得試行 ${count.format(transcript.attempts)}回`}
+          />
+        </div>
+      </section>
+
+      <div className="usg-details">
+        <section className="usg-card d1-usage-panel" aria-labelledby="usg-d1-title">
+          <CardHeading provider="D1" title="データベースに保存しているもの" id="usg-d1-title" />
+          <D1DataTable d1Query={d1Query} />
+        </section>
+
+        <div className="usg-side">
+          <section className="usg-card" aria-labelledby="usg-r2-title">
+            <CardHeading provider="R2" title="保存しているファイル" id="usg-r2-title" />
             {d1Query.categories.length ? (
-              <div className="usage-columns">
-                {d1Query.categories.map((row) => (
-                  <UsageRow
-                    key={row.category as string}
-                    name={storageCategoryName(row.category as string)}
-                    count={`${count.format(Number(row.count))} 件`}
-                    size={formatBytes(Number(row.bytes))}
-                    growth={`30日で ${formatBytesDelta(Number(row.bytes) - Number(row.bytes_30d_ago ?? row.bytes))}`}
-                  />
-                ))}
-              </div>
+              <table className="usg-table">
+                <thead><tr><th scope="col">種類</th><th scope="col">件数</th><th scope="col">容量</th><th scope="col">30日の増加</th></tr></thead>
+                <tbody>
+                  {d1Query.categories.map((row) => (
+                    <tr key={row.category as string}>
+                      <th scope="row">{storageCategoryName(row.category as string)}</th>
+                      <td>{count.format(Number(row.count))}</td>
+                      <td>{formatBytes(Number(row.bytes))}</td>
+                      <td className="usg-delta">{formatBytesDelta(Number(row.bytes) - Number(row.bytes_30d_ago ?? row.bytes))}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             ) : (
-              <div className="usage-row"><span>保存されたファイルはまだありません</span></div>
+              <p className="usg-empty">保存されたファイルはまだありません。</p>
             )}
-          </div>
-        </section>
+          </section>
 
-        <Suspense fallback={<D1PanelSkeleton />}>
-          <D1AnalyticsPanel d1Query={d1Query} />
-        </Suspense>
+          <section className="usg-card" aria-labelledby="usg-transcript-title">
+            <CardHeading
+              provider="Supadata"
+              title="字幕API"
+              id="usg-transcript-title"
+              action={<a className="usg-link" href="https://dash.supadata.ai" target="_blank" rel="noreferrer">Supadataで確認 ↗</a>}
+            />
+            <dl className="usg-facts">
+              <div><dt>今月の消費</dt><dd>{count.format(transcript.credits)} クレジット</dd></div>
+              <div><dt>取得試行</dt><dd>{count.format(transcript.attempts)} 回</dd></div>
+              <div><dt>最終取得</dt><dd>
+                {transcript.lastUsedAt
+                  // サーバーで描くので timeZone を省くと Worker の UTC になる。ほかの日付表示と同じバンコク時間に固定して明記する。
+                  ? `${new Intl.DateTimeFormat("ja-JP", { dateStyle: "medium", timeStyle: "short", timeZone: TODO_TIMEZONE }).format(new Date(transcript.lastUsedAt))}（バンコク）`
+                  : "まだありません"}
+              </dd></div>
+            </dl>
+          </section>
 
-        <section className="settings-panel usage-panel transcript-usage-panel">
-          <div className="panel-heading">
-            <div>
-              <p className="app-kicker usage-provider"><span>SUPADATA</span><span>TextTube</span></p>
-              <h2>字幕API使用量</h2>
-            </div>
-            <a className="secondary-button" href="https://dash.supadata.ai" target="_blank" rel="noreferrer">
-              Supadataで確認
-            </a>
-          </div>
-          <div className="usage-primary">
-            <strong>{transcript.credits} 回</strong>
-            <span>無料枠の目安 100回/月</span>
-          </div>
-          <div className="usage-meter" aria-label={`字幕API使用量 ${transcriptPct.toFixed(2)}%`}>
-            <div className="usage-bar"><span style={{ width: `${transcriptPct}%` }} /></div>
-            <p>{transcript.month}の実消費。字幕取得は通常1回=1クレジットです。</p>
-          </div>
-          <div className="usage-breakdown">
-            <div className="usage-row"><span>取得試行</span><strong>{transcript.attempts} 回</strong></div>
-            <div className="usage-row"><span>最終取得</span><strong>
-              {transcript.lastUsedAt
-                // Rendered on the server now (Issue #72), so an unspecified
-                // timeZone would use the Worker's own zone (UTC), not the
-                // viewer's -- unlike the pre-RSC client-rendered version,
-                // which always matched whichever timezone the viewer's own
-                // device was set to. Pinned to Asia/Bangkok (this app's
-                // other date displays -- todoDate(), dailyResetWindows() --
-                // already assume it) and labeled explicitly so a viewer
-                // reading this from a different timezone is not misled into
-                // thinking it's their own local time.
-                ? `${new Intl.DateTimeFormat("ja-JP", { dateStyle: "medium", timeStyle: "short", timeZone: TODO_TIMEZONE }).format(new Date(transcript.lastUsedAt))}（バンコク時間）`
-                : "まだありません"}
-            </strong></div>
-          </div>
-        </section>
+          <Suspense fallback={null}>
+            <D1Last30Days />
+          </Suspense>
+        </div>
       </div>
     </main>
   );
 }
 
-function D1PanelSkeleton() {
+function CardHeading({ provider, title, id, action }: { provider: string; title: string; id: string; action?: ReactNode }) {
   return (
-    <section className="settings-panel usage-panel d1-usage-panel">
-      <div className="panel-heading">
-        <div>
-          <p className="app-kicker usage-provider"><span>CLOUDFLARE</span><span>D1</span></p>
-          <h2>データベース使用量</h2>
-        </div>
+    <header className="usg-card-heading">
+      <div>
+        <span className="usg-provider">{provider}</span>
+        <h2 id={id}>{title}</h2>
       </div>
-      <div className="usage-skeleton" aria-hidden="true" />
+      {action}
+    </header>
+  );
+}
+
+/** 上段のメーター1枚。使用率で色を変える(50%未満=緑、80%未満=黄、それ以上=赤)。 */
+function Meter({ provider, label, value, unit, limit, pct, sub, title, className }: {
+  provider: string; label: string; value: string; unit?: string; limit: string; pct: number; sub?: string; title?: string; className?: string;
+}) {
+  const clamped = Math.min(100, Math.max(0, pct));
+  const level = pct >= 80 ? "is-danger" : pct >= 50 ? "is-warn" : "is-ok";
+  const pctLabel = pct > 0 && pct < 0.01 ? "<0.01" : pct.toFixed(pct < 10 ? 2 : 1);
+  return (
+    <article className={`usg-meter ${level} ${className ?? ""}`} title={title}>
+      <p className="usg-meter-label"><span className="usg-provider">{provider}</span>{label}</p>
+      <p className="usg-meter-value"><strong>{value}</strong>{unit && <span>{unit}</span>}<em>{pctLabel}%</em></p>
+      <div className="usg-bar" role="meter" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Number(clamped.toFixed(2))} aria-label={`${label} ${pct.toFixed(2)}%`}>
+        <span style={{ width: `${clamped}%` }} />
+      </div>
+      <p className="usg-meter-limit">{limit}</p>
+      {sub && <p className="usg-meter-sub">{sub}</p>}
+    </article>
+  );
+}
+
+function MeterSkeleton() {
+  return <div className="usg-meter usg-skeleton" aria-hidden="true" />;
+}
+
+/** D1 の容量と、本日(UTC)の読み取り・書き込み行数を、それぞれの上限と並べる。 */
+async function D1Meters() {
+  const d1 = await analytics();
+  if (!d1.configured) {
+    return (
+      <article className="usg-meter usg-meter-wide">
+        <p className="usg-meter-label"><span className="usg-provider">D1</span>データベース（Analytics未設定）</p>
+        <p className="usg-empty">Cloudflare Analyticsの読み取り専用トークンを設定すると、D1の容量と本日の読み書き行数を表示します。</p>
+      </article>
+    );
+  }
+  // 日次上限は UTC 0時に戻る。こちらの朝(日本9時・バンコク7時)より前の分は前日に数えられるので、期間をツールチップで示す。
+  const windows = dailyResetWindows(d1.today.date).map((window) => `${window.label} ${window.start}〜${window.end}`).join("\n");
+  const windowTitle = `本日の集計期間（UTC ${d1.today.date}）\n${windows}\nコレクタの同期もUTC基準（00:00〜02:30）なので、必ずこの期間に入ります。`;
+  const avgRead = Math.round(d1.last30Days.rowsRead / 30);
+  const avgWritten = Math.round(d1.last30Days.rowsWritten / 30);
+  return (
+    <>
+      <Meter
+        provider="D1"
+        label="データベース容量"
+        value={formatBytes(d1.storageBytes)}
+        limit="無料枠 5 GB"
+        pct={(d1.storageBytes / D1_STORAGE_LIMIT_BYTES) * 100}
+      />
+      <Meter
+        provider="D1"
+        label="本日の読み取り"
+        value={count.format(d1.today.rowsRead)}
+        unit="行"
+        limit="上限 500万行/日 · UTC 0時に戻る"
+        pct={(d1.today.rowsRead / D1_DAILY_ROWS_READ_LIMIT) * 100}
+        sub={`30日平均 ${count.format(avgRead)}行/日（${((avgRead / D1_DAILY_ROWS_READ_LIMIT) * 100).toFixed(1)}%）`}
+        title={windowTitle}
+      />
+      <Meter
+        provider="D1"
+        label="本日の書き込み"
+        value={count.format(d1.today.rowsWritten)}
+        unit="行"
+        limit="上限 10万行/日 · UTC 0時に戻る"
+        pct={(d1.today.rowsWritten / D1_DAILY_ROWS_WRITTEN_LIMIT) * 100}
+        sub={`30日平均 ${count.format(avgWritten)}行/日（${((avgWritten / D1_DAILY_ROWS_WRITTEN_LIMIT) * 100).toFixed(1)}%）`}
+        title={windowTitle}
+      />
+    </>
+  );
+}
+
+/** 直近30日の読み書きの合計(参考値)。日次上限との比較は上段のメーターでする。 */
+async function D1Last30Days() {
+  const d1 = await analytics();
+  if (!d1.configured) return null;
+  return (
+    <section className="usg-card" aria-labelledby="usg-30d-title">
+      <CardHeading provider="D1" title="直近30日の合計" id="usg-30d-title" />
+      <dl className="usg-facts">
+        <div><dt>読み取り行数</dt><dd>{count.format(d1.last30Days.rowsRead)}</dd></div>
+        <div><dt>書き込み行数</dt><dd>{count.format(d1.last30Days.rowsWritten)}</dd></div>
+        <div><dt>読み取りクエリ</dt><dd>{count.format(d1.last30Days.readQueries)}</dd></div>
+        <div><dt>書き込みクエリ</dt><dd>{count.format(d1.last30Days.writeQueries)}</dd></div>
+      </dl>
     </section>
   );
 }
 
-async function D1AnalyticsPanel({ d1Query }: { d1Query: D1BackedUsage }) {
-  const d1 = await cloudflareAnalyticsUsage();
-  const todayRowsRead = d1.configured ? d1.today.rowsRead : 0;
-  const todayRowsWritten = d1.configured ? d1.today.rowsWritten : 0;
-  const d1StoragePct = Math.min(100, ((d1.configured ? d1.storageBytes : 0) / D1_STORAGE_LIMIT_BYTES) * 100);
-  const todayReadPct = Math.min(100, (todayRowsRead / D1_DAILY_ROWS_READ_LIMIT) * 100);
-  const todayWrittenPct = Math.min(100, (todayRowsWritten / D1_DAILY_ROWS_WRITTEN_LIMIT) * 100);
-  const tableUsage = d1Query.tableUsage;
-
+/** 主な保存データ。件数は今の D1、容量と増え方は1日1回の計測(app/lib/d1-table-usage.ts)。
+ *  件数は Analytics の設定と無関係に出す(Issue #100)。 */
+function D1DataTable({ d1Query }: { d1Query: D1BackedUsage }) {
+  const usage: TableUsageSummary = d1Query.tableUsage;
+  const measured = Boolean(usage.date);
+  const growthHeader = usage.baseDate ? `${usage.days}日の増加` : null;
   return (
-    <section className="settings-panel usage-panel d1-usage-panel">
-      <div className="panel-heading">
-        <div>
-          <p className="app-kicker usage-provider"><span>CLOUDFLARE</span><span>D1</span></p>
-          <h2>データベース使用量</h2>
-        </div>
-        <span>{d1.configured ? `本日 ${d1.today.date}` : "未設定"}</span>
+    <>
+      <table className="usg-table">
+        <caption className="usg-visually-hidden">主な保存データ</caption>
+        <thead>
+          <tr><th scope="col">データ</th><th scope="col">件数</th>{measured && <th scope="col">容量</th>}{growthHeader && <th scope="col">{growthHeader}</th>}</tr>
+        </thead>
+        <tbody>
+          {D1_ROWS.filter((row) => row.records || measured).map((row) => {
+            const entry = usage.groups.find((candidate) => candidate.key === row.group);
+            const bytes = entry?.bytes ?? 0;
+            return (
+              <tr key={row.group}>
+                <th scope="row">{row.name}</th>
+                <td>{row.records ? `${count.format(d1Query.databaseRecords[row.records])}${row.unit ?? ""}` : "—"}</td>
+                {measured && <td>{formatBytes(bytes)}</td>}
+                {growthHeader && <td className="usg-delta">{entry?.baseBytes != null ? formatBytesDelta(bytes - entry.baseBytes) : "—"}</td>}
+              </tr>
+            );
+          })}
+        </tbody>
+        {measured && (
+          <tfoot>
+            <tr>
+              <th scope="row">合計</th>
+              <td />
+              <td>{formatBytes(usage.totalBytes)}</td>
+              {growthHeader && <td className="usg-delta">{usage.baseTotalBytes !== null ? formatBytesDelta(usage.totalBytes - usage.baseTotalBytes) : "—"}</td>}
+            </tr>
+          </tfoot>
+        )}
+      </table>
+      <div className="usg-measure-row">
+        <p>{measured ? `容量は ${usage.date} 0時（バンコク）の計測` : "容量は毎日0時（バンコク）に計測します。まだ記録がありません。"}</p>
+        {/* ウォレット2の計測がまだ無い日（足した日）は、今日の分をもう一度測れるようにする */}
+        <MeasureButton measuredToday={usage.date === todoDate() && usage.groups.some((group) => group.key === "manageAssetWallet2")} />
       </div>
-      {d1.configured && !d1Query.ok && (
-        <p className="notice" role="alert">
-          D1への直接クエリが失敗しています（{d1Query.error ?? "原因不明"}）。無料枠の日次上限を使い切っている可能性があります。以下のCloudflare Analytics由来の数値は影響を受けません。
-        </p>
+      {measured && (
+        <details className="usg-more">
+          <summary>テーブル別の内訳と計測のしかた</summary>
+          <p>
+            容量は毎日0時（バンコク）に、各テーブルの値の長さを足して出す概算です。索引やページの余白は含まないので、
+            上のデータベース容量より小さく出ます。件数は今の値、容量と増加は計測した日の値です。
+          </p>
+          <table className="usg-table usg-table-raw">
+            <thead><tr><th scope="col">テーブル</th><th scope="col">行数</th><th scope="col">容量</th>{growthHeader && <th scope="col">{growthHeader}</th>}</tr></thead>
+            <tbody>
+              {usage.groups.flatMap((group) => group.tables.map((table) => (
+                <tr key={table.name}>
+                  <th scope="row">{tableLabel(table.name)}</th>
+                  <td>{count.format(table.rows)}</td>
+                  <td>{formatBytes(table.bytes)}</td>
+                  {growthHeader && <td className="usg-delta">{table.baseBytes === null ? "—" : formatBytesDelta(table.bytes - table.baseBytes)}</td>}
+                </tr>
+              )))}
+            </tbody>
+          </table>
+        </details>
       )}
-      {/* PC幅ではこのカードだけ中身が多いので、左=容量と本日の上限対比、右=30日累計と
-          主な保存データ の2列に分けて縦を詰める。スマホでは従来どおりこの順に縦積み。 */}
-      <div className="d1-usage-body">
-        <div className="d1-usage-today">
-          {d1.configured ? (
-            <>
-              <div className="usage-primary">
-                <strong>{(d1.storageBytes / 1024 / 1024).toFixed(2)} MB</strong>
-                <span>使用率 {d1StoragePct.toFixed(2)}%</span>
-              </div>
-              <div className="usage-meter" aria-label={`D1データベース容量 ${d1StoragePct.toFixed(2)}%`}>
-                <div className="usage-bar"><span style={{ width: `${d1StoragePct}%` }} /></div>
-                <p>保存対象: Watch List、Manage Asset、TextTube、ちきりんオプチャ、To Do、作業日報のデータと履歴。</p>
-                <p>無料枠: 5 GB · 読取500万行/日 · 書込10万行/日</p>
-              </div>
-              <div className="usage-section-label">本日の利用状況（日次上限との対比）</div>
-              {/* The counters reset at UTC 00:00, which is the middle of the
-                  morning here. Spelling the window out in local time is what
-                  makes a near-zero reading readable: just after the boundary
-                  almost nothing has been counted yet, and the overnight
-                  collector sync lands in the PREVIOUS day. */}
-              <p className="usage-window-note">
-                集計期間: {d1.today.date}（UTC 00:00〜24:00）
-                {dailyResetWindows(d1.today.date).map((window) => (
-                  <span key={window.label}>
-                    {window.label}時間（{window.offsetLabel}）{window.start} 〜 {window.end}
-                  </span>
-                ))}
-                <span className="usage-window-caveat">
-                  コレクタの同期もUTC基準（00:00〜02:30）で動くため、必ずこの集計期間の中に入ります。
-                </span>
-              </p>
-              <div className="usage-meter" aria-label={`本日の読み取り行数 ${todayReadPct.toFixed(2)}%`}>
-                <div className="usage-bar"><span style={{ width: `${todayReadPct}%` }} /></div>
-                <p>読み取り {count.format(todayRowsRead)} / 5,000,000 行（{todayReadPct.toFixed(2)}%）</p>
-              </div>
-              <div className="usage-meter" aria-label={`本日の書き込み行数 ${todayWrittenPct.toFixed(2)}%`}>
-                <div className="usage-bar"><span style={{ width: `${todayWrittenPct}%` }} /></div>
-                <p>書き込み {count.format(todayRowsWritten)} / 100,000 行（{todayWrittenPct.toFixed(2)}%）</p>
-              </div>
-            </>
-          ) : (
-            <p className="muted-copy">Cloudflare Analyticsの読み取り専用トークンを設定すると、D1容量と直近30日の読み書き量を表示します。</p>
-          )}
-        </div>
-        <div className="d1-usage-records">
-          {d1.configured && (
-            <div className="usage-metrics-grid" aria-label="直近30日のD1利用状況（参考値・日次上限とは対比不可）">
-              <div><span>読み取り行数（30日累計）</span><strong>{count.format(d1.last30Days.rowsRead)}</strong></div>
-              <div><span>書き込み行数（30日累計）</span><strong>{count.format(d1.last30Days.rowsWritten)}</strong></div>
-              <div><span>読み取りクエリ（30日累計）</span><strong>{count.format(d1.last30Days.readQueries)}</strong></div>
-              <div><span>書き込みクエリ（30日累計）</span><strong>{count.format(d1.last30Days.writeQueries)}</strong></div>
-            </div>
-          )}
-          {/* Issue #100: Watch List/Manage Asset/TextTube/ちきりんオプチャの件数はD1BackedUsage()
-              由来の純粋なD1データで、Cloudflare Analyticsの設定有無とは無関係。
-              以前はd1.configuredの分岐の内側に入れ子になっており、Analytics未
-              設定の環境(ローカル開発・テスト)ではこの件数表示ごと消えていた。 */}
-          <div className="usage-breakdown database-breakdown">
-            <div className="usage-section-label">主な保存データ</div>
-            <div className="usage-columns">
-              <TableRow usage={tableUsage} group="watchList" name="Watch List" count={`${count.format(d1Query.databaseRecords.watchList)} 件`} />
-              <TableRow usage={tableUsage} group="manageAsset" name="Manage Assetのスナップショット（ウォレット1）" count={`${count.format(d1Query.databaseRecords.manageAsset)} 件`} />
-              <TableRow usage={tableUsage} group="manageAssetWallet2" name="Manage Assetのスナップショット（ウォレット2）" count={`${count.format(d1Query.databaseRecords.manageAssetWallet2)} 件`} />
-              <TableRow usage={tableUsage} group="textTube" name="TextTubeの動画" count={`${count.format(d1Query.databaseRecords.textTube)} 件`} />
-              <TableRow usage={tableUsage} group="openchatNotes" name="ちきりんオプチャのノート" count={`${count.format(d1Query.databaseRecords.openchatNotes)} 件`} />
-              <TableRow usage={tableUsage} group="openchatComments" name="ちきりんオプチャのコメント" count={`${count.format(d1Query.databaseRecords.openchatComments)} 件`} />
-              <TableRow usage={tableUsage} group="todoTasks" name="To Doのタスク" count={`${count.format(d1Query.databaseRecords.todoTasks)} 件`} />
-              <TableRow usage={tableUsage} group="dailyReports" name="作業日報" count={`${count.format(d1Query.databaseRecords.dailyReports)} 日分`} />
-              {/* 台帳などは件数を持たないので、件数の列は空けて容量・増え方の列に揃える */}
-              {tableUsage.date && <TableRow usage={tableUsage} group="system" name="台帳・同期の記録など" />}
-            </div>
-            {/* 合計・計測日・概算の注記を1行に、右に「今日の分を計測」(今日の分があれば押せない)。縦に積まない */}
-            <div className="usage-measure-row">
-              <p
-                className="usage-measure-note"
-                title="毎日0時(バンコク時間)に計測。各テーブルの値の長さを足した概算で、索引やページの余白は含まないため、D1全体の容量より小さく出ます。"
-              >
-                {tableUsage.date
-                  ? `合計 ${formatBytes(tableUsage.totalBytes)}${tableUsage.baseDate && tableUsage.baseTotalBytes !== null ? `(${tableUsage.days}日で ${formatBytesDelta(tableUsage.totalBytes - tableUsage.baseTotalBytes)})` : ""} · ${tableUsage.date} 0時の計測 · 値の長さの概算(索引は含まない)`
-                  : "容量は毎日0時(バンコク時間)に計測します。まだ記録がありません。"}
-              </p>
-              {/* ウォレット2の計測がまだ無い日（足した日）は、今日の分をもう一度測れるようにする */}
-              <MeasureButton measuredToday={tableUsage.date === todoDate() && tableUsage.groups.some((group) => group.key === "manageAssetWallet2")} />
-            </div>
-            {tableUsage.date && (
-              <details className="usage-table-details">
-                <summary>テーブル別の内訳</summary>
-                <table className="usage-table-breakdown">
-                  <thead><tr><th scope="col">テーブル</th><th scope="col">行数</th><th scope="col">容量</th>{tableUsage.baseDate && <th scope="col">{tableUsage.days}日の増加</th>}</tr></thead>
-                  <tbody>
-                    {tableUsage.groups.flatMap((group) => group.tables.map((table) => (
-                      <tr key={table.name}>
-                        <th scope="row">{tableLabel(table.name)}</th>
-                        <td>{count.format(table.rows)}</td>
-                        <td>{formatBytes(table.bytes)}</td>
-                        {tableUsage.baseDate && <td>{table.baseBytes === null ? "—" : formatBytesDelta(table.bytes - table.baseBytes)}</td>}
-                      </tr>
-                    )))}
-                  </tbody>
-                </table>
-              </details>
-            )}
-          </div>
-        </div>
-      </div>
-    </section>
+    </>
   );
 }
 
 /** テーブル別の内訳の名前。ウォレット2の DB のテーブルは `wallet2.` を外して（ウォレット2）を付ける。 */
 function tableLabel(name: string): string {
   return name.startsWith(WALLET2_TABLE_PREFIX) ? `${name.slice(WALLET2_TABLE_PREFIX.length)}（ウォレット2）` : name;
-}
-
-/** 保存データの1行。項目名・件数・容量・増え方を、.usage-columns の4列に1つずつ置いて縦に揃える */
-function UsageRow({ name, count, size, growth }: { name: string; count?: string; size?: string; growth?: string | null }) {
-  return (
-    <div className="usage-row">
-      <span>{name}</span>
-      <strong className="usage-count">{count}</strong>
-      <strong className="usage-bytes">{size}</strong>
-      <small className="usage-size">{growth}</small>
-    </div>
-  );
-}
-
-/** 「主な保存データ」の行。容量と増え方は1日1回の計測(app/lib/d1-table-usage.ts)で、計測がまだ無ければ空ける。 */
-function TableRow({ usage, group, name, count }: { usage: TableUsageSummary; group: UsageGroupKey; name: string; count?: string }) {
-  if (!usage.date) return <UsageRow name={name} count={count} />;
-  const entry = usage.groups.find((candidate) => candidate.key === group);
-  const bytes = entry?.bytes ?? 0;
-  const growth = usage.baseDate && entry?.baseBytes != null ? `${usage.days}日で ${formatBytesDelta(bytes - entry.baseBytes)}` : null;
-  return <UsageRow name={name} count={count} size={formatBytes(bytes)} growth={growth} />;
 }
