@@ -64,7 +64,8 @@ export default async function StoragePage() {
             provider="R2"
             label="ファイル保存容量"
             value={formatBytes(r2Used)}
-            limit="安全上限 8 GB"
+            max="8 GB"
+            note="安全上限"
             pct={(r2Used / R2_SOFT_LIMIT_BYTES) * 100}
             sub={`30日で ${formatBytesDelta(r2Growth)}`}
           />
@@ -76,8 +77,8 @@ export default async function StoragePage() {
             provider="Supadata"
             label={`字幕API（${Number(month.slice(5))}月）`}
             value={count.format(transcript.credits)}
-            unit="回"
-            limit={`無料枠の目安 ${TRANSCRIPT_LIMIT}回/月`}
+            max={`${TRANSCRIPT_LIMIT}回`}
+            note="毎月の目安"
             pct={(transcript.credits / TRANSCRIPT_LIMIT) * 100}
             sub={`取得試行 ${count.format(transcript.attempts)}回`}
           />
@@ -153,8 +154,9 @@ function CardHeading({ provider, title, id, action }: { provider: string; title:
 }
 
 /** 上段のメーター1枚。使用率で色を変える(50%未満=緑、80%未満=黄、それ以上=赤)。 */
-function Meter({ provider, label, value, unit, limit, pct, sub, title, className }: {
-  provider: string; label: string; value: string; unit?: string; limit: string; pct: number; sub?: string; title?: string; className?: string;
+/** 主数値の横に上限(max)を並べ、何に対する%かを同じ行で読めるようにする。note は上限の種類や戻る時刻などの補足。 */
+function Meter({ provider, label, value, max, note, pct, sub, title, className }: {
+  provider: string; label: string; value: string; max: string; note: string; pct: number; sub?: string; title?: string; className?: string;
 }) {
   const clamped = Math.min(100, Math.max(0, pct));
   const level = pct >= 80 ? "is-danger" : pct >= 50 ? "is-warn" : "is-ok";
@@ -162,11 +164,11 @@ function Meter({ provider, label, value, unit, limit, pct, sub, title, className
   return (
     <article className={`usg-meter ${level} ${className ?? ""}`} title={title}>
       <p className="usg-meter-label"><span className="usg-provider">{provider}</span>{label}</p>
-      <p className="usg-meter-value"><strong>{value}</strong>{unit && <span>{unit}</span>}<em>{pctLabel}%</em></p>
+      <p className="usg-meter-value"><strong>{value}</strong><span>/ {max}</span></p>
       <div className="usg-bar" role="meter" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Number(clamped.toFixed(2))} aria-label={`${label} ${pct.toFixed(2)}%`}>
         <span style={{ width: `${clamped}%` }} />
       </div>
-      <p className="usg-meter-limit">{limit}</p>
+      <p className="usg-meter-limit"><span>{note}</span><em>{pctLabel}%</em></p>
       {sub && <p className="usg-meter-sub">{sub}</p>}
     </article>
   );
@@ -198,15 +200,16 @@ async function D1Meters() {
         provider="D1"
         label="データベース容量"
         value={formatBytes(d1.storageBytes)}
-        limit="無料枠 5 GB"
+        max="5 GB"
+        note="無料枠"
         pct={(d1.storageBytes / D1_STORAGE_LIMIT_BYTES) * 100}
       />
       <Meter
         provider="D1"
         label="本日の読み取り"
         value={count.format(d1.today.rowsRead)}
-        unit="行"
-        limit="上限 500万行/日 · UTC 0時に戻る"
+        max="500万行"
+        note="UTC 0時に戻る"
         pct={(d1.today.rowsRead / D1_DAILY_ROWS_READ_LIMIT) * 100}
         sub={`30日平均 ${count.format(avgRead)}行/日（${((avgRead / D1_DAILY_ROWS_READ_LIMIT) * 100).toFixed(1)}%）`}
         title={windowTitle}
@@ -215,8 +218,8 @@ async function D1Meters() {
         provider="D1"
         label="本日の書き込み"
         value={count.format(d1.today.rowsWritten)}
-        unit="行"
-        limit="上限 10万行/日 · UTC 0時に戻る"
+        max="10万行"
+        note="UTC 0時に戻る"
         pct={(d1.today.rowsWritten / D1_DAILY_ROWS_WRITTEN_LIMIT) * 100}
         sub={`30日平均 ${count.format(avgWritten)}行/日（${((avgWritten / D1_DAILY_ROWS_WRITTEN_LIMIT) * 100).toFixed(1)}%）`}
         title={windowTitle}
