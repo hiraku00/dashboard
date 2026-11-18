@@ -960,15 +960,15 @@ h1,h2,h3 { color:var(--ink); } h1 { margin:0; font-size:30px; line-height:1.1; l
 .usg-meter p{margin:0}
 .usg-provider{display:inline-block;margin-right:6px;border-radius:5px;background:rgba(60,60,67,.08);padding:1px 6px;color:var(--muted);font-size:10px;font-weight:750;letter-spacing:.06em;vertical-align:1px}
 .usg-meter-label{color:var(--ink);font-size:13px;font-weight:700}
-.usg-meter-value{display:flex;align-items:baseline;gap:4px;margin-top:2px!important;font-variant-numeric:tabular-nums}
+.usg-meter-value{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 6px;margin-top:2px!important;font-variant-numeric:tabular-nums}
 .usg-meter-value strong{font-size:26px;letter-spacing:-.04em;line-height:1.15;white-space:nowrap}
-.usg-meter-value span{color:var(--muted);font-size:13px}
-.usg-meter-value em{margin-left:auto;color:var(--muted);font-size:13px;font-style:normal;font-weight:700}
+.usg-meter-value span{color:var(--muted);font-size:15px;font-weight:600;white-space:nowrap}
 .usg-bar{height:8px;overflow:hidden;border-radius:99px;background:rgba(60,60,67,.12)}
 .usg-bar span{display:block;min-width:3px;height:100%;border-radius:inherit;background:var(--good);transition:width 160ms ease-out}
-.usg-meter.is-warn .usg-bar span{background:#d99a0b}.usg-meter.is-warn .usg-meter-value em{color:var(--warning)}
-.usg-meter.is-danger .usg-bar span{background:var(--danger)}.usg-meter.is-danger .usg-meter-value em{color:var(--danger)}
-.usg-meter-limit{color:var(--muted);font-size:12px;line-height:1.5}
+.usg-meter.is-warn .usg-bar span{background:#d99a0b}.usg-meter.is-warn .usg-meter-limit em{color:var(--warning)}
+.usg-meter.is-danger .usg-bar span{background:var(--danger)}.usg-meter.is-danger .usg-meter-limit em{color:var(--danger)}
+.usg-meter-limit{display:flex;align-items:baseline;justify-content:space-between;gap:8px;color:var(--muted);font-size:12px;line-height:1.5}
+.usg-meter-limit em{flex:none;color:var(--ink);font-size:13px;font-style:normal;font-weight:700;font-variant-numeric:tabular-nums}
 .usg-meter-sub{margin-top:auto!important;border-top:1px solid var(--line);padding-top:7px;color:var(--muted);font-size:12px;line-height:1.5;font-variant-numeric:tabular-nums}
 .usg-meter[title]{cursor:help}
 .usg-skeleton{min-height:150px;background:linear-gradient(100deg,rgba(255,255,255,.48),rgba(255,255,255,.88),rgba(255,255,255,.48));background-size:200% 100%;animation:todo-shimmer 1.2s linear infinite}
@@ -1019,7 +1019,6 @@ h1,h2,h3 { color:var(--ink); } h1 { margin:0; font-size:30px; line-height:1.1; l
   .usg-meter{padding:12px 13px 13px}
   .usg-meter-wide{grid-column:1/-1}
   .usg-meter-value strong{font-size:21px}
-  .usg-meter-value{flex-wrap:wrap}
   .usg-card-heading,.usg-facts>div,.usg-measure-row,.usg-more,.usg-empty{padding-inline:14px}
   .usg-table :is(th,td){padding-right:10px}
   .usg-table :is(th,td):first-child{padding-left:14px}
