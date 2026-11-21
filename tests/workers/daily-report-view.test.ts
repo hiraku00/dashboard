@@ -165,4 +165,27 @@ describe("periodView + buildModel", () => {
     const day = periodRange("day", "2026-10-13", TODAY);
     expect(buildModel(await periodView(day), day, TODAY).summary).toBeNull();
   });
+
+  test("reflection tab: the 6th section is read per day, and newest first across a week", async () => {
+    await seed(DATES);
+    const reflection = (text: string) => `\n## 5. 作業中だったファイル\n- dashboard\n\n## 6. 予定と振り返り\n\n### 予定と実績\n\n- ${text}\n`;
+    const results = await ingestDailyReports([
+      { date: "2026-10-13", markdown: report("2026-10-13", "dashboardの改善") + reflection("散歩 → 行った") },
+      { date: "2026-10-15", markdown: report("2026-10-15", "dashboardの改善") + reflection("買い物 → 記録なし") },
+    ]);
+    expect(results.map((result) => result.status)).not.toContain("error");
+
+    const day = periodRange("day", "2026-10-15", TODAY);
+    const dayModel = buildModel(await periodView(day), day, TODAY);
+    expect(dayModel.reflections).toEqual([{ reportDate: "2026-10-15", markdown: "### 予定と実績\n\n- 買い物 → 記録なし" }]);
+    // 6節目は任意の節なので、解析の警告にしない
+    expect(dayModel.original?.warnings).toEqual([]);
+
+    const week = periodRange("week", "2026-10-15", TODAY);
+    expect(buildModel(await periodView(week), week, TODAY).reflections.map((r) => r.reportDate)).toEqual(["2026-10-15", "2026-10-13"]);
+
+    // 6節目の無い日は空
+    const other = periodRange("day", "2026-10-19", TODAY);
+    expect(buildModel(await periodView(other), other, TODAY).reflections).toEqual([]);
+  });
 });
