@@ -100,7 +100,7 @@ export const TV_PROGRAM_AIRED_AT_BACKFILL = `UPDATE items SET aired_at = added_o
 
 /** Bump whenever the DDL below changes, so existing databases re-run it once.
  *  A database whose schema_meta row already matches skips the whole batch. */
-const SCHEMA_VERSION = 22;
+const SCHEMA_VERSION = 23;
 
 /** Reads the recorded schema version. A database that predates schema_meta (or
  *  a brand new one) has no table, and the query fails rather than returning a
@@ -339,6 +339,14 @@ export async function ensureSchema({ seed = true }: { seed?: boolean } = {}) {
     env.DB.prepare(`CREATE TABLE IF NOT EXISTS daily_report_tag_days (
       report_date TEXT NOT NULL, tag TEXT NOT NULL, minutes INTEGER NOT NULL DEFAULT 0,
       work_item_count INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (report_date, tag)
+    )`),
+    // モーニングページ(schema version 23、migrations/0024_morning_pages.sql)。1ページ1行で、ヘッダーの表と、取り出した
+    // 「昨日のこと・今日の予定・気になったこと」(JSON配列)だけを置く。本文は置かない。
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS morning_pages (
+      page_date TEXT PRIMARY KEY, started_at TEXT, ended_at TEXT, minutes INTEGER,
+      place TEXT NOT NULL DEFAULT '', chars INTEGER,
+      yesterday TEXT NOT NULL DEFAULT '[]', plan TEXT NOT NULL DEFAULT '[]', notes TEXT NOT NULL DEFAULT '[]',
+      extracted INTEGER NOT NULL DEFAULT 0, content_hash TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
     )`),
     // 作業日報の週次・月次サマリ(schema version 14、docs/daily-report-ingest-design.md §10)。原本をそのまま置き、
     // 解析・タグ付けはしない。同じ内容が migrations/0018_daily_report_summaries.sql にもある。
