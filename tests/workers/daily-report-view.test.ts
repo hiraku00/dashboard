@@ -177,15 +177,15 @@ describe("periodView + buildModel", () => {
 
     const day = periodRange("day", "2026-10-15", TODAY);
     const dayModel = buildModel(await periodView(day), day, TODAY);
-    expect(dayModel.reflections).toEqual([{ reportDate: "2026-10-15", markdown: "### 予定と実績\n\n- 買い物 → 記録なし" }]);
+    expect(dayModel.reflection.days.map((d) => [d.reportDate, d.markdown, d.parsed.structured])).toEqual([["2026-10-15", "### 予定と実績\n\n- 買い物 → 記録なし", false]]);
     // 6節目は任意の節なので、解析の警告にしない
     expect(dayModel.original?.warnings).toEqual([]);
 
     const week = periodRange("week", "2026-10-15", TODAY);
-    expect(buildModel(await periodView(week), week, TODAY).reflections.map((r) => r.reportDate)).toEqual(["2026-10-15", "2026-10-13"]);
+    expect(buildModel(await periodView(week), week, TODAY).reflection.summary.days.map((d) => d.reportDate)).toEqual(["2026-10-13", "2026-10-15"]);
 
     // 6節目の無い日は空
     const other = periodRange("day", "2026-10-19", TODAY);
-    expect(buildModel(await periodView(other), other, TODAY).reflections).toEqual([]);
+    expect(buildModel(await periodView(other), other, TODAY).reflection.days).toEqual([]);
   });
 });

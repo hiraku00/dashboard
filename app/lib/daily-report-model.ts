@@ -36,6 +36,7 @@ import {
   type WorkCategoryRow,
   type WorkItemInput,
 } from "./daily-report-summary.ts";
+import { summarizeReflections, type ReflectionDay, type ReflectionSummary } from "./daily-report-reflection.ts";
 
 export type ReportRow = {
   reportDate: string;
@@ -126,8 +127,8 @@ export type DailyReportModel = {
   work: WorkCategoryRow[];
   /** 知見・メモ: カテゴリは表示時にタグ辞書で決める */
   notes: { reportDate: string; text: string; category: Category }[];
-  /** 振り返りタブ: 6節目のある日(新しい日から)。日次はその日の1件か空 */
-  reflections: Reflection[];
+  /** 振り返りタブ: 6節目のある日(古い日から、表を読んだもの)と期間の集計。日次は days がその日の1件か空 */
+  reflection: { days: ReflectionDay[]; summary: ReflectionSummary };
   /** 原本タブ: 日次は本文、週次・月次はサマリと日報の一覧 */
   original: { markdown: string; warnings: string[]; parseStatus: ReportRow["parseStatus"] } | null;
   summary: { markdown: string; updatedAt: string } | null;
@@ -268,7 +269,7 @@ export function buildModel(view: PeriodView, period: PeriodRange, today: string)
     weekdays: range === "month" ? weekdayAverages(columns) : [],
     work: workTable(view.workItems, currentTags),
     notes: view.notes.map((note) => ({ ...note, category: noteCategory(note.text) })),
-    reflections: view.reflections,
+    reflection: summarizeReflections(view.reflections),
     original: range === "day" && view.original && report ? { ...view.original, parseStatus: report.parseStatus } : null,
     summary: range === "day" ? null : view.summary,
     reportList: current.map((row) => ({ date: row.reportDate, active: activeByDate.get(row.reportDate) ?? 0, recordStart: row.recordStart, recordEnd: row.recordEnd, gapMinutes: row.gapMinutes, parseStatus: row.parseStatus })).reverse(),
