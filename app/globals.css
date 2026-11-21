@@ -415,9 +415,80 @@ h1,h2,h3 { color:var(--ink); } h1 { margin:0; font-size:30px; line-height:1.1; l
 /* 概要: 左に活動時間、右に配分(Manage Asset の asset-dashboard-grid と同じ 1.35fr : 1fr) */
 .dr-overview { display:grid; gap:16px; margin-bottom:16px; }
 @media (min-width:1100px) { .dr-overview { grid-template-columns:minmax(0,1.35fr) minmax(0,1fr); align-items:stretch; } .dr-original { align-items:start; }
-.dr-reflection-count { margin:0; color:var(--muted); font-size:13px; }
+ }
 .dr-panel .panel-heading h2 a { color:inherit; text-decoration:none; }
-.dr-panel .panel-heading h2 a:hover { color:var(--blue-strong); text-decoration:underline; text-underline-offset:3px; } }
+.dr-panel .panel-heading h2 a:hover { color:var(--blue-strong); text-decoration:underline; text-underline-offset:3px; }
+/* 振り返りタブ(app/daily-report-reflection.tsx)。状態と活動の種類の色はここだけで使う */
+:root { --rf-done:#16824a; --rf-partial:#c98a00; --rf-todo:#a1a1a8; --rf-unknown:#d6d8de; --rf-extra:#2d6fd0;
+  --rf-meal:#b35c00; --rf-outing:#2d6fd0; --rf-exercise:#16804f; --rf-sleep:#5856d6; --rf-contact:#b5418f; --rf-other:#8a8a8e; }
+.dr-rf-figures { display:grid; grid-template-columns:minmax(0,1.6fr) repeat(2,minmax(0,1fr)); gap:0; padding:18px 22px 6px; }
+.dr-rf-figure { padding:0 20px; border-left:1px solid var(--line); }
+.dr-rf-figure:first-child { padding-left:0; border-left:0; }
+.dr-rf-figure p { margin:0 0 6px; color:var(--muted); font-size:12px; font-weight:700; }
+.dr-rf-figure strong { display:block; font-size:28px; line-height:1.1; font-variant-numeric:tabular-nums; color:var(--ink); }
+.dr-rf-figure strong small { margin-left:4px; font-size:13px; font-weight:600; color:var(--muted); }
+.dr-rf-figure > span { display:block; margin:5px 0 8px; color:var(--muted); font-size:12px; }
+.dr-rf-source { margin:0; padding:8px 22px 16px; color:var(--faint); font-size:12px; }
+.dr-rf-bar { display:flex; height:10px; overflow:hidden; border-radius:99px; background:#eef0f4; }
+.dr-rf-bar.is-empty { background:repeating-linear-gradient(45deg,#e3e5ea 0 2px,transparent 2px 6px); }
+.dr-rf-bar i { display:block; height:100%; }
+.dr-rf-bar i + i { box-shadow:inset 1px 0 0 #fff; }
+:is(.dr-rf-bar,.dr-rf-legend) .is-done { background:var(--rf-done); }
+:is(.dr-rf-bar,.dr-rf-legend) .is-partial { background:var(--rf-partial); }
+:is(.dr-rf-bar,.dr-rf-legend) .is-todo { background:var(--rf-todo); }
+:is(.dr-rf-bar,.dr-rf-legend) .is-unknown { background:var(--rf-unknown); }
+:is(.dr-rf-bar,.dr-rf-legend) .is-extra { background:var(--rf-extra); }
+.dr-rf-legend { display:flex; flex-wrap:wrap; gap:6px 14px; margin:0 0 12px; padding:0; list-style:none; color:var(--muted); font-size:12px; }
+.dr-rf-legend i { display:inline-block; width:10px; height:10px; margin-right:5px; border-radius:3px; vertical-align:-1px; }
+.dr-rf-badge { display:inline-block; min-width:4.5em; border-radius:6px; padding:3px 7px; font-size:12px; font-weight:750; text-align:center; white-space:nowrap; }
+.dr-rf-badge.is-done { background:rgba(22,130,74,.12); color:var(--rf-done); }
+.dr-rf-badge.is-partial { background:rgba(201,138,0,.14); color:#8b5d00; }
+.dr-rf-badge.is-todo { background:rgba(60,60,67,.08); color:var(--muted); }
+.dr-rf-badge.is-unknown { background:transparent; color:var(--faint); box-shadow:inset 0 0 0 1px var(--line-strong); }
+.dr-rf-badge.is-extra { background:var(--blue-soft); color:var(--blue-strong); }
+.dr-rf-plans td:first-child { width:88px; }
+.dr-rf-plans td.dr-rf-plan { font-weight:650; color:var(--ink); }
+.dr-rf-plans tbody td:last-child { color:#414148; }
+.dr-rf-plans tr.is-extra > * { background:rgba(10,132,255,.03); }
+.dr-rf-timeline { margin:0; padding:0; list-style:none; }
+.dr-rf-timeline li { position:relative; display:grid; grid-template-columns:64px 14px minmax(0,1fr); gap:10px; padding:0 0 14px; }
+.dr-rf-timeline li:not(:last-child)::after { content:""; position:absolute; left:80px; top:16px; bottom:0; width:1px; background:var(--line); }
+.dr-rf-timeline time { color:var(--muted); font-size:13px; font-variant-numeric:tabular-nums; text-align:right; }
+.dr-rf-timeline p { margin:0; line-height:1.55; }
+.dr-rf-timeline small { color:var(--faint); font-size:11px; }
+.dr-rf-dot { display:inline-block; width:10px; height:10px; margin-top:5px; border-radius:50%; }
+.dr-rf-dot.is-meal,.dr-rf-kind-track .is-meal { background:var(--rf-meal); }
+.dr-rf-dot.is-outing,.dr-rf-kind-track .is-outing { background:var(--rf-outing); }
+.dr-rf-dot.is-exercise,.dr-rf-kind-track .is-exercise { background:var(--rf-exercise); }
+.dr-rf-dot.is-sleep,.dr-rf-kind-track .is-sleep { background:var(--rf-sleep); }
+.dr-rf-dot.is-contact,.dr-rf-kind-track .is-contact { background:var(--rf-contact); }
+.dr-rf-dot.is-other,.dr-rf-kind-track .is-other { background:var(--rf-other); }
+.dr-rf-notes { display:grid; gap:14px; }
+.dr-rf-notes h3 { margin:0 0 6px; color:var(--muted); font-size:12px; font-weight:800; }
+.dr-rf-notes ul { margin:0; padding-left:20px; list-style:disc; }
+.dr-rf-notes li { margin:4px 0; line-height:1.6; }
+.dr-rf-days { display:grid; gap:8px; margin:0; padding:0; list-style:none; }
+.dr-rf-days li { display:grid; grid-template-columns:84px minmax(0,1fr) 84px; align-items:center; gap:12px; font-size:13px; }
+.dr-rf-days li > span { color:var(--muted); font-variant-numeric:tabular-nums; text-align:right; white-space:nowrap; }
+.dr-rf-note-kind { display:inline-block; border-radius:6px; padding:3px 7px; font-size:11px; font-weight:750; white-space:nowrap; }
+.dr-rf-note-kind.is-carryover { background:var(--blue-soft); color:var(--blue-strong); }
+.dr-rf-note-kind.is-concern { background:rgba(60,60,67,.08); color:var(--muted); }
+.dr-rf-kinds { display:grid; gap:10px; margin:0; padding:0; list-style:none; }
+.dr-rf-kinds li { display:grid; grid-template-columns:110px minmax(0,1fr) 28px; align-items:center; gap:10px; font-size:13px; }
+.dr-rf-kinds li span { display:flex; align-items:center; gap:6px; }
+.dr-rf-kinds .dr-rf-dot { margin-top:0; }
+.dr-rf-kinds b { text-align:right; font-variant-numeric:tabular-nums; }
+.dr-rf-kind-track { height:10px; overflow:hidden; border-radius:99px; background:#eef0f4; }
+.dr-rf-kind-track i { display:block; height:100%; border-radius:inherit; }
+@media (max-width:700px) {
+  .dr-rf-figures { grid-template-columns:1fr 1fr; gap:14px 0; padding:16px 14px 4px; }
+  .dr-rf-figure:first-child { grid-column:1 / -1; }
+  .dr-rf-figure:nth-child(2) { padding-left:0; border-left:0; }
+  .dr-rf-source { padding:8px 14px 14px; }
+  .dr-rf-timeline li { grid-template-columns:54px 12px minmax(0,1fr); gap:8px; }
+  .dr-rf-timeline li:not(:last-child)::after { left:67px; }
+  .dr-rf-days li { grid-template-columns:70px minmax(0,1fr) 64px; gap:8px; }
+}
 
 /* 活動時間の図: 1色の縦棒・縦軸と目盛り線(Manage Asset の資産推移と同じ線・文字) */
 .dr-bars { padding:8px 18px 14px; }
