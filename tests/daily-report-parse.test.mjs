@@ -67,6 +67,29 @@ describe("parseDailyReport", () => {
     ]);
     expect(r.gapMinutes).toBe(150);
     expect(r.notes).toEqual(["電力は P＝V×I", "ログ欠落は1回"]);
+    expect(r.reflection).toBe("");
+  });
+
+  test("keeps the optional 6th section (plan and reflection) as Markdown without warnings", () => {
+    const md = `${STANDARD}
+## 6. 予定と振り返り
+
+> モーニングページ: 10/21の予定・10/22の振り返り
+
+### 予定と実績
+
+- 図書館で本を返す → 行った
+
+### PCの外の活動
+
+- 昼食は外で（12時半頃）
+`;
+    const r = parseDailyReport(md, "2026-10-21");
+    expect(r.status).toBe("ok");
+    expect(r.warnings).toEqual([]);
+    expect(r.reflection).toBe("> モーニングページ: 10/21の予定・10/22の振り返り\n\n### 予定と実績\n\n- 図書館で本を返す → 行った\n\n### PCの外の活動\n\n- 昼食は外で（12時半頃）");
+    // 6節目は5節目「作業中だったファイル」にも、知見にも混ざらない
+    expect(r.notes).toEqual(["電力は P＝V×I", "ログ欠落は1回"]);
   });
 
   test("finds sections by keyword, not by number, and skips chatter before the title", () => {

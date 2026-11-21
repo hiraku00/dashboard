@@ -76,6 +76,7 @@ export function DailyReportApp({ model, initialTab }: { model: DailyReportModel;
       <div hidden={tab !== "time"}>{hasReports ? <TimeTab model={model} /> : empty}</div>
       <div hidden={tab !== "work"}>{hasReports ? <WorkTab model={model} /> : empty}</div>
       <div hidden={tab !== "notes"}>{hasReports ? <NotesTab model={model} /> : empty}</div>
+      <div hidden={tab !== "reflection"}>{hasReports ? <ReflectionTab model={model} /> : empty}</div>
       <div hidden={tab !== "original"}>{hasReports ? <OriginalTab model={model} /> : empty}</div>
     </main>
   );
@@ -188,6 +189,52 @@ function WorkTab({ model }: { model: DailyReportModel }) {
 function NotesTab({ model }: { model: DailyReportModel }) {
   if (!model.notes.length) return <Panel title="知見・メモ"><p className="dr-empty">知見・メモはありません。</p></Panel>;
   return <NotesTable notes={model.notes} showDate={model.period.range !== "day"} tab="notes" />;
+}
+
+/** 振り返り: 日報の6節目「予定と振り返り」(auto-daily-report が Obsidian のモーニングページから書き足す)。
+ *  1〜5節は画面記録(PCの作業)だけなので、予定との比べやPCの外の活動はここで読む。週次・月次は書いてある日を新しい日から並べる。 */
+function ReflectionTab({ model }: { model: DailyReportModel }) {
+  const { period, reflections } = model;
+  const source = "モーニングページの予定(当日)と振り返り(翌朝)から";
+  if (period.range === "day") {
+    const reflection = reflections[0];
+    if (!reflection) {
+      return (
+        <Panel title="予定と振り返り">
+          <p className="dr-empty">この日の予定と振り返りはありません。モーニングページから書き足した日だけ表示します。</p>
+        </Panel>
+      );
+    }
+    return (
+      <Panel title="予定と振り返り" sub={source}>
+        <div className="dr-raw"><MarkdownRenderer content={reflection.markdown} /></div>
+      </Panel>
+    );
+  }
+  if (!reflections.length) {
+    return (
+      <Panel title="予定と振り返り">
+        <p className="dr-empty">{PERIOD_NOUN[period.range]}の予定と振り返りはありません。モーニングページから書き足した日だけ表示します。</p>
+      </Panel>
+    );
+  }
+  return (
+    <div className="dr-stack">
+      <p className="dr-reflection-count">{`${model.reportCount}日の日報のうち${reflections.length}日分(${source})`}</p>
+      {reflections.map((reflection) => (
+        <section className="asset-panel dr-panel" key={reflection.reportDate}>
+          <div className="panel-heading">
+            <div>
+              <h2><Link href={reportHref("day", reflection.reportDate, "reflection")} prefetch={false}>{shortDate(reflection.reportDate)}</Link></h2>
+            </div>
+          </div>
+          <div className="dr-panel-body">
+            <div className="dr-raw"><MarkdownRenderer content={reflection.markdown} /></div>
+          </div>
+        </section>
+      ))}
+    </div>
+  );
 }
 
 function OriginalTab({ model }: { model: DailyReportModel }) {

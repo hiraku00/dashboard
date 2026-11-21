@@ -61,13 +61,13 @@ function buildWrite(date: string, markdown: string, sha256: string, now: string,
       SELECT report_date, COALESCE((SELECT MAX(revision_number) FROM daily_report_revisions WHERE report_date=?1),0)+1, markdown, sha256, ?2
       FROM daily_reports WHERE report_date=?1`).bind(date, now));
   }
-  statements.push(env.DB.prepare(`INSERT INTO daily_reports (report_date,markdown,sha256,record_start,record_end,recorded_minutes,capture_count,capture_count_is_min,gap_minutes,parser_version,parse_status,parse_warnings,created_at,updated_at)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+  statements.push(env.DB.prepare(`INSERT INTO daily_reports (report_date,markdown,sha256,record_start,record_end,recorded_minutes,capture_count,capture_count_is_min,gap_minutes,reflection,parser_version,parse_status,parse_warnings,created_at,updated_at)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     ON CONFLICT(report_date) DO UPDATE SET markdown=excluded.markdown,sha256=excluded.sha256,record_start=excluded.record_start,record_end=excluded.record_end,
-      recorded_minutes=excluded.recorded_minutes,capture_count=excluded.capture_count,capture_count_is_min=excluded.capture_count_is_min,gap_minutes=excluded.gap_minutes,
+      recorded_minutes=excluded.recorded_minutes,capture_count=excluded.capture_count,capture_count_is_min=excluded.capture_count_is_min,gap_minutes=excluded.gap_minutes,reflection=excluded.reflection,
       parser_version=excluded.parser_version,parse_status=excluded.parse_status,parse_warnings=excluded.parse_warnings,updated_at=excluded.updated_at`)
     .bind(date, markdown, sha256, header.recordStart, header.recordEnd, header.recordedMinutes, header.captureCount, header.captureCountIsMin ? 1 : 0,
-      parsed.gapMinutes, PARSER_VERSION, parsed.status, JSON.stringify(parsed.warnings), now, now));
+      parsed.gapMinutes, parsed.reflection, PARSER_VERSION, parsed.status, JSON.stringify(parsed.warnings), now, now));
   for (const table of DERIVED_TABLES) statements.push(env.DB.prepare(`DELETE FROM ${table} WHERE report_date=?`).bind(date));
   statements.push(
     ...insertRows("daily_report_work_items", ["report_date", "position", "category_position", "category", "item_position", "text"],

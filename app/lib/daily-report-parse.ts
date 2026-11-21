@@ -32,13 +32,15 @@ export type ParsedDailyReport = {
   appUsage: AppUsage[];
   timeBlocks: TimeBlock[];
   notes: string[];
+  /** 6節目「予定と振り返り」の本文(見出しの下の Markdown そのまま)。モーニングページから書き足した日だけ。無ければ空文字 */
+  reflection: string;
   /** 「ログなし」行の合計分 */
   gapMinutes: number;
   status: ParseStatus;
   warnings: string[];
 };
 
-type SectionKind = "work" | "apps" | "time" | "notes" | "files";
+type SectionKind = "work" | "apps" | "time" | "notes" | "files" | "reflection";
 
 const SECTION_KEYWORDS: [SectionKind, RegExp][] = [
   ["work", /メイン作業/],
@@ -46,6 +48,8 @@ const SECTION_KEYWORDS: [SectionKind, RegExp][] = [
   ["time", /作業詳細/],
   ["notes", /知見/],
   ["files", /ファイル/],
+  // auto-daily-report がモーニングページから書き足す任意の節。無くても警告にしない
+  ["reflection", /振り返り/],
 ];
 
 /** 時間帯の表で「記録が無い」ことを表す行。「ログ確認」のような普通の作業内容に当たらないよう、語を限る。 */
@@ -99,6 +103,7 @@ export function parseDailyReport(markdown: string, date: string): ParsedDailyRep
   const appUsage = sections.has("apps") ? parseAppUsage(sections.get("apps")!, warnings) : [];
   const timeBlocks = sections.has("time") ? parseTimeBlocks(sections.get("time")!, warnings) : [];
   const notes = sections.has("notes") ? parseBullets(sections.get("notes")!) : [];
+  const reflection = (sections.get("reflection") ?? []).join("\n").trim();
   for (const [kind, label] of [["work", "本日のメイン作業"], ["apps", "アプリ使用状況"], ["time", "作業詳細"], ["notes", "得られた知見・メモ"]] as const) {
     if (!sections.has(kind)) warnings.push(`「${label}」の節がありません`);
   }
@@ -106,7 +111,7 @@ export function parseDailyReport(markdown: string, date: string): ParsedDailyRep
   const gapMinutes = timeBlocks.filter((b) => b.isGap).reduce((sum, b) => sum + (b.durationMinutes ?? 0), 0);
   const headerRead = header.recordStart !== null || header.captureCount !== null;
   const status: ParseStatus = !headerRead && sections.size === 0 ? "failed" : warnings.length ? "partial" : "ok";
-  return { date, header, workItems, appUsage, timeBlocks, notes, gapMinutes, status, warnings };
+  return { date, header, workItems, appUsage, timeBlocks, notes, reflection, gapMinutes, status, warnings };
 }
 
 function parseHeader(text: string, warnings: string[]): DailyReportHeader {
