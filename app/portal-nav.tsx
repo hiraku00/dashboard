@@ -23,6 +23,7 @@ export function PortalNav({ active }: { active?: string }) {
     ["/manage-asset", "Manage Asset"],
     ["/todo", "To Do"],
     ["/daily-report", "日報"],
+    ["/morning-page", "モーニングページ"],
     ["/settings/storage", "使用量"],
   ] as const;
   return (
