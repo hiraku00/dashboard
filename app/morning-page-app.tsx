@@ -23,6 +23,8 @@ const href = (params: { month?: string | null; year?: string | null; tab: Mornin
   return `/morning-page?${query.toString()}`;
 };
 const minutesText = (minutes: number | null) => (minutes === null ? "—" : minutes < 60 ? `${minutes}分` : `${Math.floor(minutes / 60)}時間${String(minutes % 60).padStart(2, "0")}分`);
+/** 縦軸用: 1時間ちょうどは「1時間」、それ以外は「1時間30分」 */
+const axisMinutes = (minutes: number) => (minutes === 0 ? "0" : minutes % 60 === 0 && minutes >= 60 ? `${minutes / 60}時間` : minutesText(minutes));
 const shortDate = (date: string, weekday?: string) => `${Number(date.slice(5, 7))}/${Number(date.slice(8, 10))}${weekday ? `(${weekday})` : ""}`;
 const groupClass = (group: PlaceGroup | null) => (group ? ` is-${group}` : "");
 
@@ -271,7 +273,7 @@ function DayDetail({ day }: { day: MorningDay }) {
     <div className="mp-day">
       <div className="mp-day-head">
         <b>{shortDate(day.date, day.weekday)}</b>
-        <span>{day.startedAt && day.endedAt ? `${day.startedAt}〜${day.endedAt}` : "時刻なし"}</span>
+        <span>{day.startedAt ? `${day.startedAt}〜${day.endedAt ?? ""}` : "時刻なし"}</span>
         <span>{minutesText(day.minutes)}</span>
         {day.chars !== null ? <span>{day.chars.toLocaleString("ja-JP")}字</span> : null}
         <em><i className={`mp-swatch${groupClass(classifyPlace(day.place))}`} />{day.place || "場所なし"}</em>
@@ -295,6 +297,10 @@ function MonthTab({ model }: { model: MorningPageModel }) {
   const [selected, setSelected] = useState<string | null>(model.days.at(-1)?.date ?? null);
   const day = selected ? byDate.get(selected) ?? null : null;
   const usedGroups = PLACE_GROUPS.map((entry) => entry.group).filter((group) => model.dayBars.some((bar) => bar.group === group));
+  // 縦軸: 15分刻み(長い日があれば30分刻み)で、いちばん長い日が収まる高さまで
+  const axisStep = model.maxMinutes > 60 ? 30 : 15;
+  const axisMax = Math.max(axisStep, Math.ceil(model.maxMinutes / axisStep) * axisStep);
+  const axisTicks = Array.from({ length: axisMax / axisStep + 1 }, (_, index) => index * axisStep);
 
   return (
     <div className="dr-stack">
@@ -307,19 +313,27 @@ function MonthTab({ model }: { model: MorningPageModel }) {
         </div>
       </section>
 
-      <Panel title="日ごとの所要時間" sub="色は書いた場所。棒を押すと、その日の中身が下に出ます。書かなかった日は点">
-        <div className="mp-daybars" style={{ ["--days" as string]: model.dayBars.length }} role="group" aria-label={`${model.monthLabel}の日ごとの所要時間`}>
-          {model.dayBars.map((bar) => {
-            const label = bar.written ? `${shortDate(bar.date, bar.weekday)} ${minutesText(bar.minutes)}${bar.chars !== null ? `・${bar.chars.toLocaleString("ja-JP")}字` : ""}${bar.place ? `・${bar.place}` : ""}` : `${shortDate(bar.date, bar.weekday)} 書かなかった日`;
-            const tick = <span>{bar.day % 5 === 0 || bar.day === 1 ? bar.day : ""}</span>;
-            return bar.written ? (
-              <button key={bar.date} type="button" className={`mp-daybar${groupClass(bar.group)}${bar.date === selected ? " is-selected" : ""}${bar.minutes === null ? " is-unknown" : ""}`} title={label} aria-label={label} aria-pressed={bar.date === selected} onClick={() => setSelected(bar.date)}>
-                <i style={{ height: `${Math.max(4, ((bar.minutes ?? 0) / model.maxMinutes) * 100)}%` }} />{tick}
-              </button>
-            ) : (
-              <div key={bar.date} className="mp-daybar is-off" title={label}><i />{tick}</div>
-            );
-          })}
+      <Panel title="日ごとの所要時間" sub="縦軸は書いていた時間。色は書いた場所。棒を押すと、その日の中身が下に出ます。書かなかった日は点、時間が分からない日は薄い棒">
+        <div className="mp-daychart">
+          <div className="mp-daychart-axis" aria-hidden="true">
+            {axisTicks.map((tick) => <span key={tick} style={{ bottom: `${(tick / axisMax) * 100}%` }}>{axisMinutes(tick)}</span>)}
+          </div>
+          <div className="mp-daychart-plot">
+            {axisTicks.map((tick) => <i key={tick} className="mp-daychart-grid" style={{ bottom: `calc(var(--mp-label) + ${tick / axisMax} * var(--mp-plot))` }} aria-hidden="true" />)}
+            <div className="mp-daybars" style={{ ["--days" as string]: model.dayBars.length }} role="group" aria-label={`${model.monthLabel}の日ごとの所要時間`}>
+              {model.dayBars.map((bar) => {
+                const label = bar.written ? `${shortDate(bar.date, bar.weekday)} ${minutesText(bar.minutes)}${bar.chars !== null ? `・${bar.chars.toLocaleString("ja-JP")}字` : ""}${bar.place ? `・${bar.place}` : ""}` : `${shortDate(bar.date, bar.weekday)} 書かなかった日`;
+                const tick = <span>{bar.day % 5 === 0 || bar.day === 1 ? bar.day : ""}</span>;
+                return bar.written ? (
+                  <button key={bar.date} type="button" className={`mp-daybar${groupClass(bar.group)}${bar.date === selected ? " is-selected" : ""}${bar.minutes === null ? " is-unknown" : ""}`} title={label} aria-label={label} aria-pressed={bar.date === selected} onClick={() => setSelected(bar.date)}>
+                    <b><i style={{ height: `${Math.max(2, ((bar.minutes ?? 0) / axisMax) * 100)}%` }} /></b>{tick}
+                  </button>
+                ) : (
+                  <div key={bar.date} className="mp-daybar is-off" title={label}><b><i /></b>{tick}</div>
+                );
+              })}
+            </div>
+          </div>
         </div>
         <PlaceLegend groups={usedGroups} />
         {day ? <DayDetail day={day} /> : <p className="dr-empty">この月のページはありません。</p>}

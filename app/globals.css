@@ -1153,11 +1153,17 @@ h1,h2,h3 { color:var(--ink); } h1 { margin:0; font-size:30px; line-height:1.1; l
 .mp-months>.is-empty { color:var(--faint); }
 
 /* 日ごとの棒 */
-.mp-daybars { display:grid; grid-template-columns:repeat(var(--days),minmax(0,1fr)); gap:3px; align-items:end; height:160px; padding-top:8px; }
-.mp-daybar { position:relative; display:flex; flex-direction:column; justify-content:flex-end; height:100%; border:0; border-radius:4px; background:transparent; padding:0; font:inherit; }
+.mp-daychart { --mp-plot:150px; --mp-label:22px; display:grid; grid-template-columns:auto minmax(0,1fr); gap:8px; }
+.mp-daychart-axis { position:relative; width:52px; height:var(--mp-plot); margin-top:8px; }
+.mp-daychart-axis span { position:absolute; right:0; transform:translateY(50%); color:var(--faint); font-size:12px; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.mp-daychart-plot { position:relative; min-width:0; padding-top:8px; }
+.mp-daychart-grid { position:absolute; left:0; right:0; height:0; border-top:1px solid var(--line); }
+.mp-daybars { position:relative; display:grid; grid-template-columns:repeat(var(--days),minmax(0,1fr)); gap:3px; }
+.mp-daybar { position:relative; display:flex; flex-direction:column; border:0; border-radius:4px; background:transparent; padding:0; font:inherit; }
+.mp-daybar b { display:flex; align-items:flex-end; height:var(--mp-plot); }
 button.mp-daybar { cursor:pointer; }
 button.mp-daybar:hover { background:var(--blue-soft); }
-.mp-daybar i { display:block; width:100%; min-height:4px; border-radius:4px 4px 0 0; background:var(--blue); }
+.mp-daybar i { display:block; width:100%; min-height:2px; border-radius:4px 4px 0 0; background:var(--blue); }
 .mp-daybar.is-unknown i { opacity:.45; }
 .mp-daybar.is-off i { height:4px; min-height:4px; border-radius:99px; background:var(--c-dim); }
 .mp-daybar.is-selected { background:var(--blue-soft); outline:2px solid var(--blue-strong); outline-offset:1px; }
@@ -1197,6 +1203,8 @@ button.mp-daybar:hover { background:var(--blue-soft); }
   .mp-filter { padding:12px 14px 0; }
   .mp-months { grid-template-columns:repeat(6,minmax(0,1fr)); }
   .mp-chart-axis { width:44px; height:180px; }
+  .mp-daychart { --mp-plot:120px; }
+  .mp-daychart-axis { width:44px; }
   .mp-chart-plot { height:180px; }
   .mp-place-row { grid-template-columns:110px minmax(0,1fr) 44px; gap:8px; }
   .mp-search { padding:12px 14px; }
