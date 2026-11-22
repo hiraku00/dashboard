@@ -1,3 +1,4 @@
+import { env } from "cloudflare:workers";
 import { beforeAll, describe, expect, test } from "vitest";
 import { ensureSchema } from "@/db";
 import { POST as ingestPost } from "@/app/api/morning-pages/route";
@@ -70,21 +71,80 @@ describe("morningPageView + buildMorningModel", () => {
       page("2024-03-01", { place: "ホテル(Hi Hotel Bangkok)", minutes: null, chars: null, plan: ["引っ越し先を探す"], notes: [] }),
     ] });
 
-    const latest = buildMorningModel(await morningPageView(null, ""));
+    const latest = buildMorningModel(await morningPageView(null, null, ""));
     expect(latest.month).toBe("2024-03");
     expect(latest.days.map((d) => d.date)).toEqual(["2024-03-01"]);
     expect(latest.days[0]).toMatchObject({ minutes: null, chars: null, place: "ホテル(Hi Hotel Bangkok)" });
 
-    const feb = buildMorningModel(await morningPageView("2024-02", ""));
+    const feb = buildMorningModel(await morningPageView("2024-02", null, ""));
     expect(feb.stats).toMatchObject({ pages: 2, avgMinutes: 40, avgChars: 2000 });
     expect(feb.trend.find((t) => t.month === "2024-02")).toMatchObject({ pages: 2, avgMinutes: 40 });
-    expect(feb.notes).toEqual([{ date: "2024-02-10", text: "引っ越しの手続きが心配" }]);
-    expect(feb.extractedDays).toBe(1);
+    expect(feb.notesYear).toBe("2024");
+    expect(feb.concerns).toEqual([{ date: "2024-02-10", text: "引っ越しの手続きが心配", source: "page" }]);
+    expect(feb.places.map((p) => [p.label, p.count])).toEqual([["自宅", 2]]);
 
-    const found = buildMorningModel(await morningPageView("2024-03", "引っ越し"));
+    const found = buildMorningModel(await morningPageView("2024-03", null, "引っ越し"));
     expect(found.search?.hits.map((h) => [h.date, h.kind]).sort()).toEqual([["2024-02-10", "notes"], ["2024-03-01", "plan"]]);
     // LIKE の特殊文字は文字として探す(% や _ で全件にならない)
-    expect((await morningPageView("2024-03", "100%")).search?.hits).toEqual([]);
-    expect((await morningPageView("2024-03", "_")).search?.hits).toEqual([]);
+    expect((await morningPageView("2024-03", null, "100%")).search?.hits).toEqual([]);
+    expect((await morningPageView("2024-03", null, "_")).search?.hits).toEqual([]);
+  });
+});
+
+// 日報のある期間のページはヘッダーだけ。日報 D の6節目の予定はページ D、PCの外の活動と気がかりはページ D+1 に付く
+const reflection = (concern: string) => `## 6. 予定と振り返り
+
+> モーニングページ: 当日朝の予定・翌朝の振り返り
+
+### 予定と実績
+
+| 予定 | 結果 | 状態 |
+|---|---|---|
+| 牛乳を買う | 買った | 済 |
+| （予定になし）動画視聴 | 夜に見た | 予定外 |
+
+### PCの外の活動
+
+| 時刻 | 活動 | 種類 |
+|---|---|---|
+| 12:30頃 | 昼食（外食） | 食事 |
+
+### 気になったこと・持ち越し
+
+- [持ち越し] メルマガの続きを読む
+- [気がかり] ${concern}
+`;
+
+async function seedReport(date: string, markdown: string) {
+  await env.DB.prepare(`INSERT OR REPLACE INTO daily_reports (report_date, markdown, sha256, parser_version, parse_status, created_at, updated_at, reflection)
+    VALUES (?1, '', ?1, 1, 'ok', '', '', ?2)`).bind(date, markdown).run();
+}
+
+describe("pages in the daily report period are filled from the report's reflection", () => {
+  test("plans go to the same day, activities and concerns to the next morning, and the notes tab lists them by year", async () => {
+    await ingest({ pages: [
+      page("2026-03-10", { extracted: false, yesterday: [], plan: [], notes: [], place: "7F-中庭" }),
+      page("2026-03-11", { extracted: false, yesterday: [], plan: [], notes: [], place: "自宅(co-working)" }),
+    ] });
+    await seedReport("2026-03-10", reflection("タイヤの空気が少ない"));
+    await seedReport("2026-02-28", reflection("前の月の気がかり"));
+
+    const march = buildMorningModel(await morningPageView("2026-03", null, ""));
+    const [first, second] = march.days;
+    expect(first).toMatchObject({ date: "2026-03-10", plan: ["牛乳を買う"], yesterday: [], notes: [], source: "report" });
+    expect(second).toMatchObject({ date: "2026-03-11", plan: [], yesterday: ["12:30頃 昼食（外食）"], notes: ["タイヤの空気が少ない"], source: "report" });
+    // 「7F-中庭」と「自宅(co-working)」は、どちらも共用スペース
+    expect(march.places.map((p) => [p.label, p.count])).toEqual([["共用スペース", 2]]);
+
+    expect(march.notesYear).toBe("2026");
+    expect(march.concerns).toEqual([
+      { date: "2026-03-11", text: "タイヤの空気が少ない", source: "report" },
+      { date: "2026-03-01", text: "前の月の気がかり", source: "report" },
+    ]);
+    // 年を指定すると、その年の気がかり
+    expect(buildMorningModel(await morningPageView("2026-03", "2024", "")).concerns.map((c) => c.date)).toEqual(["2024-02-10"]);
+
+    const found = buildMorningModel(await morningPageView(null, null, "タイヤ"));
+    expect(found.search?.hits).toContainEqual({ date: "2026-03-11", kind: "notes", text: "タイヤの空気が少ない" });
   });
 });
