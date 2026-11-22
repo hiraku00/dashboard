@@ -90,6 +90,8 @@ test("NHK ONE: OCRが「1」を「I」と読み違えたIDを、直した候補�
   // ノートに貼られる共有用のURL(one.nhk/www.web.nhk/…)でも、候補を出す(実例: R1N6564214 → RIN6564214)。
   expect(nhkIdVariants("https://one.nhk/www.web.nhk/tv/pl/series-tep-RIN6564214/ep/G56K6M7GGL")).toContain("https://one.nhk/www.web.nhk/tv/pl/series-tep-R1N6564214/ep/G56K6M7GGL");
   expect(nhkIdVariants("https://one.nhk/other/series-tep-RIN6564214/ep/G56K6M7GGL")).toEqual([]);
+  // 番組表のURLの放送局コード「g1」を「91」と読んだ(実例: 2026-11-20 国際報道)。
+  expect(nhkIdVariants("https://one.nhk/www.web.nhk/tv/pl/schedule-tep-91-130-20261120/ep/HKB9CCAC2U")).toEqual(["https://one.nhk/www.web.nhk/tv/pl/schedule-tep-g1-130-20261120/ep/HKB9CCAC2U"]);
 });
 
 test("TVer のエピソードIDの読み違い(0 → o)を直した候補", async () => {
@@ -98,4 +100,16 @@ test("TVer のエピソードIDの読み違い(0 → o)を直した候補", asyn
   expect(tverIdVariants("ept025uufz")).toEqual([]);                     // 直す文字が無い
   expect(tverIdVariants("epoolool1o")).toEqual([]);                     // 候補が多すぎる(当てずっぽうになる)
   expect(tverIdVariants("eplo12abcd")).toEqual(["ep1o12abcd", "epl012abcd", "ep1012abcd"]);
+});
+
+test("NHK ONE の番組表のページは、canonical の番組ページのURLにそろえる", async () => {
+  const { nhkCanonicalUrl } = await import("../app/lib/link-preview.ts");
+  const schedule = "https://www.web.nhk/tv/pl/schedule-tep-g1-130-20261120/ep/HKB9CCAC2U";
+  const series = "https://www.web.nhk/tv/an/kokusaihoudou/pl/series-tep-8M689W8RVX/ep/HKB9CCAC2U";
+  expect(nhkCanonicalUrl(`<head><link rel="canonical" href="${series}"/></head>`, schedule)).toBe(series);
+  // エピソードのIDが違う・NHK ONE 以外・canonical が無いときは、元のURLのまま。
+  expect(nhkCanonicalUrl(`<link rel="canonical" href="https://www.web.nhk/tv/pl/series-tep-8M689W8RVX/ep/OTHER00000"/>`, schedule)).toBe(schedule);
+  expect(nhkCanonicalUrl(`<link rel="canonical" href="https://example.com/ep/HKB9CCAC2U"/>`, schedule)).toBe(schedule);
+  expect(nhkCanonicalUrl("<head></head>", schedule)).toBe(schedule);
+  expect(nhkCanonicalUrl(`<link rel="canonical" href="${series}"/>`, "https://example.com/x")).toBe("https://example.com/x");
 });

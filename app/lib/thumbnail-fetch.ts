@@ -6,7 +6,7 @@
  *  Everything here is best effort: any failure -- timeout, non-HTML, a
  *  redirect to a refused host, no image tag -- resolves to "" rather than
  *  throwing, because a missing thumbnail must never fail saving an item. */
-import { nhkIdVariants, parseLinkPreview, parseTverPreview, tverEpisodeId, tverIdVariants, type LinkPreview } from "./link-preview.ts";
+import { nhkCanonicalUrl, nhkIdVariants, parseLinkPreview, parseTverPreview, tverEpisodeId, tverIdVariants, type LinkPreview } from "./link-preview.ts";
 import { isPublicHttpUrl, metaRefreshUrl, pageImageUrl, tverThumbnailUrl, youTubeThumbnailFromLinks } from "./thumbnail.ts";
 
 /** One deadline for the whole lookup, redirects included. */
@@ -235,14 +235,14 @@ export async function readLinkPreview(url: string): Promise<{ ok: true; preview:
       : { ok: false, reason: "TVerの番組情報(公開JSON)を読めなかった", gone: false };
   }
   const page = await readPageHead(url);
-  if (page.ok) return { ok: true, preview: parseLinkPreview(page.html, page.url), url: page.url };
+  if (page.ok) return { ok: true, preview: parseLinkPreview(page.html, page.url), url: nhkCanonicalUrl(page.html, page.url) };
   // ページが無い(404)ときは、OCRの読み違い(1 → I など)を直した候補のURLを順に試す。見つかったページのURLを返す(保存されるリンクも直る)。
   // 403 や時間切れでは試さない: 断られているときに候補を試しても同じように断られ、候補ごとに最大3回のサブリクエストを使うだけ。
   if (!page.gone) return page;
   const variants = nhkIdVariants(url);
   for (const variant of variants) {
     const fixed = await readPageHead(variant);
-    if (fixed.ok) return { ok: true, preview: parseLinkPreview(fixed.html, fixed.url), url: fixed.url };
+    if (fixed.ok) return { ok: true, preview: parseLinkPreview(fixed.html, fixed.url), url: nhkCanonicalUrl(fixed.html, fixed.url) };
   }
   return variants.length ? { ...page, reason: `${page.reason}(読み違いを直した候補${variants.length}件も読めなかった)` } : page;
 }
