@@ -100,7 +100,7 @@ export const TV_PROGRAM_AIRED_AT_BACKFILL = `UPDATE items SET aired_at = added_o
 
 /** Bump whenever the DDL below changes, so existing databases re-run it once.
  *  A database whose schema_meta row already matches skips the whole batch. */
-const SCHEMA_VERSION = 21;
+const SCHEMA_VERSION = 23;
 
 /** Reads the recorded schema version. A database that predates schema_meta (or
  *  a brand new one) has no table, and the query fails rather than returning a
@@ -340,6 +340,14 @@ export async function ensureSchema({ seed = true }: { seed?: boolean } = {}) {
       report_date TEXT NOT NULL, tag TEXT NOT NULL, minutes INTEGER NOT NULL DEFAULT 0,
       work_item_count INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (report_date, tag)
     )`),
+    // モーニングページ(schema version 23、migrations/0024_morning_pages.sql)。1ページ1行で、ヘッダーの表と、取り出した
+    // 「昨日のこと・今日の予定・気になったこと」(JSON配列)だけを置く。本文は置かない。
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS morning_pages (
+      page_date TEXT PRIMARY KEY, started_at TEXT, ended_at TEXT, minutes INTEGER,
+      place TEXT NOT NULL DEFAULT '', chars INTEGER,
+      yesterday TEXT NOT NULL DEFAULT '[]', plan TEXT NOT NULL DEFAULT '[]', notes TEXT NOT NULL DEFAULT '[]',
+      extracted INTEGER NOT NULL DEFAULT 0, content_hash TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+    )`),
     // 作業日報の週次・月次サマリ(schema version 14、docs/daily-report-ingest-design.md §10)。原本をそのまま置き、
     // 解析・タグ付けはしない。同じ内容が migrations/0018_daily_report_summaries.sql にもある。
     env.DB.prepare(`CREATE TABLE IF NOT EXISTS daily_report_summaries (
@@ -394,6 +402,9 @@ export async function ensureSchema({ seed = true }: { seed?: boolean } = {}) {
   ]);
   await env.DB.prepare("ALTER TABLE todo_routines ADD COLUMN default_due_time TEXT").run().catch(() => {});
   await env.DB.prepare("ALTER TABLE openchat_note_meta ADD COLUMN program_name TEXT NOT NULL DEFAULT ''").run().catch(() => {});
+  // Schema version 22: 作業日報の6節目「予定と振り返り」(モーニングページから書き足す)の本文(migrations/0023_daily_report_reflection.sql)。
+  // 6節目が無い日報は空文字。既存の日報には6節目が無いので、作り直し(再解析)は要らない。
+  await env.DB.prepare("ALTER TABLE daily_reports ADD COLUMN reflection TEXT NOT NULL DEFAULT ''").run().catch(() => {});
   // Schema version 15: 放送情報の自動入力で読めなかった理由(migrations/0019_openchat_autofill_error.sql)。
   await env.DB.prepare("ALTER TABLE openchat_note_meta ADD COLUMN autofill_error TEXT NOT NULL DEFAULT ''").run().catch(() => {});
   // Schema version 10: 手で直した本文は同期で上書きしない(migrations/0014_openchat_body_edited.sql)。

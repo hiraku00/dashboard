@@ -41,6 +41,23 @@ function nhkSeriesName(html: string) {
   try { return String(JSON.parse(`"${raw}"`)).trim(); } catch { return ""; }
 }
 
+/** NHK ONE の番組表のページ(schedule-tep-g1-130-20261120/ep/…)は、同じエピソードの番組ページ(series-tep-…/ep/…)を
+ *  <link rel="canonical"> で指している。Watch List に登録されているのは番組ページのURLなので、保存するリンクはそちらにそろえる
+ *  (そろえないと「登録済」を判別できない)。canonical が NHK ONE の同じエピソード(/ep/ のIDが同じ)のときだけ使い、違えば元のURLのまま。 */
+export function nhkCanonicalUrl(html: string, url: string): string {
+  try {
+    const host = new URL(url).hostname.replace(/^www\./, "");
+    if (host !== "web.nhk") return url;
+    const tag = html.match(/<link\b[^>]*>/gi)?.find((t) => attribute(t, "rel").toLowerCase() === "canonical");
+    const href = tag ? decodeHtml(attribute(tag, "href")).trim() : "";
+    if (!href) return url;
+    const canonical = new URL(href, url);
+    const episode = (u: URL) => u.pathname.match(/\/ep\/([A-Za-z0-9]+)\/?$/)?.[1];
+    if (canonical.hostname.replace(/^www\./, "") !== "web.nhk" || !episode(canonical) || episode(canonical) !== episode(new URL(url))) return url;
+    return canonical.href;
+  } catch { return url; }
+}
+
 export function parseLinkPreview(html: string, url: string): LinkPreview {
   const ogTitle = metaProperty(html, "og:title") || pageTitle(html);
   const creatorName = inferBroadcaster([url]);
@@ -133,6 +150,7 @@ const misreadFix = (ch: string) => OCR_MISREADS[ch] ?? (/[a-z]/.test(ch) ? ch.to
  *  - 「7」を「T」、「1」を小文字の「l」と読む(実例: PKQY1JGQ7V → PKQYIJGQTV。この例は「1→I」と同時に起きた)。
  *  - 大文字を小文字と読む(実例: 9N81M92LXV → 9N81M92LxV。「1→I」と同時に起きた)。
  *  - 縦線のノイズを「I」として1文字足す(実例: 6NMMPMNK5K → 6NMMPMINK5K の11文字で404)。
+ *  - 番組表のページ(schedule-tep-g1-130-20261120)の放送局コードも読み違える(実例: g1 → 91 で404。「g」を「9」と読む)。
  *  読み違えかもしれない文字を直した候補のURLを、直す箇所の少ない順に返す(元のURLは含まない)。
  *  候補が多いときは当てずっぽうになるので出さない。NHK ONE 以外のURLも出さない。 */
 export function nhkIdVariants(url: string): string[] {
@@ -141,9 +159,12 @@ export function nhkIdVariants(url: string): string[] {
   // ノートに貼られる共有用のURL(one.nhk/www.web.nhk/…)も、同じIDを含む(実例: R1N6564214 → RIN6564214 で404。この形には候補を出していなかった)。
   const host = u.hostname.replace(/^www\./, "");
   if (host !== "web.nhk" && !(host === "one.nhk" && u.pathname.startsWith("/www.web.nhk/"))) return [];
-  const ids = [...u.pathname.matchAll(/(series-tep-|\/ep\/)([A-Za-z0-9]+)/g)].map((m) => ({ at: (m.index ?? 0) + m[1].length, id: m[2] }));
+  const ids = [...u.pathname.matchAll(/(series-tep-|\/ep\/|schedule-tep-(?=[0-9a-z]{2}-))([A-Za-z0-9]+)/g)]
+    .map((m) => ({ at: (m.index ?? 0) + m[1].length, id: m[2], schedule: m[1].startsWith("schedule") }));
   // 1つのIDの候補(直す箇所の数, 直したID)。元のIDは直す箇所0。
-  const candidatesOf = (id: string) => {
+  const candidatesOf = (id: string, schedule: boolean) => {
+    // 番組表の放送局コード(g1・e1 など。2文字)は、先頭の「g」を「9」と読み違えるだけ。IDのような直し方はしない。
+    if (schedule) return [{ changes: 0, id }, ...(id[0] === "9" ? [{ changes: 1, id: `g${id.slice(1)}` }] : [])];
     const result: Array<{ changes: number; id: string }> = [{ changes: 0, id }];
     const swaps = [...id].flatMap((ch, i) => (misreadFix(ch) ? [i] : []));
     if (swaps.length <= 6) {
@@ -160,8 +181,8 @@ export function nhkIdVariants(url: string): string[] {
     return result;
   };
   let combos: Array<{ changes: number; ids: string[] }> = [{ changes: 0, ids: [] }];
-  for (const { id } of ids) {
-    const options = candidatesOf(id);
+  for (const { id, schedule } of ids) {
+    const options = candidatesOf(id, schedule);
     combos = combos.flatMap((c) => options.map((o) => ({ changes: c.changes + o.changes, ids: [...c.ids, o.id] }))).slice(0, 64);
   }
   const seen = new Set([url]);

@@ -88,9 +88,9 @@ export async function measuredToday(db: D1Database, now = new Date()): Promise<b
 
 /** 使用量画面の「主な保存データ」の行。行ごとに、どのテーブルの容量を足すかを決める。
  *  オプチャはノートとコメントの2行に分け、コメントの表だけをコメントの行に入れる。どれにも当たらない表は「台帳・管理」。 */
-export type UsageGroupKey = "watchList" | "manageAsset" | "manageAssetWallet2" | "textTube" | "openchatNotes" | "openchatComments" | "todoTasks" | "dailyReports" | "system";
+export type UsageGroupKey = "watchList" | "manageAsset" | "manageAssetWallet2" | "textTube" | "openchatNotes" | "openchatComments" | "todoTasks" | "dailyReports" | "morningPages" | "system";
 
-export const USAGE_GROUP_ORDER: UsageGroupKey[] = ["watchList", "manageAsset", "manageAssetWallet2", "textTube", "openchatNotes", "openchatComments", "todoTasks", "dailyReports", "system"];
+export const USAGE_GROUP_ORDER: UsageGroupKey[] = ["watchList", "manageAsset", "manageAssetWallet2", "textTube", "openchatNotes", "openchatComments", "todoTasks", "dailyReports", "morningPages", "system"];
 
 export function usageGroupOf(table: string): UsageGroupKey {
   if (table.startsWith(WALLET2_TABLE_PREFIX)) return "manageAssetWallet2";
@@ -101,6 +101,8 @@ export function usageGroupOf(table: string): UsageGroupKey {
   if (table.startsWith("openchat_")) return "openchatNotes";
   if (table.startsWith("todo_")) return "todoTasks";
   if (table.startsWith("daily_report")) return "dailyReports";
+  // モーニングページ(Obsidian の朝の書き物の、ヘッダーと取り出した箇条書き)。作業日報とは別の入れ物
+  if (table.startsWith("morning_page")) return "morningPages";
   return "system";
 }
 

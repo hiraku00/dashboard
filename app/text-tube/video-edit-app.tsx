@@ -11,7 +11,7 @@ import {
 import { ApiError, readJson } from "../lib/json";
 import { lintArticle } from "../lib/text-tube-article-lint";
 
-const SUMMARY_CHAT_URL = "https://claude.ai/chat/c6268308-e70e-4257-a1ad-9efdcf450690";
+const SUMMARY_CHAT_URL = "https://claude.ai/project/01a0cc69-54fd-776c-97d8-323202c4b952";
 
 /** The add / edit page for one video (/text-tube/new and
  *  /text-tube/watch/[id]/edit). This used to be a modal over the library, but

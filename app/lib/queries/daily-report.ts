@@ -46,10 +46,11 @@ export async function periodView(period: PeriodRange): Promise<PeriodView> {
         (SELECT group_concat(t.tag) FROM daily_report_item_tags t WHERE t.report_date=w.report_date AND t.source='work' AND t.position=w.position) AS tags
       FROM daily_report_work_items w WHERE w.report_date BETWEEN ? AND ? ORDER BY w.report_date, w.position`).bind(from, to),
     db.prepare("SELECT report_date, text FROM daily_report_notes WHERE report_date BETWEEN ? AND ? ORDER BY report_date DESC, position").bind(from, to),
+    db.prepare("SELECT report_date, reflection FROM daily_reports WHERE report_date BETWEEN ? AND ? AND reflection <> '' ORDER BY report_date DESC").bind(from, to),
   ];
   if (period.range === "day") statements.push(db.prepare("SELECT markdown, parse_warnings FROM daily_reports WHERE report_date=?").bind(from));
   else statements.push(db.prepare("SELECT markdown, updated_at FROM daily_report_summaries WHERE kind=? AND period_start=?").bind(period.range, from));
-  const [dates, reports, tagDays, blocks, workItems, notes, last] = await db.batch<Row>(statements);
+  const [dates, reports, tagDays, blocks, workItems, notes, reflections, last] = await db.batch<Row>(statements);
 
   const head = period.range === "day" ? last?.results?.[0] : undefined;
   const summary = period.range === "day" ? undefined : last?.results?.[0];
@@ -86,6 +87,7 @@ export async function periodView(period: PeriodRange): Promise<PeriodView> {
       tags: splitTags(row.tags),
     })),
     notes: (notes.results ?? []).map((row) => ({ reportDate: String(row.report_date), text: String(row.text) })),
+    reflections: (reflections.results ?? []).map((row) => ({ reportDate: String(row.report_date), markdown: String(row.reflection ?? "") })),
     original: head ? { markdown: String(head.markdown ?? ""), warnings: parseWarnings(head.parse_warnings) } : null,
     summary: summary ? { markdown: String(summary.markdown ?? ""), updatedAt: String(summary.updated_at ?? "") } : null,
   };

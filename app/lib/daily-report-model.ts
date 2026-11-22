@@ -36,6 +36,7 @@ import {
   type WorkCategoryRow,
   type WorkItemInput,
 } from "./daily-report-summary.ts";
+import { summarizeReflections, type ReflectionDay, type ReflectionSummary } from "./daily-report-reflection.ts";
 
 export type ReportRow = {
   reportDate: string;
@@ -59,11 +60,16 @@ export type PeriodView = {
   blocks: (TimelineBlockInput & { reportDate: string })[];
   workItems: WorkItemInput[];
   notes: { reportDate: string; text: string }[];
+  /** from〜to の6節目「予定と振り返り」(書いてある日だけ、新しい日から) */
+  reflections: Reflection[];
   /** 日次のときだけ: その日の本文と解析時の警告 */
   original: { markdown: string; warnings: string[] } | null;
   /** 週次・月次のときだけ: その期間のサマリ(auto-daily-report の summarize.py が作る Markdown) */
   summary: { markdown: string; updatedAt: string } | null;
 };
+
+/** 日報の6節目「予定と振り返り」。markdown は見出しの下の本文 */
+export type Reflection = { reportDate: string; markdown: string };
 
 export type HeroItem = { label: string; value: string; sub?: string };
 
@@ -121,6 +127,8 @@ export type DailyReportModel = {
   work: WorkCategoryRow[];
   /** 知見・メモ: カテゴリは表示時にタグ辞書で決める */
   notes: { reportDate: string; text: string; category: Category }[];
+  /** 振り返りタブ: 6節目のある日(古い日から、表を読んだもの)と期間の集計。日次は days がその日の1件か空 */
+  reflection: { days: ReflectionDay[]; summary: ReflectionSummary };
   /** 原本タブ: 日次は本文、週次・月次はサマリと日報の一覧 */
   original: { markdown: string; warnings: string[]; parseStatus: ReportRow["parseStatus"] } | null;
   summary: { markdown: string; updatedAt: string } | null;
@@ -261,6 +269,7 @@ export function buildModel(view: PeriodView, period: PeriodRange, today: string)
     weekdays: range === "month" ? weekdayAverages(columns) : [],
     work: workTable(view.workItems, currentTags),
     notes: view.notes.map((note) => ({ ...note, category: noteCategory(note.text) })),
+    reflection: summarizeReflections(view.reflections),
     original: range === "day" && view.original && report ? { ...view.original, parseStatus: report.parseStatus } : null,
     summary: range === "day" ? null : view.summary,
     reportList: current.map((row) => ({ date: row.reportDate, active: activeByDate.get(row.reportDate) ?? 0, recordStart: row.recordStart, recordEnd: row.recordEnd, gapMinutes: row.gapMinutes, parseStatus: row.parseStatus })).reverse(),

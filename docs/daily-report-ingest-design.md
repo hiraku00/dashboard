@@ -63,6 +63,7 @@ migration `0017_daily_reports.sql` と `db/index.ts` の `ensureSchema()` の**�
 | `recorded_minutes` | INTEGER | 記録期間の分数 |
 | `capture_count` / `capture_count_is_min` | INTEGER | `キャプチャ回数`。「N回以上」「N+回」は下限値として入れ、`is_min=1` |
 | `gap_minutes` | INTEGER | 「ログなし」行の合計分 |
+| `reflection` | TEXT | 6節目「予定と振り返り」の本文（見出しの下の Markdown）。auto-daily-report がモーニングページから書き足した日だけ。無ければ空文字（schema version 22、`migrations/0023_daily_report_reflection.sql`） |
 | `parser_version` | INTEGER | 解析・タグ付けに使った規則の版 |
 | `parse_status` / `parse_warnings` | TEXT / TEXT | `ok`・`partial`・`failed` / 警告のJSON配列 |
 | `created_at` / `updated_at` | TEXT | ISO8601 |
@@ -120,6 +121,7 @@ migration `0017_daily_reports.sql` と `db/index.ts` の `ensureSchema()` の**�
 - 節は `^## \d+\.` の見出しで分け、**番号とキーワードの両方**で判定する（「知見･メモ」と「知見・メモ」が混在しているため）。
 - 既存204件で実際に見つかった表記の揺れ: `~`/`～`、半角・全角の括弧、`約 N 時間`（分なし）、`HH:MM:SS`、`N回以上`・`N+回`・`N 回`・`:N回[N]`、`## 2. アプリ使用状況(アプリ、使用回数、主な用途)` のような補足付きの見出し。
 - 表は1行目の列名で列を特定し、列の順番には頼らない。
+- 6節目「予定と振り返り」（見出しに「振り返り」を含む節）は任意。中身は解析せず、Markdown のまま `reflection` 列に入れる。無くても警告にしない。auto-daily-report が Obsidian のモーニングページ（D 日の予定と D+1 日の振り返り）から別の `claude -p` で書き足すもので、1〜5節（画面記録）には混ぜない。既存の日報には6節目が無く解析結果が変わらないので、追加時に `PARSER_VERSION` は上げていない。
 - 読めない行は飛ばして `warnings` に入れ、`partial` にする。例外で全体を落とさない。
 - テスト（`tests/daily-report-parse.test.mjs`、`tests/daily-report-tags.test.mjs`）は、実際の日報が個人的な内容を含むため、書式（初期の形式、見つかった表記揺れ）だけを写した**架空の日報**をfixtureにする。一括送信の前に、**既存204件の全件で `failed` が0件**であることと、`other` に落ちる時間の割合を確認する。
 

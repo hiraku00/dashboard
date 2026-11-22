@@ -8,6 +8,7 @@ import { NotesTable, TimePanel, WorkTable } from "./daily-report-tabs";
 import { DayAxis, DayBand, WeekdayBars, REPORT_TABS, reportHref, shortDate, type ReportTab } from "./daily-report-ui";
 import { DayTimeline } from "./daily-report-day-view";
 import { DailyReportToolbar } from "./daily-report-toolbar";
+import { ReflectionDayView, ReflectionPeriodView } from "./daily-report-reflection";
 import { MarkdownRenderer } from "./text-tube/markdown-renderer";
 import { axisRange, formatMinutes, timelineSegments, type TimelineBlockInput } from "./lib/daily-report-summary";
 import type { DailyReportModel } from "./lib/daily-report-model";
@@ -76,6 +77,7 @@ export function DailyReportApp({ model, initialTab }: { model: DailyReportModel;
       <div hidden={tab !== "time"}>{hasReports ? <TimeTab model={model} /> : empty}</div>
       <div hidden={tab !== "work"}>{hasReports ? <WorkTab model={model} /> : empty}</div>
       <div hidden={tab !== "notes"}>{hasReports ? <NotesTab model={model} /> : empty}</div>
+      <div hidden={tab !== "reflection"}>{hasReports ? <ReflectionTab model={model} /> : empty}</div>
       <div hidden={tab !== "original"}>{hasReports ? <OriginalTab model={model} /> : empty}</div>
     </main>
   );
@@ -188,6 +190,13 @@ function WorkTab({ model }: { model: DailyReportModel }) {
 function NotesTab({ model }: { model: DailyReportModel }) {
   if (!model.notes.length) return <Panel title="知見・メモ"><p className="dr-empty">知見・メモはありません。</p></Panel>;
   return <NotesTable notes={model.notes} showDate={model.period.range !== "day"} tab="notes" />;
+}
+
+/** 振り返り: 日報の6節目「予定と振り返り」(app/daily-report-reflection.tsx) */
+function ReflectionTab({ model }: { model: DailyReportModel }) {
+  const { period, reflection } = model;
+  if (period.range === "day") return <ReflectionDayView day={reflection.days[0]} />;
+  return <ReflectionPeriodView summary={reflection.summary} reportCount={model.reportCount} noun={PERIOD_NOUN[period.range]} />;
 }
 
 function OriginalTab({ model }: { model: DailyReportModel }) {

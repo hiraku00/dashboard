@@ -17,7 +17,7 @@ import {
 
 export const categoryColor = (category: Category) => `var(--c-${category})`;
 
-export type ReportTab = "summary" | "time" | "work" | "notes" | "original";
+export type ReportTab = "summary" | "time" | "work" | "notes" | "reflection" | "original";
 
 /** 機能内タブ。サーバーのページ(URLの tab の検証)とクライアントのワークスペースの両方が使うので、ここに置く */
 export const REPORT_TABS: [ReportTab, string][] = [
@@ -25,6 +25,7 @@ export const REPORT_TABS: [ReportTab, string][] = [
   ["time", "時間帯"],
   ["work", "作業"],
   ["notes", "知見"],
+  ["reflection", "振り返り"],
   ["original", "原本"],
 ];
 
