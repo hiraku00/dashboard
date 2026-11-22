@@ -25,7 +25,7 @@ export type D1BackedUsage = {
   usage: { bytes: number; count: number };
   categories: Record<string, unknown>[];
   latest: Record<string, unknown> | null;
-  databaseRecords: { watchList: number; manageAsset: number; manageAssetWallet2: number; textTube: number; openchatNotes: number; openchatComments: number; todoTasks: number; dailyReports: number };
+  databaseRecords: { watchList: number; manageAsset: number; manageAssetWallet2: number; textTube: number; openchatNotes: number; openchatComments: number; todoTasks: number; dailyReports: number; morningPages: number };
   transcriptUsage: { credits: number; attempts: number; lastUsedAt: string | null };
   /** テーブルごとの容量の概算(1日1回の計測の最新と、30日前ごろとの比較)。app/lib/d1-table-usage.ts */
   tableUsage: TableUsageSummary;
@@ -35,7 +35,7 @@ const emptyD1Records: Omit<D1BackedUsage, "ok" | "error"> = {
   usage: { bytes: 0, count: 0 },
   categories: [],
   latest: null,
-  databaseRecords: { watchList: 0, manageAsset: 0, manageAssetWallet2: 0, textTube: 0, openchatNotes: 0, openchatComments: 0, todoTasks: 0, dailyReports: 0 },
+  databaseRecords: { watchList: 0, manageAsset: 0, manageAssetWallet2: 0, textTube: 0, openchatNotes: 0, openchatComments: 0, todoTasks: 0, dailyReports: 0, morningPages: 0 },
   transcriptUsage: { credits: 0, attempts: 0, lastUsedAt: null },
   tableUsage: summarizeTableUsage([]),
 };
@@ -62,7 +62,7 @@ export async function d1BackedUsage(month: string, now = new Date()): Promise<D1
     // Promise.all), which cost a round trip each, ~100-300ms apiece from the
     // Worker. A failure in any statement rejects the batch, so it still lands
     // in the catch below and yields the same { ok: false } as before.
-    const [bytes, categories, latest, watchList, manageAsset, textTube, transcript, openchatNotes, openchatComments, todoTasks, dailyReports, tableUsage] = await env.DB.batch<Record<string, unknown>>([
+    const [bytes, categories, latest, watchList, manageAsset, textTube, transcript, openchatNotes, openchatComments, todoTasks, dailyReports, morningPages, tableUsage] = await env.DB.batch<Record<string, unknown>>([
       env.DB.prepare(STORAGE_BYTES_SQL),
       // R2 のカテゴリごとの今の件数・容量と、30日前の容量(台帳は削除したファイルも deleted_at 付きで残すので、
       // 「30日前より前に作られ、その時点で消えていなかった」ものを足せば30日前の容量になる。計測は要らない)
@@ -82,6 +82,8 @@ export async function d1BackedUsage(month: string, now = new Date()): Promise<D1
       env.DB.prepare("SELECT COUNT(*) AS count FROM todo_tasks WHERE deleted_at IS NULL"),
       // 作業日報(1日1行。正規化・タグの行はこの日数に従って増える)
       env.DB.prepare("SELECT COUNT(*) AS count FROM daily_reports"),
+      // モーニングページ(1ページ1行。2023年6月からの朝の書き物のヘッダーと、取り出した箇条書き)
+      env.DB.prepare("SELECT COUNT(*) AS count FROM morning_pages"),
       // 容量の計測の、最新の日と、比べる日(最新の30日前以前で一番新しい日。無ければ最初の日)の行だけ
       env.DB.prepare(TABLE_USAGE_SQL),
     ]);
@@ -103,6 +105,7 @@ export async function d1BackedUsage(month: string, now = new Date()): Promise<D1
         openchatComments: Number(openchatComments.results?.[0]?.count ?? 0),
         todoTasks: Number(todoTasks.results?.[0]?.count ?? 0),
         dailyReports: Number(dailyReports.results?.[0]?.count ?? 0),
+        morningPages: Number(morningPages.results?.[0]?.count ?? 0),
       },
       tableUsage: summarizeTableUsage((tableUsage.results ?? []).map((row) => ({
         usageDate: String(row.usage_date),

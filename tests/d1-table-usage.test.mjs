@@ -14,6 +14,7 @@ describe("usageGroupOf", () => {
     expect(usageGroupOf("todo_tasks")).toBe("todoTasks");
     expect(usageGroupOf("daily_reports")).toBe("dailyReports");
     expect(usageGroupOf("daily_report_tag_days")).toBe("dailyReports");
+    expect(usageGroupOf("morning_pages")).toBe("morningPages");
     expect(usageGroupOf("storage_objects")).toBe("system");
     expect(usageGroupOf("d1_table_usage_daily")).toBe("system");
   });
