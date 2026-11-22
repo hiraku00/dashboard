@@ -640,7 +640,7 @@ h1,h2,h3 { color:var(--ink); } h1 { margin:0; font-size:30px; line-height:1.1; l
   .dr-hero-figures { gap:4px 24px; }
 }
 
-.tt-summary-field{margin-bottom:16px;color:#ccc;font-size:13px}.tt-summary-head{display:flex;align-items:center;justify-content:space-between;gap:10px}.tt-summary-head a{color:#3ea6ff;font-size:12px;text-decoration:none}.tt-summary-head a:hover{text-decoration:underline}.texttube-workspace .tt-summary-field{color:#414148}.texttube-workspace .tt-summary-head a{color:var(--blue-strong)}
+.tt-summary-field{margin-bottom:16px;color:#ccc;font-size:13px}.tt-summary-head{display:flex;align-items:center;justify-content:space-between;gap:10px}.tt-summary-head a{color:#3ea6ff;font-size:12px;text-decoration:none}.tt-summary-head a:hover{text-decoration:underline}.tt-summary-head button{border:1px solid #444;border-radius:6px;background:transparent;color:#3ea6ff;font-size:12px;padding:3px 10px;cursor:pointer}.tt-summary-head button:disabled{color:#777;cursor:default}.texttube-workspace .tt-summary-head button{border-color:var(--line-strong);color:var(--blue-strong)}.texttube-workspace .tt-summary-head button:disabled{color:var(--faint)}.texttube-workspace .tt-summary-field{color:#414148}.texttube-workspace .tt-summary-head a{color:var(--blue-strong)}
 /* 要約欄の下の、記事の形式チェック（警告だけ。保存は止めない）。 */
 .tt-lint{margin-top:8px;border:1px solid rgba(217,119,6,.35);border-radius:9px;background:rgba(217,119,6,.06);padding:10px 12px;color:#414148;font-size:12px;line-height:1.6}
 .tt-lint>p{margin:0 0 6px;font-weight:700}
