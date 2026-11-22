@@ -435,6 +435,7 @@ h1,h2,h3 { color:var(--ink); } h1 { margin:0; font-size:30px; line-height:1.1; l
 .dr-cal-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; }
 .dr-cal-head strong { font-size:14px; }
 .dr-cal-head button { width:32px; height:32px; border:0; border-radius:8px; background:transparent; color:var(--ink); font-size:18px; cursor:pointer; }
+.dr-cal-head button.dr-cal-title { width:auto; padding:0 10px; font-size:14px; font-weight:700; }
 .dr-cal-head button:disabled { color:var(--faint); cursor:default; }
 .dr-cal-head button:not(:disabled):hover { background:var(--blue-soft); }
 .dr-cal-row { display:grid; grid-template-columns:repeat(7,1fr); gap:2px; text-decoration:none; border-radius:8px; }
@@ -448,9 +449,10 @@ h1,h2,h3 { color:var(--ink); } h1 { margin:0; font-size:30px; line-height:1.1; l
 .dr-cal-row.is-week:not(.is-disabled):hover { background:var(--blue-soft); }
 .dr-cal-row.is-disabled>span { color:var(--faint); }
 .dr-cal-months { display:grid; grid-template-columns:repeat(4,1fr); gap:4px; }
-.dr-cal-months>a,.dr-cal-months>span { display:grid; place-items:center; height:40px; border-radius:8px; color:var(--ink); font-size:14px; text-decoration:none; }
-.dr-cal-months>a:hover { background:var(--blue-soft); }
-.dr-cal-months>a.is-selected { background:var(--blue-soft); color:var(--blue-strong); font-weight:700; }
+.dr-cal-months>a,.dr-cal-months>button,.dr-cal-months>span { display:grid; place-items:center; height:40px; border-radius:8px; color:var(--ink); font-size:14px; text-decoration:none; }
+.dr-cal-months>button { border:0; background:transparent; font-family:inherit; cursor:pointer; }
+.dr-cal-months>a:hover,.dr-cal-months>button:hover { background:var(--blue-soft); }
+.dr-cal-months>a.is-selected,.dr-cal-months>button.is-selected { background:var(--blue-soft); color:var(--blue-strong); font-weight:700; }
 .dr-cal-months>.is-empty { color:var(--faint); }
 
 /* 凡例 */

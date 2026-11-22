@@ -84,6 +84,7 @@ function Calendar({ period, tab, reportDates, today, onPick }: { period: PeriodR
   const months = useMemo(() => new Set(reportDates.map((date) => date.slice(0, 7))), [reportDates]);
   const first = reportDates[0] ?? today;
   const [view, setView] = useState(period.range === "month" ? `${period.from.slice(0, 4)}-01-01` : `${period.from.slice(0, 7)}-01`);
+  const [picking, setPicking] = useState(false);
 
   if (period.range === "month") {
     const year = Number(view.slice(0, 4));
@@ -112,6 +113,31 @@ function Calendar({ period, tab, reportDates, today, onPick }: { period: PeriodR
     );
   }
 
+  if (picking) {
+    const year = Number(view.slice(0, 4));
+    return (
+      <div className="dr-calendar" role="dialog" aria-label="年月を選ぶ">
+        <div className="dr-cal-head">
+          <button type="button" disabled={year <= Number(first.slice(0, 4))} onClick={() => setView(`${year - 1}-${view.slice(5, 7)}-01`)} aria-label="前の年">‹</button>
+          <strong>{year}年</strong>
+          <button type="button" disabled={year >= Number(today.slice(0, 4))} onClick={() => setView(`${year + 1}-${view.slice(5, 7)}-01`)} aria-label="次の年">›</button>
+        </div>
+        <div className="dr-cal-months">
+          {Array.from({ length: 12 }, (_, index) => {
+            const month = `${year}-${String(index + 1).padStart(2, "0")}`;
+            const enabled = months.has(month);
+            return enabled ? (
+              <button key={month} type="button" className={month === view.slice(0, 7) ? "is-selected" : ""} onClick={() => { setView(`${month}-01`); setPicking(false); }}>{index + 1}月</button>
+            ) : (
+              <span key={month} className="is-empty">{index + 1}月</span>
+            );
+          })}
+        </div>
+        <p className="dr-note">日報のある月だけ選べます</p>
+      </div>
+    );
+  }
+
   const canPrev = view.slice(0, 7) > first.slice(0, 7);
   const canNext = view.slice(0, 7) < today.slice(0, 7);
   const lead = weekdayIndex(view);
@@ -125,7 +151,7 @@ function Calendar({ period, tab, reportDates, today, onPick }: { period: PeriodR
     <div className="dr-calendar" role="dialog" aria-label={period.range === "week" ? "週を選ぶ" : "日を選ぶ"}>
       <div className="dr-cal-head">
         <button type="button" disabled={!canPrev} onClick={() => setView(addMonths(view, -1))} aria-label="前の月">‹</button>
-        <strong>{Number(view.slice(0, 4))}年{Number(view.slice(5, 7))}月</strong>
+        <button type="button" className="dr-cal-title" onClick={() => setPicking(true)} aria-label="年月を選ぶ">{Number(view.slice(0, 4))}年{Number(view.slice(5, 7))}月 <span aria-hidden="true">▾</span></button>
         <button type="button" disabled={!canNext} onClick={() => setView(addMonths(view, 1))} aria-label="次の月">›</button>
       </div>
       <div className="dr-cal-row dr-cal-weekdays" aria-hidden="true">{["月", "火", "水", "木", "金", "土", "日"].map((label) => <span key={label}>{label}</span>)}</div>
