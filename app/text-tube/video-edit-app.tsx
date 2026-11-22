@@ -39,7 +39,8 @@ export function TextTubeVideoEditApp({
     [saving, setSaving] = useState(false),
     [createdId, setCreatedId] = useState<string | null>(null),
     [importing, setImporting] = useState(false),
-    [importError, setImportError] = useState("");
+    [importError, setImportError] = useState(""),
+    [copied, setCopied] = useState(false);
   const backHref = id && !fromList ? `/text-tube/watch/${id}` : "/text-tube";
 
   useEffect(() => {
@@ -162,6 +163,17 @@ export function TextTubeVideoEditApp({
     }
   }
 
+  async function copyScript() {
+    if (!form?.detailedScript) return;
+    try {
+      await navigator.clipboard.writeText(form.detailedScript);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setNotice("クリップボードにコピーできませんでした。");
+    }
+  }
+
   const cancel = (event: React.MouseEvent) => {
     if (dirty && !confirm("保存していない変更があります。破棄して戻りますか？")) event.preventDefault();
   };
@@ -276,10 +288,21 @@ export function TextTubeVideoEditApp({
               </div>
             )}
           </div>
-          <label>
-            詳細スクリプト（Markdown）
-            <textarea rows={24} value={form.detailedScript} onChange={set("detailedScript")} />
-          </label>
+          <div className="tt-summary-field">
+            <div className="tt-summary-head">
+              <label htmlFor="tt-detailed-script">詳細スクリプト（Markdown）</label>
+              {/* Copies the script for pasting into the summary chat above. */}
+              <button type="button" onClick={copyScript} disabled={!form.detailedScript}>
+                {copied ? "コピーしました" : "コピー"}
+              </button>
+            </div>
+            <textarea
+              id="tt-detailed-script"
+              rows={24}
+              value={form.detailedScript}
+              onChange={set("detailedScript")}
+            />
+          </div>
           <div className="tt-editor-actions">
             <Link href={backHref} prefetch={false} onClick={cancel}>
               キャンセル
