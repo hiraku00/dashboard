@@ -1103,47 +1103,89 @@ h1,h2,h3 { color:var(--ink); } h1 { margin:0; font-size:30px; line-height:1.1; l
 @media(prefers-reduced-motion:reduce){.usg-bar span{transition:none}}
 
 /* モーニングページ(app/morning-page-app.tsx) */
+/* 場所の分類の色(app/lib/morning-page-places.ts の順) */
+.mp-seg.is-home,.mp-swatch.is-home,.mp-daybar.is-home i { background:#2d6fd0; }
+.mp-seg.is-shared,.mp-swatch.is-shared,.mp-daybar.is-shared i { background:#16804f; }
+.mp-seg.is-family,.mp-swatch.is-family,.mp-daybar.is-family i { background:#b35c00; }
+.mp-seg.is-friends,.mp-swatch.is-friends,.mp-daybar.is-friends i { background:#b5418f; }
+.mp-seg.is-stay,.mp-swatch.is-stay,.mp-daybar.is-stay i { background:#7a5cc7; }
+.mp-seg.is-cafe,.mp-swatch.is-cafe,.mp-daybar.is-cafe i { background:#c98a00; }
+.mp-seg.is-transit,.mp-swatch.is-transit,.mp-daybar.is-transit i { background:#4a5a70; }
+.mp-seg.is-other,.mp-swatch.is-other,.mp-daybar.is-other i { background:#a8aab1; }
+.mp-seg.is-metric { background:var(--blue); }
+.mp-swatch { display:inline-block; flex:none; width:10px; height:10px; margin-right:6px; border-radius:3px; vertical-align:-1px; }
+
+.mp-chips { display:flex; flex-wrap:wrap; gap:6px; }
+.mp-chips>button,.mp-chips>a { min-height:32px; border:0; border-radius:99px; background:rgba(60,60,67,.06); padding:5px 14px; color:var(--ink); font:inherit; font-size:13px; font-weight:650; text-decoration:none; cursor:pointer; }
+.mp-chips>button:hover,.mp-chips>a:hover { background:var(--blue-soft); }
+.mp-chips>.is-current,.mp-chips>.is-current:hover { background:var(--blue); color:#fff; }
+.mp-filter { padding:16px 22px 0; }
+.mp-filter.is-notes { display:grid; gap:10px; padding:0 0 14px; }
+
+.mp-legend { display:flex; flex-wrap:wrap; gap:6px 16px; margin:10px 0 0; padding:0; list-style:none; color:var(--muted); font-size:12px; }
+.mp-legend li { display:flex; align-items:center; }
+
+/* 月ごとの縦棒 */
+.mp-chart { display:grid; grid-template-columns:auto minmax(0,1fr); gap:8px; }
+.mp-chart-axis { position:relative; width:52px; height:220px; }
+.mp-chart-axis span { position:absolute; right:0; transform:translateY(50%); color:var(--faint); font-size:12px; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.mp-chart-scroll { min-width:0; overflow-x:auto; padding:0 14px 4px; }
+.mp-chart-plot { position:relative; display:grid; grid-template-columns:repeat(var(--n),minmax(14px,1fr)); gap:3px; min-width:calc(var(--n) * 17px); height:220px; margin-bottom:34px; }
+.mp-chart-grid { position:absolute; left:0; right:0; height:0; border-top:1px solid var(--line); }
+.mp-col { position:relative; display:flex; flex-direction:column; justify-content:flex-end; height:100%; border-radius:4px; text-decoration:none; }
+.mp-col:hover { background:var(--blue-soft); }
+.mp-col-bar { display:flex; flex-direction:column-reverse; justify-content:flex-start; height:100%; overflow:hidden; border-radius:4px 4px 0 0; }
+.mp-col-bar .mp-seg { display:block; flex:none; width:100%; }
+.mp-col-label { position:absolute; top:100%; left:50%; display:flex; flex-direction:column; align-items:center; transform:translateX(-50%); margin-top:4px; color:var(--faint); font-size:12px; line-height:1.2; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.mp-col-label b { color:var(--muted); font-size:11px; font-weight:700; }
+
+/* 月の選択 */
 .mp-picker { padding:14px 22px 16px; }
 .mp-picker-head { display:flex; align-items:center; justify-content:center; gap:18px; margin-bottom:12px; font-size:18px; }
 .mp-step { display:inline-grid; place-items:center; width:34px; height:34px; border:1px solid var(--line-strong); border-radius:50%; background:rgba(255,255,255,.82); color:var(--blue-strong); font-size:20px; text-decoration:none; }
 .mp-step.is-off { color:var(--faint); background:transparent; border-color:var(--line); }
-.mp-years { display:grid; gap:6px; }
-.mp-year { display:grid; grid-template-columns:48px minmax(0,1fr); align-items:center; gap:10px; font-size:12px; color:var(--muted); }
-.mp-year > div { display:flex; flex-wrap:wrap; gap:4px; }
-.mp-year a { min-width:38px; padding:4px 8px; border-radius:7px; background:rgba(60,60,67,.06); color:var(--ink); font-size:12px; text-align:center; text-decoration:none; }
-.mp-year a:hover { background:var(--blue-soft); }
-.mp-year a.is-current { background:var(--blue); color:#fff; font-weight:700; }
+.mp-picker-body { display:grid; gap:10px; justify-items:center; }
+.mp-months { display:grid; grid-template-columns:repeat(12,minmax(0,1fr)); gap:4px; width:100%; max-width:760px; }
+.mp-months>a,.mp-months>span { display:grid; place-items:center; height:34px; border-radius:8px; color:var(--ink); font-size:13px; text-decoration:none; }
+.mp-months>a { background:rgba(60,60,67,.06); }
+.mp-months>a:hover { background:var(--blue-soft); }
+.mp-months>a.is-current { background:var(--blue); color:#fff; font-weight:700; }
+.mp-months>.is-empty { color:var(--faint); }
+
+/* 日ごとの棒 */
 .mp-daybars { display:grid; grid-template-columns:repeat(var(--days),minmax(0,1fr)); gap:3px; align-items:end; height:160px; padding-top:8px; }
-.mp-daybar { position:relative; display:flex; flex-direction:column; justify-content:flex-end; height:100%; }
+.mp-daybar { position:relative; display:flex; flex-direction:column; justify-content:flex-end; height:100%; border:0; border-radius:4px; background:transparent; padding:0; font:inherit; }
+button.mp-daybar { cursor:pointer; }
+button.mp-daybar:hover { background:var(--blue-soft); }
 .mp-daybar i { display:block; width:100%; min-height:4px; border-radius:4px 4px 0 0; background:var(--blue); }
+.mp-daybar.is-unknown i { opacity:.45; }
 .mp-daybar.is-off i { height:4px; min-height:4px; border-radius:99px; background:var(--c-dim); }
-.mp-daybar span { height:18px; margin-top:4px; color:var(--faint); font-size:10px; text-align:center; font-variant-numeric:tabular-nums; }
-.mp-daybar:hover i { background:var(--blue-strong); }
-.mp-places { display:grid; gap:8px; margin:0; padding:0; list-style:none; }
-.mp-places li { display:flex; justify-content:space-between; gap:12px; font-size:14px; }
-.mp-places b { font-variant-numeric:tabular-nums; }
-.mp-trend { display:grid; gap:6px; margin:0; padding:0; list-style:none; max-height:420px; overflow-y:auto; }
-.mp-trend li { display:grid; grid-template-columns:78px minmax(0,1fr) 120px; align-items:center; gap:10px; font-size:12px; }
-.mp-trend a { color:var(--blue-strong); text-decoration:none; }
-.mp-trend li.is-current a { font-weight:800; }
-.mp-trend li > span { color:var(--muted); text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums; }
-.mp-trend-track { height:9px; overflow:hidden; border-radius:99px; background:#eef0f4; }
-.mp-trend-track i { display:block; height:100%; border-radius:inherit; background:var(--blue); opacity:.55; }
-.mp-trend li.is-current .mp-trend-track i { opacity:1; }
-.mp-days { margin:0; padding:0; list-style:none; }
-.mp-days > li { border-top:1px solid var(--line); }
-.mp-days > li:first-child { border-top:0; }
-.mp-days summary { display:grid; grid-template-columns:78px 116px 78px 70px minmax(0,1fr); align-items:center; gap:10px; padding:11px 0; cursor:pointer; font-size:13px; list-style:none; }
-.mp-days summary::-webkit-details-marker { display:none; }
-.mp-days summary b { color:var(--ink); }
-.mp-days summary span { color:var(--muted); font-variant-numeric:tabular-nums; }
-.mp-days summary em { color:var(--faint); font-size:12px; font-style:normal; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.mp-days details[open] summary { color:var(--blue-strong); }
-.mp-day-body { display:grid; gap:12px; padding:2px 0 16px 4px; }
+.mp-daybar.is-selected { background:var(--blue-soft); outline:2px solid var(--blue-strong); outline-offset:1px; }
+.mp-daybar span { height:18px; margin-top:4px; color:var(--faint); font-size:12px; text-align:center; font-variant-numeric:tabular-nums; }
+
+/* 押した日の中身 */
+.mp-day { margin-top:16px; border-top:1px solid var(--line); padding-top:14px; }
+.mp-day-head { display:flex; flex-wrap:wrap; align-items:center; gap:6px 14px; margin-bottom:10px; font-size:14px; }
+.mp-day-head b { font-size:16px; }
+.mp-day-head span { color:var(--muted); font-variant-numeric:tabular-nums; }
+.mp-day-head em { display:flex; align-items:center; color:var(--muted); font-style:normal; }
+.mp-day-body { display:grid; gap:12px; }
 .mp-items h3 { margin:0 0 5px; color:var(--muted); font-size:12px; font-weight:800; }
 .mp-items ul { margin:0; padding-left:20px; list-style:disc; }
 .mp-items li { margin:3px 0; line-height:1.6; }
+.mp-source { margin:0; color:var(--faint); font-size:12px; }
 .mp-link { margin:0; }
+
+/* 場所 */
+.mp-places { display:grid; gap:12px; margin:0; padding:0; list-style:none; }
+.mp-place-row { display:grid; grid-template-columns:140px minmax(0,1fr) 52px; align-items:center; gap:12px; font-size:14px; }
+.mp-place-row span { display:flex; align-items:center; }
+.mp-place-row b { text-align:right; font-variant-numeric:tabular-nums; }
+.mp-place-track { height:9px; overflow:hidden; border-radius:99px; background:#eef0f4; }
+.mp-place-track .mp-seg { display:block; height:100%; border-radius:inherit; }
+.mp-places small { display:block; margin:3px 0 0 16px; color:var(--faint); font-size:12px; line-height:1.5; }
+
+/* 気がかり */
 .mp-search { display:flex; flex-wrap:wrap; align-items:center; gap:10px; padding:14px 22px; }
 .mp-search .dr-search { flex:1 1 280px; }
 .mp-search .secondary-button { margin-top:0; }
@@ -1152,11 +1194,10 @@ h1,h2,h3 { color:var(--ink); } h1 { margin:0; font-size:30px; line-height:1.1; l
 .mp-kind.is-notes { background:rgba(201,138,0,.14); color:#8b5d00; }
 @media (max-width:700px) {
   .mp-picker { padding:12px 14px 14px; }
-  .mp-year { grid-template-columns:40px minmax(0,1fr); }
-  .mp-trend li { grid-template-columns:66px minmax(0,1fr) 96px; gap:6px; }
-  .mp-days summary { grid-template-columns:70px minmax(0,1fr) 64px; gap:6px 8px; }
-  .mp-days summary span:nth-of-type(1) { display:none; }
-  .mp-days summary span:nth-of-type(3) { display:none; }
-  .mp-days summary em { grid-column:1 / -1; }
+  .mp-filter { padding:12px 14px 0; }
+  .mp-months { grid-template-columns:repeat(6,minmax(0,1fr)); }
+  .mp-chart-axis { width:44px; height:180px; }
+  .mp-chart-plot { height:180px; }
+  .mp-place-row { grid-template-columns:110px minmax(0,1fr) 44px; gap:8px; }
   .mp-search { padding:12px 14px; }
 }
