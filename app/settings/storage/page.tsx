@@ -33,6 +33,7 @@ const D1_ROWS: Array<{ group: UsageGroupKey; name: string; records?: keyof D1Bac
   { group: "openchatComments", name: "オプチャ コメント", records: "openchatComments" },
   { group: "todoTasks", name: "To Do タスク", records: "todoTasks" },
   { group: "dailyReports", name: "作業日報", records: "dailyReports", unit: "日分" },
+  { group: "morningPages", name: "モーニングページ", records: "morningPages", unit: "ページ" },
   { group: "system", name: "台帳・同期の記録など" },
 ];
 

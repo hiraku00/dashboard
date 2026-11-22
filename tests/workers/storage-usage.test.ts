@@ -50,7 +50,7 @@ describe("d1BackedUsage (result that must not change)", () => {
         { category: "text-tube/videos", count: 1, bytes: 500, bytes_30d_ago: 500 },
       ],
       latest: { usage_date: "2026-09-20", object_count: 3, payload_bytes: 3600, class_a_estimate: 6, class_b_estimate: 7, source: "ledger", updated_at: T0 },
-      databaseRecords: { watchList: 2, manageAsset: 2, manageAssetWallet2: 0, textTube: 1, openchatNotes: 0, openchatComments: 0, todoTasks: 0, dailyReports: 0 },
+      databaseRecords: { watchList: 2, manageAsset: 2, manageAssetWallet2: 0, textTube: 1, openchatNotes: 0, openchatComments: 0, todoTasks: 0, dailyReports: 0, morningPages: 0 },
       transcriptUsage: { credits: 5, attempts: 2, lastUsedAt: "2026-09-15T05:00:00Z" },
       // 容量の計測がまだ1回も無い
       tableUsage: { date: null, baseDate: null, days: 0, totalBytes: 0, baseTotalBytes: null, groups: [] },
@@ -86,6 +86,7 @@ describe("measureD1Tables (1日1回の容量の計測)", () => {
     const names = first.tables.map((table) => table.tableName);
     expect(names).toContain("items");
     expect(names).toContain("daily_reports");
+    expect(names).toContain("morning_pages");
     expect(names).toContain("d1_table_usage_daily");
     expect(names.some((name) => name.startsWith("sqlite_") || name.startsWith("_cf_") || name === "d1_migrations")).toBe(false);
     const items = first.tables.find((table) => table.tableName === "items")!;
@@ -135,7 +136,7 @@ describe("d1BackedUsage when D1 fails (#35)", () => {
     expect(usage.usage).toEqual({ bytes: 0, count: 0 });
     expect(usage.categories).toEqual([]);
     expect(usage.latest).toBeNull();
-    expect(usage.databaseRecords).toEqual({ watchList: 0, manageAsset: 0, manageAssetWallet2: 0, textTube: 0, openchatNotes: 0, openchatComments: 0, todoTasks: 0, dailyReports: 0 });
+    expect(usage.databaseRecords).toEqual({ watchList: 0, manageAsset: 0, manageAssetWallet2: 0, textTube: 0, openchatNotes: 0, openchatComments: 0, todoTasks: 0, dailyReports: 0, morningPages: 0 });
     expect(usage.transcriptUsage).toEqual({ credits: 0, attempts: 0, lastUsedAt: null });
     expect(usage.tableUsage.date).toBeNull();
   });
