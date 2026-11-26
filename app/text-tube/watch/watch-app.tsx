@@ -15,6 +15,12 @@ type TocEntry = { id: string; label: string; /** 本文の見出しの上に出�
 const TOC_OFFSET = 150;
 /** 読んだ位置を覚えておく localStorage のキー。値はページ全体に対する割合（0〜1）。 */
 const positionKey = (id: string) => `tt-reading-position:${id}`;
+/** 目次から飛ぶ先と「いま読んでいる章」の判定に使う要素。章番号（.chapter-no）は見出しの上にあるので、
+ *  見出しだけを合わせると番号が上部に隠れる。番号ごと包む .chapter-head があればそれを使う。 */
+const tocAnchor = (headingId: string) => {
+  const heading = document.getElementById(headingId);
+  return heading?.closest(".chapter-head") ?? heading;
+};
 /** 横の一覧に出す、いまの回の前後の本数。 */
 const NEARBY = 3;
 
@@ -67,7 +73,7 @@ function useToc(body: React.RefObject<HTMLElement | null>, content: string) {
       frame = 0;
       let current = "";
       for (const entry of found) {
-        const top = document.getElementById(entry.id)?.getBoundingClientRect().top;
+        const top = tocAnchor(entry.id)?.getBoundingClientRect().top;
         if (top !== undefined && top <= TOC_OFFSET + 20) current = entry.id;
       }
       setActive(current);
@@ -177,7 +183,7 @@ export function TextTubeWatchApp({
   const next = position >= 0 && position < siblings.length - 1 ? siblings[position + 1] : null;
   const nearby = useMemo(() => nearbySiblings(siblings, position), [siblings, position]);
   const jumpTo = (headingId: string) => {
-    const target = document.getElementById(headingId);
+    const target = tocAnchor(headingId);
     if (target) window.scrollTo({ top: target.getBoundingClientRect().top + window.scrollY - TOC_OFFSET });
   };
   const resume = () => {
