@@ -8,7 +8,7 @@ import { ApiError, readJson } from "../../lib/json";
 
 type Video = Record<string, unknown>;
 /** 同じチャンネルの動画の1行（app/lib/queries/text-tube.ts の ChannelVideo）。 */
-export type Sibling = { id: string; title: string; thumbnail_url: string; duration: string; published_at: string | null; read_at: string | null };
+export type Sibling = { id: string; title: string; thumbnail_url: string; duration: string; published_at: string | null; created_at: string; read_at: string | null };
 type TocEntry = { id: string; label: string; /** 本文の見出しの上に出ている章番号（"01"）。無い記事は並び順から振る。 */ no: string };
 
 /** sticky な上部（.portal-chrome）の下に見出しが隠れないよう、目次から飛ぶときに空ける高さ。 */
@@ -17,6 +17,29 @@ const TOC_OFFSET = 150;
 const positionKey = (id: string) => `tt-reading-position:${id}`;
 /** 横の一覧に出す、いまの回の前後の本数。 */
 const NEARBY = 3;
+
+/** 並び順と同じ日付（公開日、無ければ記事の作成日）をミリ秒で返す。読めなければ NaN。 */
+const siblingTime = (sibling: Sibling) => Date.parse(sibling.published_at ?? sibling.created_at);
+
+/** いまの回の前後 NEARBY 本を取り出し、いまの回を先頭に、日付が近い順に並べる。
+ *  シリーズの続き（「〜編1」と「〜編2」）は公開日が近いので上に来る。日付が読めない回は
+ *  並びの上での離れ具合で比べ、同じ近さなら古い回を先にする。 */
+export function nearbySiblings(siblings: Sibling[], position: number): Sibling[] {
+  if (position < 0) return [];
+  const current = siblings[position];
+  const base = siblingTime(current);
+  const start = Math.max(0, position - NEARBY);
+  const others = siblings.slice(start, position + NEARBY + 1)
+    .map((sibling, offset) => {
+      const index = start + offset;
+      const time = siblingTime(sibling);
+      const distance = Number.isNaN(base) || Number.isNaN(time) ? Number.POSITIVE_INFINITY : Math.abs(time - base);
+      return { sibling, index, distance, steps: Math.abs(index - position) };
+    })
+    .filter(({ index }) => index !== position)
+    .sort((a, b) => a.distance - b.distance || a.steps - b.steps || a.index - b.index);
+  return [current, ...others.map(({ sibling }) => sibling)];
+}
 
 /** 本文の h2 から目次を作り、いま読んでいる見出しを追う。記事は Markdown から描画されるので、
  *  描画が済んだあとの DOM を読む（要約の中身が変わったら作り直す）。 */
@@ -152,7 +175,7 @@ export function TextTubeWatchApp({
   const position = useMemo(() => siblings.findIndex((sibling) => sibling.id === id), [siblings, id]);
   const previous = position > 0 ? siblings[position - 1] : null;
   const next = position >= 0 && position < siblings.length - 1 ? siblings[position + 1] : null;
-  const nearby = position >= 0 ? siblings.slice(Math.max(0, position - NEARBY), position + NEARBY + 1) : [];
+  const nearby = useMemo(() => nearbySiblings(siblings, position), [siblings, position]);
   const jumpTo = (headingId: string) => {
     const target = document.getElementById(headingId);
     if (target) window.scrollTo({ top: target.getBoundingClientRect().top + window.scrollY - TOC_OFFSET });

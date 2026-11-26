@@ -67,7 +67,7 @@ export async function getVideoDetail(id: string): Promise<Video | null> {
 }
 
 /** 記事ページの横に出す「同じチャンネルの動画」の1行。 */
-export type ChannelVideo = { id: string; title: string; thumbnail_url: string; duration: string; published_at: string | null; read_at: string | null };
+export type ChannelVideo = { id: string; title: string; thumbnail_url: string; duration: string; published_at: string | null; created_at: string; read_at: string | null };
 
 /** 同じチャンネルの動画を、公開日の古い順に返す（公開日が無ければ記事の作成日）。
  *  app/text-tube/watch/[id]/page.tsx が、前後の回と一覧を出すために呼ぶ。チャンネル名が空の動画は
@@ -75,6 +75,6 @@ export type ChannelVideo = { id: string; title: string; thumbnail_url: string; d
 export async function channelVideos(channelName: string): Promise<ChannelVideo[]> {
   if (!channelName) return [];
   await ensureSchema({ seed: false });
-  const rows = (await env.DB.prepare("SELECT id,title,thumbnail_url,duration,published_at,read_at FROM text_tube_videos WHERE deleted_at IS NULL AND channel_name=? ORDER BY COALESCE(published_at, created_at) ASC, id ASC LIMIT 300").bind(channelName).all<ChannelVideo>()).results ?? [];
+  const rows = (await env.DB.prepare("SELECT id,title,thumbnail_url,duration,published_at,created_at,read_at FROM text_tube_videos WHERE deleted_at IS NULL AND channel_name=? ORDER BY COALESCE(published_at, created_at) ASC, id ASC LIMIT 300").bind(channelName).all<ChannelVideo>()).results ?? [];
   return rows;
 }

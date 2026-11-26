@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import type { ReactNode } from "react";
 import { afterEach, beforeAll, beforeEach, expect, test, vi } from "vitest";
 import { TextTubeApp } from "@/app/text-tube-app";
-import { TextTubeWatchApp } from "@/app/text-tube/watch/watch-app";
+import { TextTubeWatchApp, nearbySiblings, type Sibling } from "@/app/text-tube/watch/watch-app";
 
 // Reading flow: the library shows what is already read and keeps its filters in
 // the URL; the article page marks a video read, lists the headings beside the
@@ -66,9 +66,9 @@ test("the library starts from the view the URL carried", () => {
 
 const article = { id: "v2", title: "第2回", channel_name: "Ch", thumbnail_url: "", original_url: "", created_at: "2026-01-01", read_at: null, summary: "## はじめに\n\n本文\n\n## つぎに\n\n本文" };
 const siblings = [
-  { id: "v1", title: "第1回", thumbnail_url: "", duration: "", published_at: "2022-01-01", read_at: "2026-01-02T00:00:00Z" },
-  { id: "v2", title: "第2回", thumbnail_url: "", duration: "", published_at: "2022-01-08", read_at: null },
-  { id: "v3", title: "第3回", thumbnail_url: "", duration: "", published_at: "2022-01-15", read_at: null },
+  { id: "v1", title: "第1回", thumbnail_url: "", duration: "", published_at: "2022-01-01", created_at: "2026-01-01", read_at: "2026-01-02T00:00:00Z" },
+  { id: "v2", title: "第2回", thumbnail_url: "", duration: "", published_at: "2022-01-08", created_at: "2026-01-01", read_at: null },
+  { id: "v3", title: "第3回", thumbnail_url: "", duration: "", published_at: "2022-01-15", created_at: "2026-01-01", read_at: null },
 ];
 
 test("the article page marks the video read and back, and reports a failed save", async () => {
@@ -125,4 +125,20 @@ test("the article's table of contents numbers its entries like the chapters in t
   const intro = await screen.findByRole("button", { name: "はじめに" });
   expect(intro.textContent).toBe("01はじめに");
   expect(screen.getByRole("button", { name: "つぎに" }).textContent).toBe("02つぎに");
+});
+
+test("同じチャンネルの一覧は、いまの回を先頭に、公開日の近い順に並べる", () => {
+  const row = (id: string, published_at: string | null, created_at = "2026-11-01"): Sibling =>
+    ({ id, title: id, thumbnail_url: "", duration: "", published_at, created_at, read_at: null });
+  // 間の回が登録されていないチャンネル: 最新の「編2」の隣は、近い「編1」、そのあと数年前の回。
+  const series = [row("#246", "2022-03-10"), row("#247", "2022-03-14"), row("#248", "2022-03-17"), row("編1", "2026-11-22"), row("編2", "2026-11-25")];
+  expect(nearbySiblings(series, 4).map((video) => video.id)).toEqual(["編2", "編1", "#248", "#247"]);
+  // 後の回が出たら、前後3本のうち近いものから並ぶ。
+  const later = [...series, row("編3", "2026-11-29")];
+  expect(nearbySiblings(later, 4).map((video) => video.id)).toEqual(["編2", "編1", "編3", "#248", "#247"]);
+  // 公開日が無い回は、並びと同じく記事の作成日で比べる。
+  const noDate = [row("a", "2026-01-01"), row("b", null, "2026-06-01"), row("c", "2026-06-02")];
+  expect(nearbySiblings(noDate, 0).map((video) => video.id)).toEqual(["a", "b", "c"]);
+  expect(nearbySiblings(noDate, 2).map((video) => video.id)).toEqual(["c", "b", "a"]);
+  expect(nearbySiblings(noDate, -1)).toEqual([]);
 });
