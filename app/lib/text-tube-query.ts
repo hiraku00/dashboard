@@ -13,7 +13,20 @@ function clean(value: unknown, max = 4000): string {
   return typeof value === "string" ? value.trim().slice(0, max) : "";
 }
 
-export type VideosQuery = { q?: string | null; offset?: string | number | null; /** true なら未読（read_at が NULL）だけ。 */ unread?: boolean };
+export type VideosQuery = {
+  q?: string | null;
+  offset?: string | number | null;
+  /** true なら未読（read_at が NULL）だけ。 */
+  unread?: boolean;
+  /** チャンネル名（完全一致）。空・"all" なら絞らない。 */
+  channel?: string | null;
+};
+
+/** `?channel=` の値。空と "all"（画面の「すべてのチャンネル」）は「絞らない」として "" にする。 */
+export function videosChannel(value: unknown): string {
+  const channel = clean(value, 200);
+  return channel === "all" ? "" : channel;
+}
 
 /** `?unread=` の値。"1" だけを「未読のみ」として扱う。 */
 export function videosUnread(value: unknown): boolean {
@@ -31,10 +44,19 @@ export function videosOffset(value: unknown): number {
 export type VideosFilter = { where: string; values: string[] };
 
 /** app/api/text-tube/videos の GET と、/text-tube の
- *  初期表示が両方これを経由する（listVideos() 経由）。q以外のフィルタは
- *  無いので、ここでの仕事はWHERE句の組み立てだけ（続きの読み込みは
- *  呼び出し元のSQLが VIDEOS_PAGE_SIZE と videosOffset() で行う）。 */
+ *  初期表示が両方これを経由する（listVideos() 経由）。ここでの仕事はWHERE句の組み立てだけ
+ *  （続きの読み込みは呼び出し元のSQLが VIDEOS_PAGE_SIZE と videosOffset() で行う）。
+ *  チャンネルはサーバーで絞る -- 画面側で絞ると、読み込んだ先頭の100本に入っていない回が出ない。 */
 export function buildVideosFilter(query: VideosQuery = {}): VideosFilter {
+  const base = buildChannelsFilter(query);
+  const channel = videosChannel(query.channel);
+  if (!channel) return base;
+  return { where: `${base.where} AND channel_name = ?`, values: [...base.values, channel] };
+}
+
+/** チャンネルの選択肢（チャンネルごとの本数）を数えるときのWHERE句。検索語と未読のみは効かせ、
+ *  チャンネルの絞り込みだけは外す -- 外さないと、選んだチャンネルしか選択肢に残らない。 */
+export function buildChannelsFilter(query: VideosQuery = {}): VideosFilter {
   // Truncated to a byte-safe length in addition to clean()'s 200-JS-char cap --
   // see sql-text.ts for why: a longer term inside `%${q}%` makes D1 reject the
   // whole query rather than just matching fewer rows.

@@ -40,7 +40,7 @@ test("the library marks read videos, hides a zero view count, and keeps its filt
     requested.push(url);
     return Promise.resolve(new Response(JSON.stringify({ videos: [listed("2", "UNREAD ONE", null)], hasMore: false }), { status: 200, headers: { "content-type": "application/json" } }));
   });
-  render(<TextTubeApp initialVideos={[listed("1", "READ ONE", "2026-01-02T00:00:00Z"), listed("2", "UNREAD ONE", null)]} />);
+  render(<TextTubeApp initialVideos={[listed("1", "READ ONE", "2026-01-02T00:00:00Z"), listed("2", "UNREAD ONE", null)]} initialChannels={[{ name: "Ch", count: 2 }]} />);
 
   expect(screen.getAllByText("読了")).toHaveLength(1);
   expect(screen.queryByText(/0 閲覧/)).toBeNull();
@@ -54,6 +54,25 @@ test("the library marks read videos, hides a zero view count, and keeps its filt
 
   fireEvent.change(screen.getByDisplayValue("最新順（記事作成日）"), { target: { value: "title-asc" } });
   await waitFor(() => expect(window.location.search).toBe("?sort=title-asc&unread=1"));
+});
+
+test("clicking a card's channel name narrows the list to that channel on the server", async () => {
+  const requested: string[] = [];
+  vi.stubGlobal("scrollTo", () => {});
+  vi.stubGlobal("fetch", (url: string) => {
+    requested.push(url);
+    const body = { videos: [{ ...listed("3", "OTHER CH", null), channel_name: "Other" }], hasMore: false, channels: [{ name: "Ch", count: 2 }, { name: "Other", count: 150 }] };
+    return Promise.resolve(new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } }));
+  });
+  render(<TextTubeApp initialVideos={[listed("1", "ONE", null), { ...listed("2", "TWO", null), channel_name: "Other" }]} initialChannels={[{ name: "Ch", count: 1 }, { name: "Other", count: 150 }]} />);
+
+  fireEvent.click(screen.getByRole("button", { name: "Other" }));
+  await waitFor(() => expect(requested).toEqual(["/api/text-tube/videos?q=&channel=Other"]));
+  await waitFor(() => expect(screen.queryByText("ONE")).toBeNull());
+  expect(screen.getByText("OTHER CH")).toBeTruthy();
+  expect(window.location.search).toBe("?channel=Other");
+  // 本数は読み込んだ分ではなく、サーバーが数えた全体。
+  expect(screen.getByRole("option", { name: "Other（150）" })).toBeTruthy();
 });
 
 test("the library starts from the view the URL carried", () => {
@@ -104,6 +123,8 @@ test("the article page lists the headings, the neighbouring videos, and the way 
   expect(screen.getByText("いま読んでいる回")).toBeTruthy();
   expect(screen.getByText(/2022\/1\/1 · 読了/)).toBeTruthy();
   expect(hrefs(/このチャンネルの 3 本/)).toEqual(["/text-tube?channel=Ch"]);
+  // 見出しの下のチャンネル名からも、そのチャンネルの一覧へ行ける。
+  expect(hrefs(/^Ch$/)).toEqual(["/text-tube?channel=Ch"]);
   await waitFor(() => expect(hrefs(/一覧に戻る/)).toEqual(["/text-tube?unread=1"]));
 });
 

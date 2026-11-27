@@ -1,14 +1,18 @@
 import { env } from "cloudflare:workers";
 import { ensureSchema } from "@/db";
-import { listVideos } from "@/app/lib/queries/text-tube";
-import { videosUnread } from "@/app/lib/text-tube-query";
+import { listChannels, listVideos } from "@/app/lib/queries/text-tube";
+import { videosChannel, videosOffset, videosUnread } from "@/app/lib/text-tube-query";
 import { videoInput } from "@/app/lib/text-tube-video-input";
 import { route } from "@/app/lib/route";
 import { youTubeVideoId } from "@/app/lib/youtube";
 
 export const GET = route(async (request: Request) => {
   const params = new URL(request.url).searchParams;
-  return Response.json(await listVideos({ q: params.get("q"), offset: params.get("offset"), unread: videosUnread(params.get("unread")) }));
+  const query = { q: params.get("q"), offset: params.get("offset"), unread: videosUnread(params.get("unread")), channel: videosChannel(params.get("channel")) };
+  // チャンネルの選択肢は先頭ページのときだけ数える（続きのページでは変わらないので、数え直さない）。
+  if (videosOffset(query.offset) > 0) return Response.json(await listVideos(query));
+  const [list, channels] = await Promise.all([listVideos(query), listChannels(query)]);
+  return Response.json({ ...list, channels });
 });
 
 export const POST = route(async (request: Request) => {
