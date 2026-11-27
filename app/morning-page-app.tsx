@@ -6,7 +6,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { PortalHeader } from "./portal-nav";
 import { MORNING_RANGES, MORNING_TABS, type CalendarDay, type MorningDay, type MorningPageModel, type MorningRange, type MorningTab, type TrendPoint } from "./lib/morning-page-model";
 import { PLACE_GROUPS, classifyPlace, placeGroupLabel, type PlaceGroup } from "./lib/morning-page-places";
-import { OutfitLine } from "./outfit-line";
+import { OutfitTable } from "./outfit-table";
 
 /** /morning-page のワークスペース(docs/morning-page-design.md)。日報の画面と同じ作法で、
  *  ヘッダーの下のタブ(概要・内容・場所)で切り口を、ツールバー(月次・年次・全期間と前後)で期間を替える。
@@ -470,7 +470,7 @@ function DayEntry({ day, kind, highlighted }: { day: MorningDay; kind: Kind | "a
         {day.chars !== null ? <span>{day.chars.toLocaleString("ja-JP")}字</span> : null}
         <em><i className={`mp-swatch${groupClass(classifyPlace(day.place))}`} />{day.place || "場所なし"}</em>
       </div>
-      {day.outfit && kind === "all" ? <OutfitLine outfit={day.outfit} className="mp-day-outfit" /> : null}
+      {day.outfit && kind === "all" ? <OutfitTable outfit={day.outfit} className="mp-day-outfit" /> : null}
       <div className="mp-day-body">
         {show("yesterday") ? <Items title={day.source === "report" ? "昨日のこと（PCの外の活動）" : "昨日のこと"} items={day.yesterday} /> : null}
         {show("plan") ? <Items title="今日の予定" items={day.plan} /> : null}
