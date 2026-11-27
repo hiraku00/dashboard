@@ -251,7 +251,16 @@ export function TextTubeApp({
       </div>
       {notice && <div className="tt-notice">{notice}</div>}
       <div className="tt-channel-filter">
-        <span>{shown.length}本の要約{hasMore && "（続きがあります）"}</span>
+        <div className="tt-filter-summary">
+          <span>{shown.length}本の要約{hasMore && "（続きがあります）"}</span>
+          {/* チャンネルで絞っている間だけ出す。押すと絞り込みを外す（選択欄で「すべて」を選び直さなくて済むように）。 */}
+          {channel !== "all" && (
+            <button type="button" className="tt-channel-chip" onClick={() => setChannel("all")} aria-label={`「${channel}」の絞り込みを解除`}>
+              <span className="tt-channel-chip-name">{channel}</span>
+              <span aria-hidden="true">✕ 解除</span>
+            </button>
+          )}
+        </div>
         <div className="tt-filter-controls">
           <label className="tt-unread-toggle">
             <input type="checkbox" checked={unread} onChange={(e) => setUnread(e.target.checked)} />
