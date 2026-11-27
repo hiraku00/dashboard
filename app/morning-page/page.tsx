@@ -1,28 +1,47 @@
 import { PortalHeader } from "../portal-nav";
-import { MorningPageApp, type MorningTab } from "../morning-page-app";
-import { buildMorningModel, type MorningPageModel } from "@/app/lib/morning-page-model";
+import { MorningPageApp } from "../morning-page-app";
+import { MORNING_TABS, buildMorningModel, isMorningRange, type MorningPageModel, type MorningRange, type MorningTab } from "@/app/lib/morning-page-model";
 import { isMonth, isYear, morningPageView } from "@/app/lib/queries/morning-page";
+import { todoDate } from "@/app/lib/todo-date";
 
-type Params = { month?: string | string[]; year?: string | string[]; tab?: string | string[]; q?: string | string[] };
+type Params = { range?: string | string[]; date?: string | string[]; tab?: string | string[]; q?: string | string[]; month?: string | string[]; year?: string | string[] };
 const first = (value: string | string[] | undefined) => (Array.isArray(value) ? value[0] : value);
-const TABS: MorningTab[] = ["trend", "month", "notes"];
-/** 前の作りのタブ名(概要・日ごと)で来たら、月のタブで開く */
-const LEGACY_TABS: Record<string, MorningTab> = { overview: "month", days: "month" };
+/** 前の作りのタブ名で来たら: 推移は全期間の概要、月(と、その前の概要・日ごと)は月次の概要、気がかりは内容 */
+const LEGACY_TABS: Record<string, MorningTab> = { trend: "summary", month: "summary", overview: "summary", days: "summary", notes: "content" };
 
-// Server Component: 開く月(?month=YYYY-MM、無ければデータのある最新の月)と気がかりの年(?year=YYYY、無ければ開く月の年)の分を D1 から1回の batch で読み
-// (app/lib/queries/morning-page.ts)、画面の形に組み立てて(app/lib/morning-page-model.ts)クライアントへ渡す。
+/** URL(?range=month|year|all&date=YYYY-MM|YYYY&tab=summary|content|place&q=)から、期間とタブを決める。
+ *  前の作りの ?month=YYYY-MM(月を開く)・?year=YYYY(気がかりの年)・?tab=trend(全期間の推移)も読み替える */
+function resolve(params: Params): { range: MorningRange; anchor: string | null; tab: MorningTab } {
+  const rawTab = first(params.tab) ?? "";
+  const rawRange = first(params.range);
+  const date = first(params.date);
+  const legacyMonth = first(params.month);
+  const legacyYear = first(params.year);
+  const tab: MorningTab = MORNING_TABS.some(([id]) => id === rawTab) ? (rawTab as MorningTab) : (LEGACY_TABS[rawTab] ?? "summary");
+  if (isMorningRange(rawRange)) {
+    if (rawRange === "month") return { range: "month", anchor: isMonth(date) ? date : null, tab };
+    if (rawRange === "year") return { range: "year", anchor: isMonth(date) ? date.slice(0, 4) : isYear(date) ? date : null, tab };
+    return { range: "all", anchor: null, tab };
+  }
+  if (isMonth(date)) return { range: "month", anchor: date, tab };
+  if (isYear(date)) return { range: "year", anchor: date, tab };
+  if (rawTab === "notes" && isYear(legacyYear)) return { range: "year", anchor: legacyYear, tab };
+  if (isMonth(legacyMonth)) return { range: "month", anchor: legacyMonth, tab };
+  if (rawTab === "trend") return { range: "all", anchor: null, tab };
+  return { range: "month", anchor: null, tab };
+}
+
+// Server Component: 期間(月次・年次・全期間)の分を D1 から1回の batch で読み(app/lib/queries/morning-page.ts)、
+// 画面の形に組み立てて(app/lib/morning-page-model.ts)クライアントへ渡す。開いたときは月次・データのある最新の月。
 export default async function MorningPage({ searchParams }: { searchParams?: Promise<Params> }) {
   const params = (await searchParams) ?? {};
-  const rawMonth = first(params.month);
-  const rawTab = first(params.tab);
-  const rawYear = first(params.year);
-  // 月を指定して来たら(検索結果の日付や前後の月から)月のタブ、何も無ければ全期間の推移から
-  const tab: MorningTab = TABS.includes(rawTab as MorningTab) ? (rawTab as MorningTab) : (LEGACY_TABS[rawTab ?? ""] ?? (isMonth(first(params.month)) ? "month" : "trend"));
+  const { range, anchor, tab } = resolve(params);
   const q = (first(params.q) ?? "").slice(0, 100);
 
   let model: MorningPageModel | null = null;
   try {
-    model = buildMorningModel(await morningPageView(isMonth(rawMonth) ? rawMonth : null, isYear(rawYear) ? rawYear : null, q));
+    const view = await morningPageView(range === "month" ? anchor : undefined, q);
+    model = buildMorningModel(view, { range, anchor }, todoDate());
   } catch {
     model = null;
   }
@@ -35,6 +54,6 @@ export default async function MorningPage({ searchParams }: { searchParams?: Pro
       </main>
     );
   }
-  // 月が変わるたびに状態(開いているタブ以外)を作り直す
-  return <MorningPageApp key={`${model.month}-${model.notesYear}-${q}`} model={model} initialTab={q ? "notes" : tab} />;
+  // 期間が変わるたびに状態(開いているタブ以外)を作り直す
+  return <MorningPageApp key={`${model.range}-${model.anchor}-${q}`} model={model} initialTab={q ? "content" : tab} />;
 }
