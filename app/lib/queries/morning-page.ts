@@ -4,7 +4,7 @@
 import { env } from "cloudflare:workers";
 import { ensureSchema } from "@/db";
 import { MAX_LIKE_TERM_BYTES, truncateUtf8Bytes } from "@/app/lib/sql-text";
-import { hasOutfit, outfitFromRow } from "@/app/lib/outfit";
+import { OUTFIT_COLUMNS, hasOutfit, outfitFromRow } from "@/app/lib/outfit";
 import { concernsFromReflection, type MonthStat, type MorningPageRow, type MorningPageView, type SearchHit } from "@/app/lib/morning-page-model";
 
 export type { MorningPageView };
@@ -45,7 +45,7 @@ export async function morningPageView(requestedMonth: string | null, requestedYe
   const statements = [
     db.prepare("SELECT substr(page_date,1,7) AS month, COUNT(*) AS pages, AVG(minutes) AS avg_minutes, AVG(chars) AS avg_chars FROM morning_pages GROUP BY month ORDER BY month"),
     db.prepare("SELECT substr(page_date,1,7) AS month, place, COUNT(*) AS pages FROM morning_pages GROUP BY month, place"),
-    db.prepare(`SELECT page_date, started_at, ended_at, minutes, place, chars, outfit_top, outfit_middle, outfit_bottom, yesterday, plan, notes, extracted FROM morning_pages
+    db.prepare(`SELECT page_date, started_at, ended_at, minutes, place, chars, ${OUTFIT_COLUMNS}, yesterday, plan, notes, extracted FROM morning_pages
       WHERE substr(page_date,1,7) = ${OPEN_MONTH} ORDER BY page_date`).bind(requestedMonth),
     // 日報 D の予定はページ D、活動と気がかりはページ D+1 に付けるので、月の前日の日報から読む
     db.prepare(`SELECT report_date, reflection FROM daily_reports

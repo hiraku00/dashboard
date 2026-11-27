@@ -413,11 +413,13 @@ h1,h2,h3 { color:var(--ink); } h1 { margin:0; font-size:30px; line-height:1.1; l
 /* ヒーロー: 週次・月次は合計と1日平均を同じ大きさで並べる(設計書 §6.2) */
 .dr-hero-figures { display:flex; flex-wrap:wrap; gap:4px 36px; }
 .dr-hero-figures p { margin:0; }
-/* その日の朝のモーニングページの服装(上・中・下)。段ごとに折り返す */
-.dr-hero-outfit { display:flex; flex-wrap:wrap; align-items:baseline; gap:2px 14px; margin-top:6px !important; font-size:13px; }
-.dr-hero-outfit>span:first-child { font-size:12px; font-weight:700; }
-.dr-hero-outfit b { margin-right:4px; color:var(--faint); font-weight:700; }
-.dr-hero-outfit>span:not(:first-child) { color:var(--ink); }
+/* モーニングページに書いた服装(上・中・下。app/outfit-line.tsx)。段ごとに折り返す */
+.outfit-line { display:flex; flex-wrap:wrap; align-items:baseline; gap:2px 14px; font-size:13px; }
+.outfit-line>span:first-child { color:var(--muted); font-size:12px; font-weight:700; }
+.outfit-line>span:not(:first-child) { color:var(--ink); }
+.outfit-line b { margin-right:4px; color:var(--faint); font-weight:700; }
+.outfit-line small { margin-left:4px; color:var(--muted); font-size:11px; }
+.dr-hero-outfit { margin-top:6px !important; }
 
 /* 概要: 左に活動時間、右に配分(Manage Asset の asset-dashboard-grid と同じ 1.35fr : 1fr) */
 .dr-overview { display:grid; gap:16px; margin-bottom:16px; }
@@ -1179,9 +1181,7 @@ button.mp-daybar:hover { background:var(--blue-soft); }
 .mp-day-head { display:flex; flex-wrap:wrap; align-items:center; gap:6px 14px; margin-bottom:10px; font-size:14px; }
 .mp-day-head b { font-size:16px; }
 .mp-day-head span { color:var(--muted); font-variant-numeric:tabular-nums; }
-.mp-day-outfit { display:flex; flex-wrap:wrap; align-items:baseline; gap:2px 14px; margin:-4px 0 10px; font-size:13px; }
-.mp-day-outfit>span:first-child { color:var(--muted); font-size:12px; font-weight:700; }
-.mp-day-outfit b { margin-right:4px; color:var(--faint); font-weight:700; }
+.mp-day-outfit { margin:-4px 0 10px; }
 .mp-day-head em { display:flex; align-items:center; color:var(--muted); font-style:normal; }
 .mp-day-body { display:grid; gap:12px; }
 .mp-items h3 { margin:0 0 5px; color:var(--muted); font-size:12px; font-weight:800; }

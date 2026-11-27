@@ -193,12 +193,14 @@ describe("periodView + buildModel", () => {
   test("day: shows the outfit written on that morning's page, and nothing when there is none", async () => {
     await seed(DATES);
     const results = await ingestMorningPages([
-      { date: "2026-10-13", outfit: { top: "シャツ(Uniqlo U)", middle: "", bottom: "デニム(白)" } },
+      { date: "2026-10-13", outfit: { top: { item: "ストライプシャツ", brand: "UNIQLO" }, bottom: { item: "短パン" } } },
       { date: "2026-10-15", place: "自宅" },
     ]);
     expect(results.map((result) => result.status)).not.toContain("error");
     const day = (date: string) => periodRange("day", date, TODAY);
-    expect(buildModel(await periodView(day("2026-10-13")), day("2026-10-13"), TODAY).day?.outfit).toEqual({ top: "シャツ(Uniqlo U)", middle: "", bottom: "デニム(白)" });
+    expect(buildModel(await periodView(day("2026-10-13")), day("2026-10-13"), TODAY).day?.outfit).toEqual({
+      top: { item: "ストライプシャツ", brand: "UNIQLO" }, middle: { item: "", brand: "" }, bottom: { item: "短パン", brand: "" },
+    });
     // 服装を書いていないページ・ページの無い日
     expect(buildModel(await periodView(day("2026-10-15")), day("2026-10-15"), TODAY).day?.outfit).toBeNull();
     expect(buildModel(await periodView(day("2026-10-19")), day("2026-10-19"), TODAY).day?.outfit).toBeNull();

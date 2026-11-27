@@ -47,12 +47,15 @@ describe("POST /api/morning-pages", () => {
   });
 
   test("stores the outfit, and changing only the outfit updates the page", async () => {
-    const outfit = { top: "シャツ(Uniqlo U)", middle: "Tシャツ(WhitesVille)", bottom: "デニム(白)" };
+    const outfit = { top: { item: "ストライプシャツ", brand: "UNIQLO" }, middle: { item: "Tシャツ", brand: "WHITESVILLE" }, bottom: { item: "白デニム", brand: "UNIQLO" } };
     expect((await ingest({ pages: [page("2023-06-20")] })).body).toMatchObject({ created: 1 });
     expect((await ingest({ pages: [page("2023-06-20", { outfit })] })).body).toMatchObject({ updated: 1 });
     expect((await ingest({ pages: [page("2023-06-20", { outfit })] })).body).toMatchObject({ skipped: 1 });
-    const row = await env.DB.prepare("SELECT outfit_top, outfit_middle, outfit_bottom FROM morning_pages WHERE page_date = ?").bind("2023-06-20").first();
-    expect(row).toEqual({ outfit_top: "シャツ(Uniqlo U)", outfit_middle: "Tシャツ(WhitesVille)", outfit_bottom: "デニム(白)" });
+    const row = await env.DB.prepare("SELECT outfit_top, outfit_top_brand, outfit_middle, outfit_middle_brand, outfit_bottom, outfit_bottom_brand FROM morning_pages WHERE page_date = ?").bind("2023-06-20").first();
+    expect(row).toEqual({ outfit_top: "ストライプシャツ", outfit_top_brand: "UNIQLO", outfit_middle: "Tシャツ", outfit_middle_brand: "WHITESVILLE", outfit_bottom: "白デニム", outfit_bottom_brand: "UNIQLO" });
+    // ブランドだけ変えても updated
+    expect((await ingest({ pages: [page("2023-06-20", { outfit: { ...outfit, bottom: { item: "白デニム", brand: "Levi's" } } })] })).body).toMatchObject({ updated: 1 });
+    await ingest({ pages: [page("2023-06-20", { outfit })] });
     const view = await morningPageView("2023-06", null, "");
     expect(view.rows.find((r) => r.date === "2023-06-20")?.outfit).toEqual(outfit);
     expect(view.rows.find((r) => r.date === "2023-06-15")?.outfit).toBeNull();

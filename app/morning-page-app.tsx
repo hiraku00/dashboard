@@ -5,7 +5,7 @@ import { useMemo, useState, type ReactNode } from "react";
 import { PortalHeader } from "./portal-nav";
 import type { MorningDay, MorningPageModel, TrendPoint } from "./lib/morning-page-model";
 import { PLACE_GROUPS, classifyPlace, placeGroupLabel, type PlaceGroup } from "./lib/morning-page-places";
-import { outfitParts } from "./lib/outfit";
+import { OutfitLine } from "./outfit-line";
 
 /** /morning-page のワークスペース(docs/morning-page-design.md)。日報の画面と同じく、ヘッダーの下の機能内タブで切り口を替え、
  *  全タブを描いて `hidden` で隠す(切り替えは即時、URLは tab だけ書き換える)。月と気がかりの年はリンクで替え、サーバーが読み直す。
@@ -279,12 +279,7 @@ function DayDetail({ day }: { day: MorningDay }) {
         {day.chars !== null ? <span>{day.chars.toLocaleString("ja-JP")}字</span> : null}
         <em><i className={`mp-swatch${groupClass(classifyPlace(day.place))}`} />{day.place || "場所なし"}</em>
       </div>
-      {day.outfit ? (
-        <p className="mp-day-outfit">
-          <span>服装</span>
-          {outfitParts(day.outfit).map((part) => <span key={part.label}><b>{part.label}</b>{part.value}</span>)}
-        </p>
-      ) : null}
+      {day.outfit ? <OutfitLine outfit={day.outfit} className="mp-day-outfit" /> : null}
       <div className="mp-day-body">
         <Items title={day.source === "report" ? "昨日のこと（PCの外の活動）" : "昨日のこと"} items={day.yesterday} />
         <Items title="今日の予定" items={day.plan} />

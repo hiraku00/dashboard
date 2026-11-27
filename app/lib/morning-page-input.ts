@@ -4,14 +4,14 @@
  *  auto-daily-report の morning_pages.py が、1ページごとに「ヘッダーの表(時間・場所・服装・文字数)」と、
  *  Claude で取り出した「昨日のこと・今日の予定・気になったこと」を送る。本文そのものは送らない。 */
 
-import { EMPTY_OUTFIT, hasOutfit, type Outfit } from "./outfit.ts";
+import { OUTFIT_LAYERS, emptyOutfit, hasOutfit, type Outfit } from "./outfit.ts";
 
 export const MAX_PAGES_PER_REQUEST = 50;
 /** 1つの一覧の項目数と、1項目の長さの上限(取り出した結果は短い箇条書き) */
 export const MAX_LIST_ITEMS = 16;
 export const MAX_ITEM_CHARS = 400;
 export const MAX_PLACE_CHARS = 100;
-/** 服装の1段(「シャツ(Uniqlo U)」のような書いたままの値)の長さの上限 */
+/** 服装の品名・ブランドそれぞれの長さの上限 */
 export const MAX_OUTFIT_CHARS = 100;
 /** 所要時間の上限(分)。これを超える値はヘッダーの書き間違いなので、送り手が null にして送る */
 export const MAX_MINUTES = 600;
@@ -66,18 +66,25 @@ function list(value: unknown): string[] | undefined {
   return items;
 }
 
+const isPlainObject = (value: unknown): value is Record<string, unknown> => Boolean(value) && typeof value === "object" && !Array.isArray(value);
+
+/** outfit は {top, middle, bottom} で、各段は {item, brand}(どちらも省略・null は空文字) */
 function outfitValue(value: unknown): Outfit | undefined {
-  if (value === undefined || value === null) return { ...EMPTY_OUTFIT };
-  if (typeof value !== "object" || Array.isArray(value)) return undefined;
-  const input = value as Record<string, unknown>;
-  const outfit = { ...EMPTY_OUTFIT };
-  for (const layer of ["top", "middle", "bottom"] as const) {
-    const raw = input[layer];
-    if (raw === undefined || raw === null) continue;
-    if (typeof raw !== "string") return undefined;
-    const text = raw.replace(/\s+/g, " ").trim();
-    if (text.length > MAX_OUTFIT_CHARS) return undefined;
-    outfit[layer] = text;
+  const outfit = emptyOutfit();
+  if (value === undefined || value === null) return outfit;
+  if (!isPlainObject(value)) return undefined;
+  for (const { key } of OUTFIT_LAYERS) {
+    const layer = value[key];
+    if (layer === undefined || layer === null) continue;
+    if (!isPlainObject(layer)) return undefined;
+    for (const field of ["item", "brand"] as const) {
+      const raw = layer[field];
+      if (raw === undefined || raw === null) continue;
+      if (typeof raw !== "string") return undefined;
+      const text = raw.replace(/\s+/g, " ").trim();
+      if (text.length > MAX_OUTFIT_CHARS) return undefined;
+      outfit[key][field] = text;
+    }
   }
   return outfit;
 }
@@ -99,7 +106,7 @@ export function normalizeMorningPage(raw: unknown): Normalized {
   if (place === undefined || place.length > MAX_PLACE_CHARS) return fail(`placeは${MAX_PLACE_CHARS}文字までの文字列で指定してください。`);
 
   const outfit = outfitValue(input.outfit);
-  if (!outfit) return fail(`outfitは{top, middle, bottom}(それぞれ${MAX_OUTFIT_CHARS}文字までの文字列)で指定してください。`);
+  if (!outfit) return fail(`outfitは{top, middle, bottom}、各段は{item, brand}(それぞれ${MAX_OUTFIT_CHARS}文字までの文字列)で指定してください。`);
 
   const yesterday = list(input.yesterday);
   const plan = list(input.plan);
@@ -114,6 +121,6 @@ export function normalizeMorningPage(raw: unknown): Normalized {
  *  服装は書いたページでだけ足す(服装の無いページのハッシュを、服装の列を足す前と同じに保ち、全件を書き直さない) */
 export function canonicalContent(page: MorningPageInput): string {
   const content: unknown[] = [page.startedAt, page.endedAt, page.minutes, page.place, page.chars, page.yesterday, page.plan, page.notes, page.extracted];
-  if (hasOutfit(page.outfit)) content.push([page.outfit.top, page.outfit.middle, page.outfit.bottom]);
+  if (hasOutfit(page.outfit)) content.push(OUTFIT_LAYERS.map(({ key }) => [page.outfit[key].item, page.outfit[key].brand]));
   return JSON.stringify(content);
 }

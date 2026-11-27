@@ -8,7 +8,7 @@ import { env } from "cloudflare:workers";
 import { ensureSchema } from "@/db";
 import type { PeriodRange } from "@/app/lib/daily-report-summary";
 import type { PeriodView, ReportRow } from "@/app/lib/daily-report-model";
-import { hasOutfit, outfitFromRow } from "@/app/lib/outfit";
+import { OUTFIT_COLUMNS, hasOutfit, outfitFromRow } from "@/app/lib/outfit";
 
 export type { PeriodView };
 
@@ -52,7 +52,7 @@ export async function periodView(period: PeriodRange): Promise<PeriodView> {
   ];
   if (period.range === "day") {
     statements.push(db.prepare("SELECT markdown, parse_warnings FROM daily_reports WHERE report_date=?").bind(from));
-    statements.push(db.prepare("SELECT outfit_top, outfit_middle, outfit_bottom FROM morning_pages WHERE page_date=?").bind(from));
+    statements.push(db.prepare(`SELECT ${OUTFIT_COLUMNS} FROM morning_pages WHERE page_date=?`).bind(from));
   } else {
     statements.push(db.prepare("SELECT markdown, updated_at FROM daily_report_summaries WHERE kind=? AND period_start=?").bind(period.range, from));
   }
