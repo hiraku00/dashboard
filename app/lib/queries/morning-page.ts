@@ -1,5 +1,6 @@
 /** モーニングページの読み取り(D1呼び出しを伴う層)。/morning-page の Server Component が呼ぶ。書き込みは app/lib/morning-page-store.ts。
- *  1回の env.DB.batch で、月ごとの集計と場所(全期間)・開く月の行と日報の6節目・気がかりタブの年の分・(検索語があれば)検索の結果を読む。
+ *  1回の env.DB.batch で、月ごとの集計と場所(全期間。年次・全期間の数字とグラフはここから作る)・最初と最後のページの日付・
+ *  月次なら開く月の行と日報の6節目・(検索語があれば)検索の結果を読む。
  *  日報の6節目は、日報のある期間のページを補うために読む(app/lib/morning-page-model.ts の冒頭)。 */
 import { env } from "cloudflare:workers";
 import { ensureSchema } from "@/db";
@@ -31,29 +32,32 @@ function likePattern(term: string): string {
   return `%${truncateUtf8Bytes(term, MAX_LIKE_TERM_BYTES).replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
 }
 
-/** 6節目のうち「### 気になったこと・持ち越し」から後だけ(気がかりの一覧と検索は、ここしか使わない) */
+/** 6節目のうち「### 気になったこと・持ち越し」から後だけ(検索は、ここしか使わない) */
 const NOTES_PART = "substr(reflection, instr(reflection, '### 気にな'))";
 const HAS_NOTES = "instr(reflection, '### 気にな') > 0";
 /** 開く月(指定が無ければ、データのある最新の月) */
 const OPEN_MONTH = "COALESCE(?1, (SELECT MAX(substr(page_date,1,7)) FROM morning_pages))";
 
-export async function morningPageView(requestedMonth: string | null, requestedYear: string | null, q: string): Promise<MorningPageView> {
+/** requestedMonth: 月次で開く月(null なら最新の月)。年次・全期間では undefined にして、月の行を読まない */
+export async function morningPageView(requestedMonth: string | null | undefined, q: string): Promise<MorningPageView> {
   await ensureSchema({ seed: false });
   const db = env.DB;
   const term = q.trim();
-  const year = `COALESCE(?2, substr(${OPEN_MONTH},1,4))`;
+  const withMonth = requestedMonth !== undefined;
   const statements = [
-    db.prepare("SELECT substr(page_date,1,7) AS month, COUNT(*) AS pages, AVG(minutes) AS avg_minutes, AVG(chars) AS avg_chars FROM morning_pages GROUP BY month ORDER BY month"),
+    // 年次・全期間の平均を、月の平均の平均でなく正しく出せるよう、合計と件数で読む
+    db.prepare(`SELECT substr(page_date,1,7) AS month, COUNT(*) AS pages, SUM(minutes) AS sum_minutes, COUNT(minutes) AS n_minutes,
+      SUM(chars) AS sum_chars, COUNT(chars) AS n_chars FROM morning_pages GROUP BY month ORDER BY month`),
     db.prepare("SELECT substr(page_date,1,7) AS month, place, COUNT(*) AS pages FROM morning_pages GROUP BY month, place"),
-    db.prepare(`SELECT page_date, started_at, ended_at, minutes, place, chars, ${OUTFIT_COLUMNS}, yesterday, plan, notes, extracted FROM morning_pages
-      WHERE substr(page_date,1,7) = ${OPEN_MONTH} ORDER BY page_date`).bind(requestedMonth),
-    // 日報 D の予定はページ D、活動と気がかりはページ D+1 に付けるので、月の前日の日報から読む
-    db.prepare(`SELECT report_date, reflection FROM daily_reports
-      WHERE report_date BETWEEN date(${OPEN_MONTH} || '-01', '-1 day') AND date(${OPEN_MONTH} || '-01', '+1 month', '-1 day') AND reflection <> ''`).bind(requestedMonth),
-    db.prepare(`SELECT page_date, notes FROM morning_pages WHERE substr(page_date,1,4) = ${year} AND notes <> '[]'`).bind(requestedMonth, requestedYear),
-    db.prepare(`SELECT report_date, ${NOTES_PART} AS notes_part FROM daily_reports
-      WHERE report_date BETWEEN date(${year} || '-01-01', '-1 day') AND ${year} || '-12-30' AND ${HAS_NOTES}`).bind(requestedMonth, requestedYear),
+    db.prepare("SELECT MIN(page_date) AS first, MAX(page_date) AS last FROM morning_pages"),
   ];
+  if (withMonth) {
+    statements.push(db.prepare(`SELECT page_date, started_at, ended_at, minutes, place, chars, ${OUTFIT_COLUMNS}, yesterday, plan, notes, extracted FROM morning_pages
+      WHERE substr(page_date,1,7) = ${OPEN_MONTH} ORDER BY page_date`).bind(requestedMonth));
+    // 日報 D の予定はページ D、活動と気がかりはページ D+1 に付けるので、月の前日の日報から読む
+    statements.push(db.prepare(`SELECT report_date, reflection FROM daily_reports
+      WHERE report_date BETWEEN date(${OPEN_MONTH} || '-01', '-1 day') AND date(${OPEN_MONTH} || '-01', '+1 month', '-1 day') AND reflection <> ''`).bind(requestedMonth));
+  }
   if (term) {
     const pattern = likePattern(term);
     statements.push(db.prepare(`SELECT page_date, yesterday, plan, notes FROM morning_pages
@@ -61,15 +65,20 @@ export async function morningPageView(requestedMonth: string | null, requestedYe
     statements.push(db.prepare(`SELECT report_date, ${NOTES_PART} AS notes_part FROM daily_reports
       WHERE ${HAS_NOTES} AND ${NOTES_PART} LIKE ?1 ESCAPE '\\' ORDER BY report_date DESC LIMIT 60`).bind(pattern));
   }
-  const [monthRows, placeRows, pageRows, reflectionRows, yearNoteRows, yearReflectionRows, searchRows, searchReflectionRows] = await db.batch<Row>(statements);
+  const results = await db.batch<Row>(statements);
+  const [monthRows, placeRows, spanRows] = results;
+  const [pageRows, reflectionRows] = withMonth ? results.slice(3, 5) : [];
+  const [searchRows, searchReflectionRows] = term ? results.slice(withMonth ? 5 : 3) : [];
 
   const months: MonthStat[] = (monthRows.results ?? []).map((row) => ({
     month: String(row.month),
     pages: Number(row.pages),
-    avgMinutes: toNumber(row.avg_minutes) === null ? null : Math.round(Number(row.avg_minutes)),
-    avgChars: toNumber(row.avg_chars) === null ? null : Math.round(Number(row.avg_chars)),
+    sumMinutes: Number(row.sum_minutes ?? 0),
+    minutesCount: Number(row.n_minutes ?? 0),
+    sumChars: Number(row.sum_chars ?? 0),
+    charsCount: Number(row.n_chars ?? 0),
   }));
-  const rows: MorningPageRow[] = (pageRows.results ?? []).map((row) => ({
+  const rows: MorningPageRow[] = (pageRows?.results ?? []).map((row) => ({
     date: String(row.page_date),
     startedAt: (row.started_at as string | null) ?? null,
     endedAt: (row.ended_at as string | null) ?? null,
@@ -82,7 +91,7 @@ export async function morningPageView(requestedMonth: string | null, requestedYe
     notes: stringList(row.notes),
     extracted: Number(row.extracted) === 1,
   }));
-  const month = requestedMonth ?? months.at(-1)?.month ?? null;
+  const span = spanRows.results?.[0];
 
   let search: MorningPageView["search"] = null;
   if (term) {
@@ -106,12 +115,11 @@ export async function morningPageView(requestedMonth: string | null, requestedYe
   return {
     months,
     monthPlaces: (placeRows.results ?? []).map((row) => ({ month: String(row.month), place: String(row.place ?? ""), pages: Number(row.pages) })),
-    month,
+    firstDate: span?.first ? String(span.first) : null,
+    lastDate: span?.last ? String(span.last) : null,
+    month: withMonth ? requestedMonth ?? months.at(-1)?.month ?? null : null,
     rows,
-    reflections: (reflectionRows.results ?? []).map((row) => ({ reportDate: String(row.report_date), markdown: String(row.reflection ?? "") })),
-    notesYear: requestedYear ?? month?.slice(0, 4) ?? null,
-    yearNotes: (yearNoteRows.results ?? []).map((row) => ({ date: String(row.page_date), notes: stringList(row.notes) })),
-    yearReflections: (yearReflectionRows.results ?? []).map((row) => ({ reportDate: String(row.report_date), markdown: String(row.notes_part ?? "") })),
+    reflections: (reflectionRows?.results ?? []).map((row) => ({ reportDate: String(row.report_date), markdown: String(row.reflection ?? "") })),
     search,
   };
 }
