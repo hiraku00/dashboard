@@ -28,6 +28,10 @@ export type Video = {
 };
 /** 一覧のカードが持つ行。要約は一覧のAPIが返さない（app/lib/queries/text-tube.ts の VideoListItem）。 */
 export type VideoListItem = Omit<Video, "summary">;
+/** チャンネルの選択肢の1行（app/lib/queries/text-tube.ts の ChannelCount）。 */
+export type ChannelCount = { name: string; count: number };
+/** 一覧の URL のクエリ（`?channel=`）でそのチャンネルに絞った一覧。記事ページのチャンネル名から飛ぶ先。 */
+export const channelListHref = (name: string) => `/text-tube${listViewQuery({ q: "", sort: DEFAULT_SORT, channel: name, unread: false })}`;
 /** 最後に見ていた一覧の URL（絞り込み込み）を覚えておく sessionStorage のキー。 */
 export const LIST_URL_KEY = "tt-list-url";
 export type VideoForm = {
@@ -110,6 +114,7 @@ export function useDeleteVideo({
 export function TextTubeApp({
   initialVideos = null,
   initialHasMore = false,
+  initialChannels = [],
   initialView,
 }: {
   // Passed by app/text-tube/page.tsx (a Server Component) after fetching
@@ -122,11 +127,14 @@ export function TextTubeApp({
   initialVideos?: VideoListItem[] | null;
   /** サーバーが返した先頭ページの先に、まだ動画があるか。 */
   initialHasMore?: boolean;
+  /** チャンネルの選択肢（検索語・未読のみで絞った中の、チャンネルごとの本数）。 */
+  initialChannels?: ChannelCount[];
   /** URL のクエリから読んだ一覧の状態。サーバーは同じ q と unread で initialVideos を読んでいる。 */
   initialView?: ListView;
 } = {}) {
   const [videos, setVideos] = useState<VideoListItem[]>(initialVideos ?? []),
     [hasMore, setHasMore] = useState(initialHasMore),
+    [channelCounts, setChannelCounts] = useState<ChannelCount[]>(initialChannels),
     [loadingMore, setLoadingMore] = useState(false),
     [q, setQ] = useState(initialView?.q ?? ""),
     [channel, setChannel] = useState(initialView?.channel ?? "all"),
@@ -141,16 +149,17 @@ export function TextTubeApp({
     // 記事ページの「一覧に戻る」が、この状態のままの一覧へ戻れるように覚えておく。
     try { window.sessionStorage.setItem(LIST_URL_KEY, next); } catch { /* 保存できなくても、既定の一覧へ戻るだけ */ }
   }, [q, sort, channel, unread]);
-  const listQuery = `q=${encodeURIComponent(q)}${unread ? "&unread=1" : ""}`;
+  const listQuery = `q=${encodeURIComponent(q)}${unread ? "&unread=1" : ""}${channel !== "all" ? `&channel=${encodeURIComponent(channel)}` : ""}`;
   const { begin, isCurrent } = useLatestRequest();
   const load = useCallback(async () => {
     const requestId = begin();
     const r = await fetch(`/api/text-tube/videos?${listQuery}`);
     if (!r.ok) return;
-    const body = await readJson<{ videos: VideoListItem[]; hasMore?: boolean }>(r);
+    const body = await readJson<{ videos: VideoListItem[]; hasMore?: boolean; channels?: ChannelCount[] }>(r);
     if (!isCurrent(requestId)) return;
     setVideos(body.videos);
     setHasMore(Boolean(body.hasMore));
+    if (body.channels) setChannelCounts(body.channels);
   }, [listQuery, begin, isCurrent]);
   // 続きの読み込み。offset は「いま持っている本数」-- 削除した動画はサーバー側でも1本減っているので、
   // 持っている本数がそのまま次の位置になる。読み込みの間に検索語が変わったら、結果は捨てる（load と同じ）。
@@ -181,15 +190,21 @@ export function TextTubeApp({
     onDeleted: (id) => setVideos((current) => current.filter((v) => v.id !== id)),
     onNotice: setNotice,
   });
-  // チャンネルごとの本数（読み込んだ分）。絞り込みの選択肢に添える。URL で指定されたチャンネルが
-  // 読み込んだ分に無くても、選択肢からは消さない（消すと select が別の値を表示してしまう）。
+  // チャンネルの選択肢と本数は、サーバーが数えたもの（読み込んだ分ではなく全体）。URL で指定された
+  // チャンネルが無くても、選択肢からは消さない（消すと select が別の値を表示してしまう）。
   const hasViews = useMemo(() => videos.some((v) => v.view_count > 0), [videos]);
   const channels = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const v of videos) if (v.channel_name) counts.set(v.channel_name, (counts.get(v.channel_name) ?? 0) + 1);
+    const counts = new Map(channelCounts.map(({ name, count }) => [name, count]));
     if (channel !== "all" && !counts.has(channel)) counts.set(channel, 0);
     return [...counts.entries()].sort(([a], [b]) => a.localeCompare(b, "ja"));
-  }, [videos, channel]);
+  }, [channelCounts, channel]);
+  // カードのチャンネル名を押したとき。そのチャンネルに絞って、一覧の先頭に戻る。
+  const pickChannel = (name: string) => {
+    setChannel(name);
+    window.scrollTo({ top: 0 });
+  };
+  // チャンネルの絞り込みはサーバーが済ませている。読み込みの途中で選び直したときに、前のチャンネルの
+  // カードが一瞬混ざらないよう、ここでも同じ条件で落とす。
   const shown = useMemo(
     () =>
       videos
@@ -257,10 +272,13 @@ export function TextTubeApp({
                 loaded page, and /text-tube/watch/[id] is a Server Component reading
                 D1 -- leaving prefetch on would mean simply scrolling this grid
                 into view reads D1 once per visible card. */}
+            {/* サムネイルとタイトルは同じ記事へのリンク。キーボードと読み上げではタイトルの方だけを辿る。 */}
             <Link
               className="tt-video-link"
               href={`/text-tube/watch/${v.id}`}
               prefetch={false}
+              tabIndex={-1}
+              aria-hidden="true"
             >
               <div className="tt-thumb">
                 {v.thumbnail_url ? (
@@ -281,32 +299,41 @@ export function TextTubeApp({
                 {v.duration && <b>{v.duration}</b>}
                 {v.read_at && <em className="tt-read-badge">読了</em>}
               </div>
-              <div className="tt-video-info">
-                <span className="tt-channel-avatar">
-                  {v.channel_thumbnail_url ? (
-                    <Image
-                      src={v.channel_thumbnail_url}
-                      alt=""
-                      fill
-                      sizes="34px"
-                      unoptimized
-                    />
-                  ) : (
-                    (v.channel_name || "T").slice(0, 1)
-                  )}
-                </span>
-                <div>
-                  <h3>{v.title}</h3>
-                  <p>{v.channel_name || "チャンネル未設定"}</p>
-                  <small>
-                    {/* 閲覧数は入っている動画だけに出す（入っていない動画がほとんどで、「0 閲覧」が並ぶだけだった）。 */}
-                    {v.view_count > 0 && <>{views(v.view_count)} 閲覧 · </>}記事作成日 {date(v.created_at)}
-                    <br />
-                    動画公開日 {date(v.published_at)}
-                  </small>
-                </div>
-              </div>
             </Link>
+            <div className="tt-video-info">
+              <span className="tt-channel-avatar">
+                {v.channel_thumbnail_url ? (
+                  <Image
+                    src={v.channel_thumbnail_url}
+                    alt=""
+                    fill
+                    sizes="34px"
+                    unoptimized
+                  />
+                ) : (
+                  (v.channel_name || "T").slice(0, 1)
+                )}
+              </span>
+              <div>
+                <Link className="tt-video-link" href={`/text-tube/watch/${v.id}`} prefetch={false}>
+                  <h3>{v.title}</h3>
+                </Link>
+                {/* チャンネル名を押すと、そのチャンネルの一覧に絞る。カードのリンクの外に置く（リンクの中にボタンは置けない）。 */}
+                {v.channel_name ? (
+                  <button type="button" className="tt-channel-name" onClick={() => pickChannel(v.channel_name)} title={`「${v.channel_name}」の一覧に絞る`}>
+                    {v.channel_name}
+                  </button>
+                ) : (
+                  <p>チャンネル未設定</p>
+                )}
+                <small>
+                  {/* 閲覧数は入っている動画だけに出す（入っていない動画がほとんどで、「0 閲覧」が並ぶだけだった）。 */}
+                  {v.view_count > 0 && <>{views(v.view_count)} 閲覧 · </>}記事作成日 {date(v.created_at)}
+                  <br />
+                  動画公開日 {date(v.published_at)}
+                </small>
+              </div>
+            </div>
             {/* 編集と削除は記事ページにもあり、一覧で押す機会は少ないので、普段は「⋯」に畳む（開くとカードの下に出る）。 */}
             <details className="tt-card-menu">
               <summary aria-label={`「${v.title}」の操作`}>⋯</summary>
@@ -327,7 +354,7 @@ export function TextTubeApp({
           </div>
         )}
       </div>
-      {/* 並べ替えとチャンネルの絞り込みは、読み込んだ分に対して行う。続きがある間は、それを伝えるボタンを出す。 */}
+      {/* 並べ替えは読み込んだ分に対して行う（チャンネルの絞り込みはサーバー側）。続きがある間は、それを伝えるボタンを出す。 */}
       {hasMore && (
         <div className="tt-more">
           <button type="button" onClick={loadMore} disabled={loadingMore}>

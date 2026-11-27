@@ -3,7 +3,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { MarkdownRenderer } from "../markdown-renderer";
-import { LIST_URL_KEY, TextTubeChrome, useDeleteVideo } from "../../text-tube-app";
+import { channelListHref, LIST_URL_KEY, TextTubeChrome, useDeleteVideo } from "../../text-tube-app";
 import { ApiError, readJson } from "../../lib/json";
 
 type Video = Record<string, unknown>;
@@ -264,7 +264,13 @@ export function TextTubeWatchApp({
             <div>
               <h1>{String(video.title)}</h1>
               <div className="tt-reading-meta">
-                <span>{String(video.channel_name || "チャンネル未設定")}</span>
+                {video.channel_name ? (
+                  <Link className="tt-channel-name" href={channelListHref(String(video.channel_name))} prefetch={false} title={`「${String(video.channel_name)}」の一覧を見る`}>
+                    {String(video.channel_name)}
+                  </Link>
+                ) : (
+                  <span>チャンネル未設定</span>
+                )}
                 <span>•</span>
                 <span>{date(video.created_at)}</span>
                 <span>•</span>
@@ -331,7 +337,7 @@ export function TextTubeWatchApp({
                   <b>{sibling.title}</b>
                 </Link>
               ))}
-              <Link className="tt-sibling-all" href={`/text-tube?channel=${encodeURIComponent(String(video.channel_name ?? ""))}`} prefetch={false}>
+              <Link className="tt-sibling-all" href={channelListHref(String(video.channel_name ?? ""))} prefetch={false}>
                 このチャンネルの {siblings.length} 本を一覧で見る
               </Link>
             </section>

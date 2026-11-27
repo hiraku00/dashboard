@@ -24,7 +24,7 @@ beforeAll(async () => {
 async function list(query: string) {
   const response = await videosGet(new Request(`http://x/api/text-tube/videos?${query}`));
   expect(response.status).toBe(200);
-  return await response.json() as { videos: Array<Record<string, unknown>>; hasMore: boolean };
+  return await response.json() as { videos: Array<Record<string, unknown>>; hasMore: boolean; channels?: Array<{ name: string; count: number }> };
 }
 
 test("the list pages through every video, newest first, without the summaries", async () => {
@@ -41,4 +41,25 @@ test("the list pages through every video, newest first, without the summaries", 
   expect(ids.size).toBe(TOTAL);
 
   expect((await list(`q=list-test&offset=${TOTAL}`)).videos).toEqual([]);
+});
+
+test("a channel is narrowed on the server, so its videos past the first page are listed too", async () => {
+  // 画面で絞っていたころは、先頭の100本に入っていない回が「チャンネルで絞る」で出なかった。
+  // ここでは古い2本を別チャンネルにして、どのページにも混ざらない一覧が返ることを確かめる。
+  const rows = [["chan-test-a1", "chan-test A"], ["chan-test-b1", "chan-test B"], ["chan-test-b2", "chan-test B"]];
+  await env.DB.batch(rows.map(([id, channel], index) => {
+    const stamp = new Date(Date.UTC(2020, 0, 1, 0, 0, index)).toISOString();
+    return env.DB.prepare(
+      "INSERT INTO text_tube_videos (id,title,channel_name,thumbnail_url,original_url,summary,published_at,view_count,channel_thumbnail_url,duration,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+    ).bind(id, `chan-test ${id}`, channel, "", "", "", null, 0, "", "", stamp, stamp);
+  }));
+
+  const narrowed = await list(`q=chan-test&channel=${encodeURIComponent("chan-test B")}`);
+  expect(narrowed.videos.map((video) => video.id)).toEqual(["chan-test-b2", "chan-test-b1"]);
+  // 選択肢はチャンネルの絞り込みを外して数える（選んだチャンネルだけにならない）。
+  expect(narrowed.channels).toEqual([{ name: "chan-test A", count: 1 }, { name: "chan-test B", count: 2 }]);
+
+  expect((await list("q=chan-test&channel=all")).videos).toHaveLength(3);
+  // 続きのページでは選択肢を数え直さない。
+  expect((await list("q=chan-test&offset=1")).channels).toBeUndefined();
 });

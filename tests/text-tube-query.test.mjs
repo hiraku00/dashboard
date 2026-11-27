@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 
-import { buildVideosFilter, videosOffset, videosUnread } from "../app/lib/text-tube-query.ts";
+import { buildChannelsFilter, buildVideosFilter, videosChannel, videosOffset, videosUnread } from "../app/lib/text-tube-query.ts";
 import { listViewFromParams, listViewQuery } from "../app/lib/text-tube-list-view.ts";
 
 // buildVideosFilter() is the pure "which WHERE clause and binds does this
@@ -79,4 +79,24 @@ test("the list view round-trips through the URL query, leaving defaults out", ()
 
   // An unknown sort falls back to the default instead of reaching the screen.
   expect(listViewFromParams({ sort: "drop table" }).sort).toBe("created_at-desc");
+});
+
+test("channel narrows to that exact channel name, after the search and unread conditions", () => {
+  const filter = buildVideosFilter({ q: "steth", unread: true, channel: "  Ch A  " });
+  expect(filter.where).toBe("WHERE deleted_at IS NULL AND read_at IS NULL AND (title LIKE ? OR channel_name LIKE ?) AND channel_name = ?");
+  expect(filter.values).toEqual(["%steth%", "%steth%", "Ch A"]);
+});
+
+test("a blank channel or the select's \"all\" does not narrow anything", () => {
+  for (const channel of [undefined, null, "", "   ", "all"]) {
+    expect(buildVideosFilter({ channel }).where).toBe("WHERE deleted_at IS NULL");
+    expect(videosChannel(channel)).toBe("");
+  }
+});
+
+test("the channel choices keep the search and unread conditions but drop the channel itself", () => {
+  // そうしないと、チャンネルを選んだとたんに選択肢がそのチャンネルだけになる。
+  const filter = buildChannelsFilter({ q: "steth", unread: true, channel: "Ch A" });
+  expect(filter.where).toBe("WHERE deleted_at IS NULL AND read_at IS NULL AND (title LIKE ? OR channel_name LIKE ?)");
+  expect(filter.values).toEqual(["%steth%", "%steth%"]);
 });

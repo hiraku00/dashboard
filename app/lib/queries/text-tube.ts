@@ -8,7 +8,7 @@
  *  分離してある。理由は app/lib/watch-list-query.ts と同じ。 */
 import { env } from "cloudflare:workers";
 import { ensureSchema } from "@/db";
-import { buildVideosFilter, videosOffset, VIDEOS_PAGE_SIZE, type VideosQuery } from "@/app/lib/text-tube-query";
+import { buildChannelsFilter, buildVideosFilter, videosOffset, VIDEOS_PAGE_SIZE, type VideosQuery } from "@/app/lib/text-tube-query";
 
 export type Video = {
   id: unknown;
@@ -41,6 +41,19 @@ export async function listVideos(query: VideosQuery = {}): Promise<{ videos: Vid
   // id を第2キーにするのは、created_at が同じ行があっても offset での続きが飛んだり重なったりしないため。
   const rows = (await env.DB.prepare(`SELECT id,title,channel_name,thumbnail_url,original_url,published_at,view_count,channel_thumbnail_url,duration,detailed_script_object_key,read_at,created_at,updated_at FROM text_tube_videos ${where} ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`).bind(...values, VIDEOS_PAGE_SIZE + 1, videosOffset(query.offset)).all<Record<string, unknown>>()).results ?? [];
   return { videos: rows.slice(0, VIDEOS_PAGE_SIZE) as unknown as VideoListItem[], hasMore: rows.length > VIDEOS_PAGE_SIZE };
+}
+
+/** 一覧のチャンネルの選択肢の1行。 */
+export type ChannelCount = { name: string; count: number };
+
+/** 一覧のチャンネルの選択肢。検索語・未読のみで絞った中で、チャンネルごとの本数を名前順に返す
+ *  （チャンネルの絞り込みは効かせない -- buildChannelsFilter() を見る）。チャンネル名が空の動画は数えない。
+ *  一覧の先頭ページを読むときだけ呼ぶ（続きのページでは選択肢は変わらない）。 */
+export async function listChannels(query: VideosQuery = {}): Promise<ChannelCount[]> {
+  await ensureSchema({ seed: false });
+  const { where, values } = buildChannelsFilter(query);
+  const rows = (await env.DB.prepare(`SELECT channel_name AS name, COUNT(*) AS count FROM text_tube_videos ${where} AND channel_name != '' GROUP BY channel_name`).bind(...values).all<ChannelCount>()).results ?? [];
+  return rows.map((row) => ({ name: String(row.name), count: Number(row.count) })).sort((a, b) => a.name.localeCompare(b.name, "ja"));
 }
 
 /** app/api/text-tube/videos/[id] の GET と、編集フォーム展開
