@@ -4,7 +4,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { PortalHeader } from "./portal-nav";
-import { MORNING_RANGES, MORNING_TABS, type CalendarDay, type MorningDay, type MorningPageModel, type MorningRange, type MorningTab, type TrendPoint } from "./lib/morning-page-model";
+import { MORNING_RANGES, MORNING_TABS, type CalendarDay, type MorningDay, type MorningPageModel, type MorningRange, type MorningTab, type OutfitItemCount, type TrendPoint } from "./lib/morning-page-model";
+import { OUTFIT_LAYERS, type OutfitLayer } from "./lib/outfit";
 import { PLACE_GROUPS, classifyPlace, placeGroupLabel, type PlaceGroup } from "./lib/morning-page-places";
 import { OutfitTable } from "./outfit-table";
 
@@ -104,6 +105,7 @@ export function MorningPageApp({ model, initialTab }: { model: MorningPageModel;
           <div hidden={tab !== "summary"}>{hasPages ? <SummaryTab model={model} onOpenDay={openDay} /> : empty}</div>
           <div hidden={tab !== "content"}><ContentTab model={model} focus={focus} active={tab === "content"} hasPages={hasPages} empty={empty} /></div>
           <div hidden={tab !== "place"}>{hasPages ? <PlaceTab model={model} /> : empty}</div>
+          <div hidden={tab !== "outfit"}>{hasPages ? <OutfitTab model={model} /> : empty}</div>
         </>
       )}
     </main>
@@ -549,6 +551,93 @@ function PlaceTab({ model }: { model: MorningPageModel }) {
             ))}
           </ul>
         ) : <p className="dr-empty">{PERIOD_NOUN[model.range]}のページはありません。</p>}
+      </Panel>
+    </div>
+  );
+}
+
+/* ───────── 服装 ───────── */
+
+const LAYER_LABEL: Record<OutfitItemCount["layer"], string> = Object.fromEntries(OUTFIT_LAYERS.map(({ key, label }) => [key, label])) as Record<OutfitItemCount["layer"], string>;
+
+/** 品名とブランド(ブランドは後ろに薄く)。書いていない段は「—」 */
+function Garment({ layer }: { layer: OutfitLayer }) {
+  if (!layer.item && !layer.brand) return <span className="mp-faint">—</span>;
+  return <>{layer.item || "—"}{layer.brand ? <small className="mp-brand">{layer.brand}</small> : null}</>;
+}
+
+/** 服装: 月次は日ごとの表、どの期間も段・品名ごと・ブランドごとの着た日数(多い順) */
+function OutfitTab({ model }: { model: MorningPageModel }) {
+  const { outfit } = model;
+  const since = outfit.firstDate ? `服装は${Number(outfit.firstDate.slice(0, 4))}年${Number(outfit.firstDate.slice(5, 7))}月${Number(outfit.firstDate.slice(8, 10))}日から書いています。` : "服装を書いたページはまだありません。";
+  if (!outfit.days) {
+    return (
+      <div className="dr-stack">
+        <section className="asset-panel dr-panel">
+          <p className="dr-empty">
+            {PERIOD_NOUN[model.range]}に服装を書いたページはありません。{since}
+            {outfit.firstDate ? <> <Link className="text-link" href={morningHref("month", outfit.firstDate.slice(0, 7), "outfit")} prefetch={false}>書き始めた月へ</Link></> : null}
+          </p>
+        </section>
+      </div>
+    );
+  }
+  const days = [...model.days].reverse().filter((day) => day.outfit);
+  const items = OUTFIT_LAYERS.flatMap(({ key }) => outfit.items.filter((item) => item.layer === key));
+  return (
+    <div className="dr-stack">
+      {model.range === "month" ? (
+        <Panel title="日ごとの服装" sub={`${days.length}日分。新しい日から。日付を押すと、その日の内容へ`}>
+          <div className="dr-table-scroll">
+            <table className="asset-table mp-outfit-table">
+              <thead><tr><th scope="col">日付</th>{OUTFIT_LAYERS.map(({ key, label }) => <th key={key} scope="col">{label}</th>)}</tr></thead>
+              <tbody>
+                {days.map((day) => (
+                  <tr key={day.date}>
+                    <th scope="row"><Link href={morningHref("month", day.date.slice(0, 7), "content", `d-${day.date}`)} prefetch={false}>{shortDate(day.date, day.weekday)}</Link></th>
+                    {OUTFIT_LAYERS.map(({ key }) => <td key={key}><Garment layer={day.outfit![key]} /></td>)}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Panel>
+      ) : null}
+      <Panel title="よく着た服" sub={`${outfit.days}日分のうち、段・品名ごとの着た日数。${since}`}>
+        <div className="dr-table-scroll">
+          <table className="asset-table mp-outfit-table">
+            <thead><tr><th scope="col">段</th><th scope="col">品名</th><th scope="col">ブランド</th><th scope="col" className="is-num">日数</th><th scope="col">最後に着た日</th></tr></thead>
+            <tbody>
+              {items.map((item, index) => (
+                <tr key={`${item.layer}-${item.item}-${item.brand}`} className={index > 0 && items[index - 1].layer !== item.layer ? "is-new-day" : undefined}>
+                  <th scope="row">{LAYER_LABEL[item.layer]}</th>
+                  <td>{item.item || <span className="mp-faint">—</span>}</td>
+                  <td className="mp-brand-cell">{item.brand}</td>
+                  <td className="is-num">{item.days}日</td>
+                  <td>{shortDate(item.last)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Panel>
+      <Panel title="ブランド" sub="上・中・下のどれかで着た日数。大文字・小文字の違いはまとめています">
+        {outfit.brands.length ? (
+          <div className="dr-table-scroll">
+            <table className="asset-table mp-outfit-table">
+              <thead><tr><th scope="col">ブランド</th><th scope="col" className="is-num">日数</th><th scope="col">最後に着た日</th></tr></thead>
+              <tbody>
+                {outfit.brands.map((brand) => (
+                  <tr key={brand.brand}>
+                    <th scope="row">{brand.brand}</th>
+                    <td className="is-num">{brand.days}日</td>
+                    <td>{shortDate(brand.last)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : <p className="dr-empty">ブランドを書いた服はありません。</p>}
       </Panel>
     </div>
   );

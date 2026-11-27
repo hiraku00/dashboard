@@ -14,7 +14,7 @@ const MONTHS = [
 const PLACES = [{ month: "2024-04", place: "自宅", pages: 1 }, { month: "2024-04", place: "自宅（槻木）", pages: 1 }, { month: "2024-04", place: "ホテル(Hi Hotel)", pages: 1 }, { month: "2024-03", place: "7F 中庭", pages: 18 }];
 const TODAY = "2026-01-20";
 
-const view = (patch) => ({ months: MONTHS, monthPlaces: PLACES, firstDate: "2024-03-05", lastDate: "2026-01-19", month: null, rows: [], reflections: [], search: null, ...patch });
+const view = (patch) => ({ months: MONTHS, monthPlaces: PLACES, firstDate: "2024-03-05", lastDate: "2026-01-19", firstOutfitDate: null, outfitItems: [], outfitBrands: [], outfitDays: 0, month: null, rows: [], reflections: [], search: null, ...patch });
 const month = (patch, anchor = patch.month) => buildMorningModel(view(patch), { range: "month", anchor }, TODAY);
 
 describe("buildMorningModel (月次)", () => {
@@ -98,6 +98,13 @@ describe("buildMorningModel (年次・全期間)", () => {
     // 最初のページ(3/5)から年末まで
     expect(model.figures.days).toBe(302);
     expect(model.places.map((p) => [p.label, p.count])).toEqual([["共用スペース", 18], ["自宅", 1], ["実家", 1], ["宿泊先", 1]]);
+  });
+
+  test("服装の集計は読んだまま服装タブへ渡す", () => {
+    const items = [{ layer: "top", item: "シャツ", brand: "UNIQLO", days: 2, last: "2026-01-19" }];
+    const brands = [{ brand: "UNIQLO", days: 2, last: "2026-01-19" }];
+    const model = buildMorningModel(view({ firstOutfitDate: "2026-01-18", outfitItems: items, outfitBrands: brands, outfitDays: 2 }), { range: "all", anchor: null }, TODAY);
+    expect(model.outfit).toEqual({ firstDate: "2026-01-18", days: 2, items, brands });
   });
 
   test("年を指定しなければ最新の年", () => {
