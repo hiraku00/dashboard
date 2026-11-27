@@ -40,7 +40,7 @@ export default async function MorningPage({ searchParams }: { searchParams?: Pro
 
   let model: MorningPageModel | null = null;
   try {
-    const view = await morningPageView(range === "month" ? anchor : undefined, q);
+    const view = await morningPageView({ range, anchor }, q);
     model = buildMorningModel(view, { range, anchor }, todoDate());
   } catch {
     model = null;

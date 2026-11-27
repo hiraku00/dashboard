@@ -414,12 +414,12 @@ h1,h2,h3 { color:var(--ink); } h1 { margin:0; font-size:30px; line-height:1.1; l
 .dr-hero-figures { display:flex; flex-wrap:wrap; gap:4px 36px; }
 .dr-hero-figures p { margin:0; }
 /* モーニングページに書いた服装(上・中・下。app/outfit-table.tsx)。段ごとに1行の表 */
-.outfit-table { border-collapse:collapse; font-size:14px; line-height:1.5; }
-.outfit-table caption { padding:0 0 2px; color:var(--muted); font-size:14px; font-weight:700; text-align:left; }
-.outfit-table th,.outfit-table td { padding:2px 16px 2px 0; text-align:left; vertical-align:baseline; }
-.outfit-table th { color:var(--muted); font-weight:700; }
+.outfit-table { border-collapse:collapse; background:#fff; font-size:14px; line-height:1.5; }
+.outfit-table caption { padding:0 0 4px; color:var(--muted); font-size:14px; font-weight:700; text-align:left; }
+.outfit-table th,.outfit-table td { border:1px solid var(--line-strong); padding:4px 12px; text-align:left; vertical-align:baseline; }
+.outfit-table th { background:rgba(60,60,67,.04); color:var(--muted); font-weight:700; text-align:center; }
 .outfit-table td { color:var(--ink); }
-.outfit-table .outfit-brand { padding-right:0; color:var(--muted); }
+.outfit-table .outfit-brand { color:var(--muted); }
 .dr-hero-outfit { margin-top:6px !important; }
 
 /* 概要: 左に活動時間、右に配分(Manage Asset の asset-dashboard-grid と同じ 1.35fr : 1fr) */
@@ -1198,6 +1198,15 @@ button.mp-cal-day:hover,button.mp-cal-day:focus-visible { border-color:var(--blu
 .mp-place-track { height:9px; overflow:hidden; border-radius:99px; background:#eef0f4; }
 .mp-place-track .mp-seg { display:block; height:100%; border-radius:inherit; }
 .mp-places small { display:block; margin:3px 0 0 16px; color:var(--muted); font-size:14px; line-height:1.5; }
+
+/* 服装 */
+.mp-outfit-table th,.mp-outfit-table td { white-space:nowrap; }
+.mp-outfit-table tbody th { font-weight:700; }
+.mp-outfit-table .is-num { text-align:right; font-variant-numeric:tabular-nums; }
+.mp-outfit-table tr.is-new-day>* { border-top:2px solid var(--line-strong); }
+.mp-brand { margin-left:6px; color:var(--muted); font-size:13px; }
+.mp-brand-cell { color:var(--muted); }
+.mp-faint { color:var(--faint); }
 
 /* 検索 */
 .mp-search { display:flex; flex-wrap:wrap; align-items:center; gap:10px; padding:14px 22px; }

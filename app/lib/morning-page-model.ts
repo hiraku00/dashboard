@@ -17,8 +17,8 @@ export const DAILY_REPORT_START = "2025-12-23";
 export type MorningRange = "month" | "year" | "all";
 export const MORNING_RANGES: [MorningRange, string][] = [["month", "月次"], ["year", "年次"], ["all", "全期間"]];
 /** 機能内タブ(切り口)。サーバーのページ(URLの tab の検証)とクライアントの両方が使うので、ここに置く */
-export type MorningTab = "summary" | "content" | "place";
-export const MORNING_TABS: [MorningTab, string][] = [["summary", "概要"], ["content", "内容"], ["place", "場所"]];
+export type MorningTab = "summary" | "content" | "place" | "outfit";
+export const MORNING_TABS: [MorningTab, string][] = [["summary", "概要"], ["content", "内容"], ["place", "場所"], ["outfit", "服装"]];
 export const isMorningRange = (value: unknown): value is MorningRange => MORNING_RANGES.some(([id]) => id === value);
 
 export type MorningPageRow = {
@@ -42,6 +42,9 @@ export type MonthStat = { month: string; pages: number; sumMinutes: number; minu
 export type MonthPlace = { month: string; place: string; pages: number };
 /** 日報の6節目(Markdown)。reportDate は日報の日付 */
 export type ReportReflection = { reportDate: string; markdown: string };
+/** 服装: 段・品名ごとの着た日数(ブランドは大文字・小文字を揃えて数える) */
+export type OutfitItemCount = { layer: "top" | "middle" | "bottom"; item: string; brand: string; days: number; last: string };
+export type OutfitBrandCount = { brand: string; days: number; last: string };
 export type SearchHit = { date: string; kind: "yesterday" | "plan" | "notes"; text: string };
 
 export type MorningPageView = {
@@ -51,6 +54,13 @@ export type MorningPageView = {
   /** 最初と最後のページの日付 */
   firstDate: string | null;
   lastDate: string | null;
+  /** 服装を初めて書いたページの日付 */
+  firstOutfitDate: string | null;
+  /** 期間の服装の集計 */
+  outfitItems: OutfitItemCount[];
+  outfitBrands: OutfitBrandCount[];
+  /** 期間に服装を書いたページの数 */
+  outfitDays: number;
   /** 月次で開く月(YYYY-MM)。年次・全期間とデータが無いときは null */
   month: string | null;
   /** 月次で開く月のページ */
@@ -94,6 +104,8 @@ export type MorningPageModel = {
   places: PlaceShare[];
   /** 月次のページ(日付の昇順) */
   days: MorningDay[];
+  /** 服装タブ: 期間の書いた日数と、段・品名ごと・ブランドごとの着た日数(多い順)。firstDate は服装を初めて書いた日 */
+  outfit: { firstDate: string | null; days: number; items: OutfitItemCount[]; brands: OutfitBrandCount[] };
   search: { q: string; hits: SearchHit[] } | null;
   empty: boolean;
 };
@@ -237,6 +249,7 @@ export function buildMorningModel(view: MorningPageView, period: { range: Mornin
     calendar,
     places: placeShares([...placeTotals.entries()].map(([place, count]) => ({ place, count }))),
     days,
+    outfit: { firstDate: view.firstOutfitDate, days: view.outfitDays, items: view.outfitItems, brands: view.outfitBrands },
     search: view.search,
     empty: months.length === 0,
   };
