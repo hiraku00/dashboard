@@ -2,11 +2,13 @@
  *  /daily-report の Server Component が呼ぶ。書き込みは app/lib/daily-report-store.ts にあり、ここには置かない。
  *  日次・週次・月次のどれでも periodView() の1回の env.DB.batch で読み、タブの中身はすべてここから作る
  *  (app/lib/daily-report-model.ts)。本文(markdown)は日次のときだけ、その日の1行を読む。
- *  週次・月次は代わりに、その期間のサマリ(daily_report_summaries)の1行を読む。 */
+ *  週次・月次は代わりに、その期間のサマリ(daily_report_summaries)の1行を読む。
+ *  日次のときは、その日の朝のモーニングページの服装(morning_pages)も読む。 */
 import { env } from "cloudflare:workers";
 import { ensureSchema } from "@/db";
 import type { PeriodRange } from "@/app/lib/daily-report-summary";
 import type { PeriodView, ReportRow } from "@/app/lib/daily-report-model";
+import { OUTFIT_COLUMNS, hasOutfit, outfitFromRow } from "@/app/lib/outfit";
 
 export type { PeriodView };
 
@@ -48,9 +50,15 @@ export async function periodView(period: PeriodRange): Promise<PeriodView> {
     db.prepare("SELECT report_date, text FROM daily_report_notes WHERE report_date BETWEEN ? AND ? ORDER BY report_date DESC, position").bind(from, to),
     db.prepare("SELECT report_date, reflection FROM daily_reports WHERE report_date BETWEEN ? AND ? AND reflection <> '' ORDER BY report_date DESC").bind(from, to),
   ];
-  if (period.range === "day") statements.push(db.prepare("SELECT markdown, parse_warnings FROM daily_reports WHERE report_date=?").bind(from));
-  else statements.push(db.prepare("SELECT markdown, updated_at FROM daily_report_summaries WHERE kind=? AND period_start=?").bind(period.range, from));
-  const [dates, reports, tagDays, blocks, workItems, notes, reflections, last] = await db.batch<Row>(statements);
+  if (period.range === "day") {
+    statements.push(db.prepare("SELECT markdown, parse_warnings FROM daily_reports WHERE report_date=?").bind(from));
+    statements.push(db.prepare(`SELECT ${OUTFIT_COLUMNS} FROM morning_pages WHERE page_date=?`).bind(from));
+  } else {
+    statements.push(db.prepare("SELECT markdown, updated_at FROM daily_report_summaries WHERE kind=? AND period_start=?").bind(period.range, from));
+  }
+  const [dates, reports, tagDays, blocks, workItems, notes, reflections, last, morning] = await db.batch<Row>(statements);
+  const outfitRow = morning?.results?.[0];
+  const outfit = outfitRow ? outfitFromRow(outfitRow) : null;
 
   const head = period.range === "day" ? last?.results?.[0] : undefined;
   const summary = period.range === "day" ? undefined : last?.results?.[0];
@@ -89,6 +97,7 @@ export async function periodView(period: PeriodRange): Promise<PeriodView> {
     notes: (notes.results ?? []).map((row) => ({ reportDate: String(row.report_date), text: String(row.text) })),
     reflections: (reflections.results ?? []).map((row) => ({ reportDate: String(row.report_date), markdown: String(row.reflection ?? "") })),
     original: head ? { markdown: String(head.markdown ?? ""), warnings: parseWarnings(head.parse_warnings) } : null,
+    outfit: hasOutfit(outfit) ? outfit : null,
     summary: summary ? { markdown: String(summary.markdown ?? ""), updatedAt: String(summary.updated_at ?? "") } : null,
   };
 }
