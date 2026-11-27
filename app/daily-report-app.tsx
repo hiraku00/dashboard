@@ -12,6 +12,7 @@ import { ReflectionDayView, ReflectionPeriodView } from "./daily-report-reflecti
 import { MarkdownRenderer } from "./text-tube/markdown-renderer";
 import { axisRange, formatMinutes, timelineSegments, type TimelineBlockInput } from "./lib/daily-report-summary";
 import type { DailyReportModel } from "./lib/daily-report-model";
+import { outfitParts, type Outfit } from "./lib/outfit";
 
 /** /daily-report のワークスペース(docs/daily-report-view-design.md §3・§4・§6)。Manage Asset と同じく、
  *  ヘッダーの下の機能内タブで切り口を替え、全タブを描いて `hidden` で隠す(切り替えは即時、URLは tab だけ書き換える)。
@@ -97,6 +98,7 @@ function Hero({ model }: { model: DailyReportModel }) {
             ))}
           </div>
           {model.hero.caption ? <p>{model.hero.caption}</p> : null}
+          {model.day?.outfit ? <OutfitLine outfit={model.day.outfit} /> : null}
           {model.day?.report?.parseStatus === "partial" ? <p>一部を解析できなかった行があります(原本タブで確認)</p> : null}
           {model.day?.report?.parseStatus === "failed" ? <p>この日報は解析できませんでした(原本タブで確認)</p> : null}
         </div>
@@ -109,6 +111,18 @@ function Hero({ model }: { model: DailyReportModel }) {
         ))}
       </div>
     </section>
+  );
+}
+
+/** その日の朝のモーニングページに書いた服装(上・中・下の書いた段だけ) */
+function OutfitLine({ outfit }: { outfit: Outfit }) {
+  return (
+    <p className="dr-hero-outfit">
+      <span>服装</span>
+      {outfitParts(outfit).map((part) => (
+        <span key={part.label}><b>{part.label}</b>{part.value}</span>
+      ))}
+    </p>
   );
 }
 

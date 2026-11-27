@@ -46,6 +46,18 @@ describe("POST /api/morning-pages", () => {
     expect(changed.body).toMatchObject({ created: 0, updated: 1, skipped: 1 });
   });
 
+  test("stores the outfit, and changing only the outfit updates the page", async () => {
+    const outfit = { top: "シャツ(Uniqlo U)", middle: "Tシャツ(WhitesVille)", bottom: "デニム(白)" };
+    expect((await ingest({ pages: [page("2023-06-20")] })).body).toMatchObject({ created: 1 });
+    expect((await ingest({ pages: [page("2023-06-20", { outfit })] })).body).toMatchObject({ updated: 1 });
+    expect((await ingest({ pages: [page("2023-06-20", { outfit })] })).body).toMatchObject({ skipped: 1 });
+    const row = await env.DB.prepare("SELECT outfit_top, outfit_middle, outfit_bottom FROM morning_pages WHERE page_date = ?").bind("2023-06-20").first();
+    expect(row).toEqual({ outfit_top: "シャツ(Uniqlo U)", outfit_middle: "Tシャツ(WhitesVille)", outfit_bottom: "デニム(白)" });
+    const view = await morningPageView("2023-06", null, "");
+    expect(view.rows.find((r) => r.date === "2023-06-20")?.outfit).toEqual(outfit);
+    expect(view.rows.find((r) => r.date === "2023-06-15")?.outfit).toBeNull();
+  });
+
   test("a bad page is that page's error only, and a duplicate date in one request is refused", async () => {
     const { response, body } = await ingest({ pages: [page("2023-07-01"), { ...page("2023-07-02"), minutes: 5000 }, page("2023-07-01")] });
     expect(response.status).toBe(200);

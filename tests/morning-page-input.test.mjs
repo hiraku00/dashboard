@@ -16,7 +16,17 @@ describe("normalizeMorningPage", () => {
 
   test("a header-only page may leave everything else out", () => {
     const result = normalizeMorningPage({ date: "2026-02-03" });
-    expect(result).toEqual({ ok: true, page: { date: "2026-02-03", startedAt: null, endedAt: null, minutes: null, place: "", chars: null, yesterday: [], plan: [], notes: [], extracted: false } });
+    expect(result).toEqual({ ok: true, page: { date: "2026-02-03", startedAt: null, endedAt: null, minutes: null, place: "", chars: null, outfit: { top: "", middle: "", bottom: "" }, yesterday: [], plan: [], notes: [], extracted: false } });
+  });
+
+  test("reads the outfit by layer and leaves a missing layer empty", () => {
+    const result = normalizeMorningPage({ ...GOOD, outfit: { top: " シャツ(Uniqlo U) ", bottom: "デニム(白)" } });
+    expect(result.page.outfit).toEqual({ top: "シャツ(Uniqlo U)", middle: "", bottom: "デニム(白)" });
+    const bad = (outfit) => normalizeMorningPage({ ...GOOD, outfit });
+    expect(bad("上:シャツ")).toMatchObject({ ok: false });
+    expect(bad(["シャツ"])).toMatchObject({ ok: false });
+    expect(bad({ top: 1 })).toMatchObject({ ok: false });
+    expect(bad({ middle: "あ".repeat(101) })).toMatchObject({ ok: false });
   });
 
   test("rejects each wrong field with the date kept for the report", () => {
@@ -41,6 +51,9 @@ describe("normalizeMorningPage", () => {
     const b = normalizeMorningPage({ ...GOOD, date: "2024-04-16" }).page;
     expect(canonicalContent(a)).toBe(canonicalContent(b));
     expect(canonicalContent(a)).not.toBe(canonicalContent({ ...a, plan: [] }));
+    // 服装の無いページは、服装の列を足す前と同じ内容の鍵のまま(全件が updated にならない)
+    expect(canonicalContent(a)).toBe(JSON.stringify([a.startedAt, a.endedAt, a.minutes, a.place, a.chars, a.yesterday, a.plan, a.notes, a.extracted]));
+    expect(canonicalContent(a)).not.toBe(canonicalContent({ ...a, outfit: { top: "", middle: "", bottom: "デニム(白)" } }));
   });
 
   test("isPageDate checks the calendar", () => {

@@ -45,11 +45,12 @@ export async function ingestMorningPages(rawPages: unknown[]): Promise<MorningIn
       results.push({ date: page.date, status: "skipped" });
       continue;
     }
-    statements.push(env.DB.prepare(`INSERT INTO morning_pages (page_date,started_at,ended_at,minutes,place,chars,yesterday,plan,notes,extracted,content_hash,created_at,updated_at)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+    statements.push(env.DB.prepare(`INSERT INTO morning_pages (page_date,started_at,ended_at,minutes,place,chars,outfit_top,outfit_middle,outfit_bottom,yesterday,plan,notes,extracted,content_hash,created_at,updated_at)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
       ON CONFLICT(page_date) DO UPDATE SET started_at=excluded.started_at,ended_at=excluded.ended_at,minutes=excluded.minutes,place=excluded.place,chars=excluded.chars,
+        outfit_top=excluded.outfit_top,outfit_middle=excluded.outfit_middle,outfit_bottom=excluded.outfit_bottom,
         yesterday=excluded.yesterday,plan=excluded.plan,notes=excluded.notes,extracted=excluded.extracted,content_hash=excluded.content_hash,updated_at=excluded.updated_at`)
-      .bind(page.date, page.startedAt, page.endedAt, page.minutes, page.place, page.chars, JSON.stringify(page.yesterday), JSON.stringify(page.plan), JSON.stringify(page.notes),
+      .bind(page.date, page.startedAt, page.endedAt, page.minutes, page.place, page.chars, page.outfit.top, page.outfit.middle, page.outfit.bottom, JSON.stringify(page.yesterday), JSON.stringify(page.plan), JSON.stringify(page.notes),
         page.extracted ? 1 : 0, hash, now, now));
     written.push({ date: page.date, status: stored.has(page.date) ? "updated" : "created" });
   }

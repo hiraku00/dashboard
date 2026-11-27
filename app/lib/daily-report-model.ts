@@ -37,6 +37,7 @@ import {
   type WorkItemInput,
 } from "./daily-report-summary.ts";
 import { summarizeReflections, type ReflectionDay, type ReflectionSummary } from "./daily-report-reflection.ts";
+import type { Outfit } from "./outfit.ts";
 
 export type ReportRow = {
   reportDate: string;
@@ -64,6 +65,8 @@ export type PeriodView = {
   reflections: Reflection[];
   /** 日次のときだけ: その日の本文と解析時の警告 */
   original: { markdown: string; warnings: string[] } | null;
+  /** 日次のときだけ: その日の朝のモーニングページの服装(書いてなければ null) */
+  outfit?: Outfit | null;
   /** 週次・月次のときだけ: その期間のサマリ(auto-daily-report の summarize.py が作る Markdown) */
   summary: { markdown: string; updatedAt: string } | null;
 };
@@ -114,6 +117,8 @@ export type DailyReportModel = {
   day: {
     report: ReportRow | null;
     blocks: TimelineBlockInput[];
+    /** その日の朝のモーニングページの服装(書いてなければ null) */
+    outfit: Outfit | null;
   } | null;
   /** 週次: 7行の帯 */
   weekRows: { date: string; hasReport: boolean; future: boolean; active: number; segments: TimelineSegment[] }[];
@@ -258,7 +263,7 @@ export function buildModel(view: PeriodView, period: PeriodRange, today: string)
     baseline: { days: baseDays, label: BASELINE_LABEL[range], shortLabel: BASELINE_SHORT[range] },
     activity: { days: activityDays, periods: activityPeriods, periodsLabel: range === "month" ? "最近12か月" : "最近12週" },
     day: range === "day"
-      ? { report, blocks: blocksByDate.get(from) ?? [] }
+      ? { report, blocks: blocksByDate.get(from) ?? [], outfit: view.outfit ?? null }
       : null,
     weekRows: range === "week"
       ? periodDates.map((date) => ({ date, hasReport: reportSet.has(date), future: date > today, active: activeByDate.get(date) ?? 0, segments: segmentsByDate.get(date) ?? [] }))

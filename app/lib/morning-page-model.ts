@@ -7,6 +7,7 @@
 
 import { addDays, weekdayLabel } from "./daily-report-summary.ts";
 import { parseReflection } from "./daily-report-reflection.ts";
+import type { Outfit } from "./outfit.ts";
 import { PLACE_GROUPS, classifyPlace, emptyPlaceCounts, type PlaceCounts, type PlaceGroup } from "./morning-page-places.ts";
 
 /** 作業日報(画面記録)の最初の日。これ以降の日は、予定と実績を日報の「振り返り」タブで読める */
@@ -19,6 +20,8 @@ export type MorningPageRow = {
   minutes: number | null;
   place: string;
   chars: number | null;
+  /** ヘッダーの「服装」。書いていないページは null */
+  outfit: Outfit | null;
   yesterday: string[];
   plan: string[];
   notes: string[];

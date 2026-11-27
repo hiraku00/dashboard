@@ -1,14 +1,18 @@
 /** モーニングページ(Obsidian の朝の書き物)の取り込み(POST /api/morning-pages)の入力検証。D1 にも cloudflare:workers にも
  *  触れない純粋なロジック(vitest の "node" project でテストする)。
  *
- *  auto-daily-report の morning_pages.py が、1ページごとに「ヘッダーの表(時間・場所・文字数)」と、
+ *  auto-daily-report の morning_pages.py が、1ページごとに「ヘッダーの表(時間・場所・服装・文字数)」と、
  *  Claude で取り出した「昨日のこと・今日の予定・気になったこと」を送る。本文そのものは送らない。 */
+
+import { EMPTY_OUTFIT, hasOutfit, type Outfit } from "./outfit.ts";
 
 export const MAX_PAGES_PER_REQUEST = 50;
 /** 1つの一覧の項目数と、1項目の長さの上限(取り出した結果は短い箇条書き) */
 export const MAX_LIST_ITEMS = 16;
 export const MAX_ITEM_CHARS = 400;
 export const MAX_PLACE_CHARS = 100;
+/** 服装の1段(「シャツ(Uniqlo U)」のような書いたままの値)の長さの上限 */
+export const MAX_OUTFIT_CHARS = 100;
 /** 所要時間の上限(分)。これを超える値はヘッダーの書き間違いなので、送り手が null にして送る */
 export const MAX_MINUTES = 600;
 
@@ -19,6 +23,8 @@ export type MorningPageInput = {
   minutes: number | null;
   place: string;
   chars: number | null;
+  /** ヘッダーの「服装」の上・中・下。書かなかった段・欄の無いページは空文字 */
+  outfit: Outfit;
   yesterday: string[];
   plan: string[];
   notes: string[];
@@ -60,6 +66,22 @@ function list(value: unknown): string[] | undefined {
   return items;
 }
 
+function outfitValue(value: unknown): Outfit | undefined {
+  if (value === undefined || value === null) return { ...EMPTY_OUTFIT };
+  if (typeof value !== "object" || Array.isArray(value)) return undefined;
+  const input = value as Record<string, unknown>;
+  const outfit = { ...EMPTY_OUTFIT };
+  for (const layer of ["top", "middle", "bottom"] as const) {
+    const raw = input[layer];
+    if (raw === undefined || raw === null) continue;
+    if (typeof raw !== "string") return undefined;
+    const text = raw.replace(/\s+/g, " ").trim();
+    if (text.length > MAX_OUTFIT_CHARS) return undefined;
+    outfit[layer] = text;
+  }
+  return outfit;
+}
+
 export function normalizeMorningPage(raw: unknown): Normalized {
   const input = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
   const date = typeof input.date === "string" ? input.date : "";
@@ -76,16 +98,22 @@ export function normalizeMorningPage(raw: unknown): Normalized {
   const place = input.place === undefined || input.place === null ? "" : typeof input.place === "string" ? input.place.trim() : undefined;
   if (place === undefined || place.length > MAX_PLACE_CHARS) return fail(`placeは${MAX_PLACE_CHARS}文字までの文字列で指定してください。`);
 
+  const outfit = outfitValue(input.outfit);
+  if (!outfit) return fail(`outfitは{top, middle, bottom}(それぞれ${MAX_OUTFIT_CHARS}文字までの文字列)で指定してください。`);
+
   const yesterday = list(input.yesterday);
   const plan = list(input.plan);
   const notes = list(input.notes);
   if (!yesterday || !plan || !notes) return fail(`yesterday・plan・notesは${MAX_ITEM_CHARS}文字まで・${MAX_LIST_ITEMS}件までの文字列の配列で指定してください。`);
   if (input.extracted !== undefined && typeof input.extracted !== "boolean") return fail("extractedは真偽値で指定してください。");
 
-  return { ok: true, page: { date, startedAt, endedAt, minutes, place, chars, yesterday, plan, notes, extracted: input.extracted === true } };
+  return { ok: true, page: { date, startedAt, endedAt, minutes, place, chars, outfit, yesterday, plan, notes, extracted: input.extracted === true } };
 }
 
-/** 同じ内容かの判定に使う、キーの並びを固定した JSON(日付は主キーなので含めない) */
+/** 同じ内容かの判定に使う、キーの並びを固定した JSON(日付は主キーなので含めない)。
+ *  服装は書いたページでだけ足す(服装の無いページのハッシュを、服装の列を足す前と同じに保ち、全件を書き直さない) */
 export function canonicalContent(page: MorningPageInput): string {
-  return JSON.stringify([page.startedAt, page.endedAt, page.minutes, page.place, page.chars, page.yesterday, page.plan, page.notes, page.extracted]);
+  const content: unknown[] = [page.startedAt, page.endedAt, page.minutes, page.place, page.chars, page.yesterday, page.plan, page.notes, page.extracted];
+  if (hasOutfit(page.outfit)) content.push([page.outfit.top, page.outfit.middle, page.outfit.bottom]);
+  return JSON.stringify(content);
 }

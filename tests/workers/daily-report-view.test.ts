@@ -4,6 +4,7 @@ import { ingestDailyReports } from "@/app/lib/daily-report-store";
 import { ingestDailyReportSummaries } from "@/app/lib/daily-report-summary-store";
 import { listReportDates, periodView } from "@/app/lib/queries/daily-report";
 import { portalSummary } from "@/app/lib/queries/portal";
+import { ingestMorningPages } from "@/app/lib/morning-page-store";
 import { buildModel } from "@/app/lib/daily-report-model";
 import { periodRange } from "@/app/lib/daily-report-summary";
 
@@ -187,5 +188,22 @@ describe("periodView + buildModel", () => {
     // 6節目の無い日は空
     const other = periodRange("day", "2026-10-19", TODAY);
     expect(buildModel(await periodView(other), other, TODAY).reflection.days).toEqual([]);
+  });
+
+  test("day: shows the outfit written on that morning's page, and nothing when there is none", async () => {
+    await seed(DATES);
+    const results = await ingestMorningPages([
+      { date: "2026-10-13", outfit: { top: "シャツ(Uniqlo U)", middle: "", bottom: "デニム(白)" } },
+      { date: "2026-10-15", place: "自宅" },
+    ]);
+    expect(results.map((result) => result.status)).not.toContain("error");
+    const day = (date: string) => periodRange("day", date, TODAY);
+    expect(buildModel(await periodView(day("2026-10-13")), day("2026-10-13"), TODAY).day?.outfit).toEqual({ top: "シャツ(Uniqlo U)", middle: "", bottom: "デニム(白)" });
+    // 服装を書いていないページ・ページの無い日
+    expect(buildModel(await periodView(day("2026-10-15")), day("2026-10-15"), TODAY).day?.outfit).toBeNull();
+    expect(buildModel(await periodView(day("2026-10-19")), day("2026-10-19"), TODAY).day?.outfit).toBeNull();
+    // 週次は服装を読まない
+    const week = periodRange("week", "2026-10-13", TODAY);
+    expect(buildModel(await periodView(week), week, TODAY).day).toBeNull();
   });
 });
