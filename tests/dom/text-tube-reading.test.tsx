@@ -73,6 +73,12 @@ test("clicking a card's channel name narrows the list to that channel on the ser
   expect(window.location.search).toBe("?channel=Other");
   // 本数は読み込んだ分ではなく、サーバーが数えた全体。
   expect(screen.getByRole("option", { name: "Other（150）" })).toBeTruthy();
+
+  // 絞っている間は解除ボタンが出て、押すと全チャンネルに戻る。
+  fireEvent.click(screen.getByRole("button", { name: "「Other」の絞り込みを解除" }));
+  await waitFor(() => expect(requested.at(-1)).toBe("/api/text-tube/videos?q="));
+  expect(window.location.search).toBe("");
+  expect(screen.queryByRole("button", { name: /の絞り込みを解除/ })).toBeNull();
 });
 
 test("the library starts from the view the URL carried", () => {

@@ -1231,3 +1231,7 @@ button.mp-cal-day:hover,button.mp-cal-day:focus-visible { border-color:var(--blu
 .texttube-workspace .tt-channel-name { display:inline; margin:0; border:0; background:transparent; padding:0; color:inherit; font:inherit; text-align:left; text-decoration:none; cursor:pointer; }
 .texttube-workspace .tt-video-info .tt-channel-name { display:block; color:var(--muted); font-size:12px; line-height:1.6; }
 .texttube-workspace .tt-channel-name:hover,.texttube-workspace .tt-channel-name:focus-visible { color:var(--blue-strong); text-decoration:underline; }
+.texttube-workspace .tt-filter-summary { display:flex; flex-wrap:wrap; align-items:center; gap:10px; min-width:0; }
+.texttube-workspace .tt-channel-chip { display:inline-flex; align-items:center; gap:8px; max-width:100%; min-height:30px; border:1px solid rgba(10,132,255,.35); border-radius:999px; background:var(--blue-soft); padding:4px 12px; color:var(--blue-strong); font-size:13px; font-weight:600; cursor:pointer; }
+.texttube-workspace .tt-channel-chip:hover,.texttube-workspace .tt-channel-chip:focus-visible { border-color:var(--blue); background:#fff; }
+.texttube-workspace .tt-channel-chip-name { overflow:hidden; max-width:28em; text-overflow:ellipsis; white-space:nowrap; }
