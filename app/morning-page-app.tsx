@@ -105,7 +105,7 @@ export function MorningPageApp({ model, initialTab }: { model: MorningPageModel;
           <div hidden={tab !== "summary"}>{hasPages ? <SummaryTab model={model} onOpenDay={openDay} /> : empty}</div>
           <div hidden={tab !== "content"}><ContentTab model={model} focus={focus} active={tab === "content"} hasPages={hasPages} empty={empty} /></div>
           <div hidden={tab !== "place"}>{hasPages ? <PlaceTab model={model} /> : empty}</div>
-          <div hidden={tab !== "outfit"}>{hasPages ? <OutfitTab model={model} /> : empty}</div>
+          <div hidden={tab !== "outfit"}>{hasPages ? <OutfitTab model={model} onOpenDay={openDay} /> : empty}</div>
         </>
       )}
     </main>
@@ -567,7 +567,7 @@ function Garment({ layer }: { layer: OutfitLayer }) {
 }
 
 /** 服装: 月次は日ごとの表、どの期間も段・品名ごと・ブランドごとの着た日数(多い順) */
-function OutfitTab({ model }: { model: MorningPageModel }) {
+function OutfitTab({ model, onOpenDay }: { model: MorningPageModel; onOpenDay: (date: string) => void }) {
   const { outfit } = model;
   const since = outfit.firstDate ? `服装は${Number(outfit.firstDate.slice(0, 4))}年${Number(outfit.firstDate.slice(5, 7))}月${Number(outfit.firstDate.slice(8, 10))}日から書いています。` : "服装を書いたページはまだありません。";
   if (!outfit.days) {
@@ -594,7 +594,19 @@ function OutfitTab({ model }: { model: MorningPageModel }) {
               <tbody>
                 {days.map((day) => (
                   <tr key={day.date}>
-                    <th scope="row"><Link href={morningHref("month", day.date.slice(0, 7), "content", `d-${day.date}`)} prefetch={false}>{shortDate(day.date, day.weekday)}</Link></th>
+                    <th scope="row">
+                      {/* 同じページへの移動ではタブ(useState)が変わらないので、ふつうのクリックは概要のカレンダーと同じくその場でタブを切り替える。新しいタブで開くときは href のまま */}
+                      <a
+                        href={morningHref("month", day.date.slice(0, 7), "content", dayId(day.date))}
+                        onClick={(event) => {
+                          if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+                          event.preventDefault();
+                          onOpenDay(day.date);
+                        }}
+                      >
+                        {shortDate(day.date, day.weekday)}
+                      </a>
+                    </th>
                     {OUTFIT_LAYERS.map(({ key }) => <td key={key}><Garment layer={day.outfit![key]} /></td>)}
                   </tr>
                 ))}
